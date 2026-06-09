@@ -1,0 +1,19 @@
+{
+  "name": "ninesixteen",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ninesixteen.video — lightweight desktop recording & live streaming with a tactile two-handed framing viewport.",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "web:dev": "pnpm --filter @ninesixteen/web dev",
+    "web:build": "pnpm --filter @ninesixteen/web build",
+    "web:start": "pnpm --filter @ninesixteen/web start",
+    "web:lint": "pnpm --filter @ninesixteen/web lint",
+    "desktop:dev": "pnpm --filter @ninesixteen/desktop tauri:dev",
+    "desktop:build": "pnpm --filter @ninesixteen/desktop tauri:build",
+    "desktop:web": "pnpm --filter @ninesixteen/desktop dev"
+  }
+}

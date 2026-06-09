@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+out/
+.next/
+build/
+*.tsbuildinfo
+
+# Tauri / Rust
+apps/desktop/src-tauri/target/
+target/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+**/serviceAccount*.json
+
+# Recordings (local capture output during dev)
+recordings/
+*.mp4
+*.mkv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+pnpm-debug.log*

@@ -1,0 +1,114 @@
+/* ninesixteen.video — shared retro theme (light mode only).
+   Imported by both the web app and the desktop app. */
+
+@import url("https://fonts.googleapis.com/css2?family=Righteous&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+
+:root {
+  /* Surfaces */
+  --ns-bg: #eceae4;
+  --ns-bg-alt: #e3e0d8;
+  --ns-surface: #f7f5f0;
+  --ns-surface-sunken: #eae7df;
+
+  /* Ink */
+  --ns-ink: #17171b;
+  --ns-ink-soft: #54535c;
+  --ns-ink-faint: #8a8893;
+
+  /* Brand syllables */
+  --ns-white: #ffffff;
+  --ns-blue: #3fc4f0;
+  --ns-blue-deep: #16a6d6;
+  --ns-pink: #ff7fc4;
+  --ns-pink-deep: #f24fa6;
+
+  /* Accents */
+  --ns-yellow: #ffce4a;
+  --ns-mint: #74e0b5;
+
+  /* Utility */
+  --ns-line: #17171b;
+  --ns-line-soft: #cfcbc0;
+  --ns-danger: #e5484d;
+  --ns-success: #46a758;
+
+  /* Type */
+  --ns-font-display: "Righteous", "Bungee", system-ui, sans-serif;
+  --ns-font-body: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --ns-font-mono: "Space Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  /* Radii */
+  --ns-radius-sm: 8px;
+  --ns-radius-md: 14px;
+  --ns-radius-lg: 22px;
+  --ns-radius-pill: 999px;
+
+  /* Shadows */
+  --ns-shadow-hard: 4px 4px 0 var(--ns-ink);
+  --ns-shadow-hard-lg: 7px 7px 0 var(--ns-ink);
+  --ns-shadow-soft: 0 10px 30px rgba(23, 23, 27, 0.1);
+}
+
+/* Subtle retro paper grain applied to the page background. */
+.ns-grain {
+  position: relative;
+}
+.ns-grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Reusable retro primitives */
+.ns-card {
+  background: var(--ns-surface);
+  border: 2px solid var(--ns-ink);
+  border-radius: var(--ns-radius-lg);
+  box-shadow: var(--ns-shadow-hard);
+}
+
+.ns-btn {
+  font-family: var(--ns-font-display);
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  border: 2px solid var(--ns-ink);
+  border-radius: var(--ns-radius-pill);
+  padding: 0.7em 1.4em;
+  background: var(--ns-white);
+  color: var(--ns-ink);
+  box-shadow: var(--ns-shadow-hard);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+}
+.ns-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: var(--ns-shadow-hard-lg);
+}
+.ns-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ns-ink);
+}
+.ns-btn--blue {
+  background: var(--ns-blue);
+}
+.ns-btn--pink {
+  background: var(--ns-pink);
+}
+.ns-btn--yellow {
+  background: var(--ns-yellow);
+}
+
+.ns-chip {
+  font-family: var(--ns-font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1.5px solid var(--ns-ink);
+  border-radius: var(--ns-radius-pill);
+  padding: 0.25em 0.7em;
+  background: var(--ns-surface);
+}
