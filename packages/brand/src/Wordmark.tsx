@@ -13,7 +13,7 @@ export type WordmarkProps = {
 };
 
 /**
- * The ninesixteen wordmark: "nine" (white, outlined) + "six" (blue) + "teen" (pink).
+ * The ninesixteen wordmark: "nine" (white, outlined) + "six" (charcoal) + "teen" (clay).
  * Self-contained inline styles so it renders identically in any React app
  * without depending on global CSS being loaded first.
  */
@@ -28,8 +28,8 @@ export function Wordmark({
     fontFamily: fonts.display,
     fontSize: size,
     lineHeight: 1,
-    letterSpacing: "-0.01em",
-    fontWeight: 400,
+    letterSpacing: "-0.025em",
+    fontWeight: 700,
     display: "inline-flex",
     alignItems: "baseline",
     userSelect: "none",
@@ -52,15 +52,15 @@ export function Wordmark({
     textShadow: `${outline}, ${Math.max(2, size * 0.06)}px ${Math.max(
       2,
       size * 0.06
-    )}px 0 rgba(23,23,27,0.18)`,
+    )}px 0 rgba(50, 50, 56, 0.18)`,
   };
   const six: React.CSSProperties = {
     color: colors.blue,
-    textShadow: `0 0 ${size * 0.18}px rgba(63,196,240,0.45)`,
+    textShadow: `0 0 ${size * 0.12}px rgba(110, 110, 120, 0.22)`,
   };
   const teen: React.CSSProperties = {
     color: colors.pink,
-    textShadow: `0 0 ${size * 0.18}px rgba(255,127,196,0.45)`,
+    textShadow: `0 0 ${size * 0.12}px rgba(143, 94, 85, 0.28)`,
   };
   const suffix: React.CSSProperties = {
     color: colors.inkSoft,

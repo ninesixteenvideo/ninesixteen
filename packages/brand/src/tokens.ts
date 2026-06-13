@@ -1,52 +1,52 @@
 /**
  * ninesixteen.video — brand design tokens.
  *
- * Retro-inspired, light-mode only. The wordmark splits into three syllables:
- *   "nine"  -> white (with a hard retro outline so it reads on light grey)
- *   "six"   -> neon/pastel blue
- *   "teen"  -> neon/pastel pink
+ * Professional stone palette with mild retro structure (hard shadows, pill radii).
+ * Wordmark syllables:
+ *   "nine"  -> white (outlined on light backgrounds)
+ *   "six"   -> medium charcoal
+ *   "teen"  -> terracotta clay
  *
- * These tokens are the single source of truth shared by the web app and the
- * Tauri desktop app so the two surfaces stay visually identical.
+ * Shared by the web app and Tauri desktop app.
  */
 
 export const colors = {
   // Surfaces
-  bg: "#ECEAE4", // light warm grey page background
-  bgAlt: "#E3E0D8", // slightly deeper grey for sections
-  surface: "#F7F5F0", // cards / panels
-  surfaceSunken: "#EAE7DF",
+  bg: "#F4F3EF",
+  bgAlt: "#EAE8E2",
+  surface: "#FAFAF8",
+  surfaceSunken: "#EFEDE8",
 
-  // Ink
-  ink: "#17171B", // near-black primary text + retro outlines
-  inkSoft: "#54535C", // secondary text
-  inkFaint: "#8A8893",
+  // Ink & structure (dark charcoal — not pure black)
+  ink: "#323238",
+  inkSoft: "#5C5C66",
+  inkFaint: "#878792",
 
-  // Brand syllables
+  // Brand syllables + UI accents
   white: "#FFFFFF",
-  blue: "#3FC4F0", // "six" — neon/pastel blue
-  blueDeep: "#16A6D6",
-  pink: "#FF7FC4", // "teen" — neon/pastel pink
-  pinkDeep: "#F24FA6",
+  blue: "#6E6E78",
+  blueDeep: "#565660",
+  pink: "#8F5E55",
+  pinkDeep: "#6E443D",
 
   // Accents
-  yellow: "#FFCE4A", // retro sunburst accent
-  mint: "#74E0B5",
+  yellow: "#FFCE4A",
+  mint: "#6B9E8A",
 
   // Utility
-  line: "#17171B",
-  lineSoft: "#CFCBC0",
-  danger: "#E5484D",
-  success: "#46A758",
+  line: "#323238",
+  lineSoft: "#D5D2CB",
+  danger: "#B84A4F",
+  success: "#3D7355",
 } as const;
 
 export const fonts = {
-  /** Display / logo — memorable retro geometric face. */
-  display: '"Righteous", "Bungee", system-ui, sans-serif',
-  /** Body copy — clean, slightly geometric companion. */
-  body: '"Space Grotesk", "Inter", system-ui, sans-serif',
+  /** Headings, buttons, and logo — Inter semibold for a clean pro feel. */
+  display: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
+  /** Body copy — Inter for maximum readability. */
+  body: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   /** Mono for technical/recording metadata. */
-  mono: '"Space Mono", "JetBrains Mono", ui-monospace, monospace',
+  mono: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
 } as const;
 
 export const radii = {
@@ -56,13 +56,13 @@ export const radii = {
   pill: "999px",
 } as const;
 
-/** Hard-offset "retro" shadows (no blur) plus a soft ambient option. */
+/** Hard-offset shadows (no blur) plus a soft ambient option. */
 export const shadows = {
   hard: `4px 4px 0 ${colors.ink}`,
   hardLg: `7px 7px 0 ${colors.ink}`,
   hardBlue: `4px 4px 0 ${colors.blueDeep}`,
   hardPink: `4px 4px 0 ${colors.pinkDeep}`,
-  soft: "0 10px 30px rgba(23,23,27,0.10)",
+  soft: "0 10px 30px rgba(50,50,56,0.08)",
 } as const;
 
 export const space = {

@@ -1,41 +1,41 @@
-/* ninesixteen.video — shared retro theme (light mode only).
-   Imported by both the web app and the desktop app. */
+/* ninesixteen.video — shared theme (light mode only).
+   Stone surfaces, charcoal structure, terracotta + mustard accents. */
 
-@import url("https://fonts.googleapis.com/css2?family=Righteous&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 :root {
   /* Surfaces */
-  --ns-bg: #eceae4;
-  --ns-bg-alt: #e3e0d8;
-  --ns-surface: #f7f5f0;
-  --ns-surface-sunken: #eae7df;
+  --ns-bg: #f4f3ef;
+  --ns-bg-alt: #eae8e2;
+  --ns-surface: #fafaf8;
+  --ns-surface-sunken: #efede8;
 
-  /* Ink */
-  --ns-ink: #17171b;
-  --ns-ink-soft: #54535c;
-  --ns-ink-faint: #8a8893;
+  /* Ink & borders (dark charcoal) */
+  --ns-ink: #323238;
+  --ns-ink-soft: #5c5c66;
+  --ns-ink-faint: #878792;
 
-  /* Brand syllables */
+  /* Primary accent (medium charcoal) + secondary */
   --ns-white: #ffffff;
-  --ns-blue: #3fc4f0;
-  --ns-blue-deep: #16a6d6;
-  --ns-pink: #ff7fc4;
-  --ns-pink-deep: #f24fa6;
+  --ns-blue: #6e6e78;
+  --ns-blue-deep: #565660;
+  --ns-pink: #8f5e55;
+  --ns-pink-deep: #6e443d;
 
   /* Accents */
   --ns-yellow: #ffce4a;
-  --ns-mint: #74e0b5;
+  --ns-mint: #6b9e8a;
 
   /* Utility */
-  --ns-line: #17171b;
-  --ns-line-soft: #cfcbc0;
-  --ns-danger: #e5484d;
-  --ns-success: #46a758;
+  --ns-line: #323238;
+  --ns-line-soft: #d5d2cb;
+  --ns-danger: #b84a4f;
+  --ns-success: #3d7355;
 
   /* Type */
-  --ns-font-display: "Righteous", "Bungee", system-ui, sans-serif;
-  --ns-font-body: "Space Grotesk", "Inter", system-ui, sans-serif;
-  --ns-font-mono: "Space Mono", "JetBrains Mono", ui-monospace, monospace;
+  --ns-font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ns-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ns-font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
 
   /* Radii */
   --ns-radius-sm: 8px;
@@ -46,10 +46,10 @@
   /* Shadows */
   --ns-shadow-hard: 4px 4px 0 var(--ns-ink);
   --ns-shadow-hard-lg: 7px 7px 0 var(--ns-ink);
-  --ns-shadow-soft: 0 10px 30px rgba(23, 23, 27, 0.1);
+  --ns-shadow-soft: 0 10px 30px rgba(50, 50, 56, 0.08);
 }
 
-/* Subtle retro paper grain applied to the page background. */
+/* Subtle paper grain applied to the page background. */
 .ns-grain {
   position: relative;
 }
@@ -59,11 +59,11 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.035;
+  opacity: 0.028;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Reusable retro primitives */
+/* Reusable primitives */
 .ns-card {
   background: var(--ns-surface);
   border: 2px solid var(--ns-ink);
@@ -73,6 +73,7 @@
 
 .ns-btn {
   font-family: var(--ns-font-display);
+  font-weight: 600;
   font-size: 1rem;
   letter-spacing: 0.01em;
   border: 2px solid var(--ns-ink);
@@ -94,9 +95,11 @@
 }
 .ns-btn--blue {
   background: var(--ns-blue);
+  color: var(--ns-white);
 }
 .ns-btn--pink {
   background: var(--ns-pink);
+  color: var(--ns-white);
 }
 .ns-btn--yellow {
   background: var(--ns-yellow);

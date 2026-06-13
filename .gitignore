@@ -13,16 +13,39 @@ build/
 apps/desktop/src-tauri/target/
 target/
 
+# Fetched / built third-party binaries (see scripts/fetch-*.mjs)
+third_party/ffmpeg/
+third_party/softcam/
+
+# Bundled runtime binaries — keep README.md in each folder
+apps/desktop/src-tauri/resources/ffmpeg/*
+!apps/desktop/src-tauri/resources/ffmpeg/README.md
+
+apps/desktop/src-tauri/resources/softcam/*
+!apps/desktop/src-tauri/resources/softcam/README.md
+
+apps/desktop/src-tauri/resources/interception/*
+!apps/desktop/src-tauri/resources/interception/README.md
+
 # Env & secrets
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
 **/serviceAccount*.json
+*.pem
 
-# Recordings (local capture output during dev)
+# Recordings & media (local capture output during dev)
 recordings/
 *.mp4
 *.mkv
+*.ns
+*.flv
+
+# Deploy tooling
+.vercel/
 
 # OS / editor
 .DS_Store
@@ -30,3 +53,7 @@ Thumbs.db
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.idea/
+.vscode/
+*.suo
+*.user

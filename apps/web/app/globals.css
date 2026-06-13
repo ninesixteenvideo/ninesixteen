@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+/* Map the shared brand tokens into Tailwind's theme so we get utilities like
+   bg-bg, text-ink, text-blue, font-display, etc. */
+@theme {
+  --color-bg: #f4f3ef;
+  --color-bgalt: #eae8e2;
+  --color-surface: #fafaf8;
+  --color-surfacesunken: #efede8;
+
+  --color-ink: #323238;
+  --color-inksoft: #5c5c66;
+  --color-inkfaint: #878792;
+
+  --color-blue: #6e6e78;
+  --color-bluedeep: #565660;
+  --color-pink: #8f5e55;
+  --color-pinkdeep: #6e443d;
+  --color-yellow: #ffce4a;
+  --color-mint: #6b9e8a;
+  --color-line: #323238;
+  --color-linesoft: #d5d2cb;
+
+  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-retro: 22px;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: var(--color-bluedeep);
+  color: var(--color-surface);
+}
+
+/* Animated sunburst + marquee helpers */
+@keyframes ns-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ns-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes ns-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ns-spin-slow {
+  animation: ns-spin 28s linear infinite;
+}
+.ns-float {
+  animation: ns-float 5s ease-in-out infinite;
+}
+.ns-marquee {
+  animation: ns-marquee 22s linear infinite;
+}
+
+a {
+  color: inherit;
+}
+
+.font-display {
+  font-weight: 600;
+}
+
+/* Colored CTAs — light text on slate / terracotta fills */
+.bg-blue,
+.bg-pink {
+  color: var(--color-surface);
+}

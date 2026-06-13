@@ -7,6 +7,9 @@
   "engines": {
     "node": ">=20"
   },
+  "devDependencies": {
+    "sharp": "^0.34.0"
+  },
   "scripts": {
     "web:dev": "pnpm --filter @ninesixteen/web dev",
     "web:build": "pnpm --filter @ninesixteen/web build",
