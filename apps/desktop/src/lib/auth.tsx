@@ -9,6 +9,13 @@ import React, {
 } from "react";
 import type { User } from "firebase/auth";
 import {
+  formatProEndDate,
+  isProEntitlement,
+  parseEntitlement,
+  subscriptionCancelled,
+  type Plan,
+} from "@ninesixteen/brand";
+import {
   getDb,
   getFirebaseAuth,
   googleProvider,
@@ -18,14 +25,15 @@ import {
 import { isDesktop } from "./bridge";
 import { syncUserProfile } from "./userSync";
 
-export type Plan = "trial" | "pro";
+export type { Plan };
 
 export interface NsUser {
   uid: string;
   email: string;
   displayName: string | null;
   plan: Plan;
-  /** True when running without real Firebase (local testing). */
+  proEndsAt: number | null;
+  subscriptionCancelAtPeriodEnd: boolean;
   demo: boolean;
 }
 
@@ -34,17 +42,25 @@ interface AuthState {
   loading: boolean;
   firebaseEnabled: boolean;
   isPro: boolean;
+  subscriptionCancelled: boolean;
+  proEndsAt: number | null;
+  formatProEndDate: (ms: number) => string;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
-  /** Open the web checkout in the system browser, tied to this account. */
   openCheckout: (interval: "monthly" | "yearly") => Promise<void>;
+  openBillingPortal: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
 const DEMO_KEY = "ns_desktop_demo_user";
+
+const emptyEntitlement = {
+  proEndsAt: null as number | null,
+  subscriptionCancelAtPeriodEnd: false,
+};
 
 function loadDemoUser(): NsUser | null {
   try {
@@ -75,6 +91,7 @@ function mapFirebaseUser(fbUser: User): NsUser {
     email: fbUser.email ?? "",
     displayName: fbUser.displayName,
     plan: "trial",
+    ...emptyEntitlement,
     demo: false,
   };
 }
@@ -91,8 +108,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!db) return;
     const { doc, onSnapshot } = await import("firebase/firestore");
     planUnsub.current = onSnapshot(doc(db, "users", uid), (snap) => {
-      const plan = (snap.data()?.plan as Plan) ?? "trial";
-      setUser((prev) => (prev && prev.uid === uid ? { ...prev, plan } : prev));
+      const ent = parseEntitlement(snap.data());
+      setUser((prev) =>
+        prev && prev.uid === uid
+          ? {
+              ...prev,
+              plan: ent.plan,
+              proEndsAt: ent.proEndsAt,
+              subscriptionCancelAtPeriodEnd: ent.subscriptionCancelAtPeriodEnd,
+            }
+          : prev
+      );
     });
   }, []);
 
@@ -114,7 +140,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           setLoading(false);
         });
-        // Belt-and-suspenders: listener may lag behind persisted session restore.
         if (auth.currentUser) {
           setUser(mapFirebaseUser(auth.currentUser));
           void syncUserProfile(auth.currentUser);
@@ -144,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       displayName: email.split("@")[0],
       plan: "trial",
+      ...emptyEntitlement,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -166,6 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         displayName: displayName || email.split("@")[0],
         plan: "trial",
+        ...emptyEntitlement,
         demo: true,
       };
       saveDemoUser(demoUser);
@@ -179,7 +206,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (auth) {
       const { signInWithPopup, signInWithRedirect } = await import("firebase/auth");
       const provider = googleProvider();
-      // Tauri / WebView2 blocks OAuth popups — redirect in the same window instead.
       if (isDesktop) {
         await signInWithRedirect(auth, provider);
         return;
@@ -192,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: "you@gmail.com",
       displayName: "Google Tester",
       plan: "trial",
+      ...emptyEntitlement,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -222,19 +249,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
+  const openBillingPortal = useCallback(async () => {
+    const auth = getFirebaseAuth();
+    if (!auth?.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch(`${WEB_URL}/api/stripe/portal`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = (await res.json()) as { url?: string };
+    if (data.url) await openExternal(data.url);
+  }, []);
+
   const value = useMemo<AuthState>(
     () => ({
       user,
       loading,
       firebaseEnabled: isFirebaseConfigured,
-      isPro: user?.plan === "pro",
+      isPro: user ? isProEntitlement(user) : false,
+      subscriptionCancelled: user ? subscriptionCancelled(user) : false,
+      proEndsAt: user?.proEndsAt ?? null,
+      formatProEndDate,
       signIn,
       signUp,
       signInWithGoogle,
       signOut,
       openCheckout,
+      openBillingPortal,
     }),
-    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout]
+    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout, openBillingPortal]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

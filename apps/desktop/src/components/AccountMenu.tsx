@@ -3,7 +3,17 @@ import { useAuth } from "../lib/auth";
 import { AuthPanel } from "./AuthPanel";
 
 export function AccountMenu() {
-  const { user, isPro, loading, signOut, openCheckout } = useAuth();
+  const {
+    user,
+    isPro,
+    subscriptionCancelled,
+    proEndsAt,
+    formatProEndDate,
+    loading,
+    signOut,
+    openCheckout,
+    openBillingPortal,
+  } = useAuth();
   const [open, setOpen] = useState(false);
 
   if (loading) return null;
@@ -53,12 +63,29 @@ export function AccountMenu() {
                   </span>
                 </div>
 
+                {subscriptionCancelled && proEndsAt && (
+                  <p className="muted paywall-sub" style={{ marginTop: 12 }}>
+                    Subscription cancelled — Pro access until{" "}
+                    <b>{formatProEndDate(proEndsAt)}</b>.
+                  </p>
+                )}
+
                 {!isPro && (
                   <button
                     className="btn pink account-upgrade"
                     onClick={() => openCheckout("yearly")}
                   >
                     Upgrade to Pro
+                  </button>
+                )}
+
+                {isPro && (
+                  <button
+                    className="btn account-signout"
+                    style={{ marginTop: 8 }}
+                    onClick={() => openBillingPortal()}
+                  >
+                    Manage subscription
                   </button>
                 )}
 

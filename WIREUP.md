@@ -185,8 +185,17 @@ it just reads the entitlement from Firestore and opens the web checkout in the b
 6. **Back in the desktop app, Export unlocks automatically** (no restart) — the save
    dialog opens and copies the MP4 wherever you choose.
 
-If you cancel the subscription in Stripe, the `subscription.deleted` webhook sets the
-plan back to `"trial"` and Export re-locks.
+If you cancel in the **Stripe Customer Portal** (Dashboard → **Manage / cancel**, or
+Account → **Manage subscription** in the desktop app):
+
+- The webhook sets `plan: "pro"` **and** `proEndsAt` to the end of the current billing
+  period (monthly or annual — taken from Stripe’s `current_period_end`).
+- `subscriptionCancelAtPeriodEnd: true` is stored so the UI can show:
+  *“Subscription cancelled — Pro access until [date].”*
+- Pro stays unlocked until that date; when the period ends, the subscription is deleted
+  and the plan returns to `"trial"`.
+
+Enable the portal once in Stripe: **Settings → Billing → Customer portal** (turn it on).
 
 ---
 

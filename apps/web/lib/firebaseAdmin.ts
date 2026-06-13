@@ -9,7 +9,7 @@
  */
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getAuth as getFirebaseAdminAuth } from "firebase-admin/auth";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore, type Firestore } from "firebase-admin/firestore";
 
 const projectId = (process.env.FIREBASE_PROJECT_ID ?? "").trim();
 const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL ?? "").trim();
@@ -71,7 +71,19 @@ type EntitlementUpdate = {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   subscriptionStatus?: string;
+  /** When Pro access ends (ms). Set when user cancels but keeps access until period end. */
+  proEndsAt?: number | null;
+  subscriptionCancelAtPeriodEnd?: boolean;
 };
+
+function entitlementPayload(update: EntitlementUpdate): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...update, updatedAt: Date.now() };
+  if (update.proEndsAt === null) payload.proEndsAt = FieldValue.delete();
+  if (update.subscriptionCancelAtPeriodEnd === false) {
+    payload.subscriptionCancelAtPeriodEnd = FieldValue.delete();
+  }
+  return payload;
+}
 
 /** Upsert a user's entitlement document. No-op in mock mode. */
 export async function setUserEntitlement(
@@ -83,9 +95,11 @@ export async function setUserEntitlement(
   await dbAdmin
     .collection("users")
     .doc(uid)
-    .set({ ...update, updatedAt: Date.now() }, { merge: true });
+    .set(entitlementPayload(update), { merge: true });
   return true;
 }
+
+export type { EntitlementUpdate };
 
 /** Create or refresh a user profile on sign-in. Preserves an existing Pro plan. */
 export async function upsertUserProfileOnSignIn(
@@ -97,7 +111,10 @@ export async function upsertUserProfileOnSignIn(
   const ref = dbAdmin.collection("users").doc(uid);
   const existing = await ref.get();
   const data = existing.data();
-  const plan: "trial" | "pro" = data?.plan === "pro" ? "pro" : "trial";
+  const now = Date.now();
+  const stillPro =
+    data?.plan === "pro" && (!data?.proEndsAt || data.proEndsAt > now);
+  const plan: "trial" | "pro" = stillPro ? "pro" : "trial";
   await ref.set(
     {
       email: profile.email ?? data?.email ?? "",

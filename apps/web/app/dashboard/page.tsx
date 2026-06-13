@@ -6,7 +6,18 @@ import { Suspense, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 
 function DashboardInner() {
-  const { user, loading, signOut, setPlan, firebaseEnabled } = useAuth();
+  const {
+    user,
+    loading,
+    signOut,
+    setPlan,
+    firebaseEnabled,
+    isPro,
+    subscriptionCancelled,
+    proEndsAt,
+    formatProEndDate,
+    openBillingPortal,
+  } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
 
@@ -30,8 +41,6 @@ function DashboardInner() {
       </div>
     );
   }
-
-  const isPro = user.plan === "pro";
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-14">
@@ -59,6 +68,13 @@ function DashboardInner() {
         </div>
       )}
 
+      {subscriptionCancelled && proEndsAt && (
+        <div className="ns-card mt-6 border-2 border-ink bg-yellow/30 p-4 font-body text-sm">
+          Subscription cancelled — Pro access continues until{" "}
+          <b>{formatProEndDate(proEndsAt)}</b>.
+        </div>
+      )}
+
       <div className="ns-card mt-6 p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -76,7 +92,10 @@ function DashboardInner() {
         <div className="mt-5 flex flex-wrap gap-3">
           {isPro ? (
             <button
-              onClick={() => setPlan("trial")}
+              onClick={() => {
+                if (user.demo) setPlan("trial");
+                else void openBillingPortal();
+              }}
               className="rounded-full border-2 border-ink bg-surface px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
             >
               Manage / cancel
@@ -103,9 +122,11 @@ function DashboardInner() {
         <InfoCard
           title="Billing"
           body={
-            firebaseEnabled
-              ? "Subscription managed via Stripe."
-              : "Stripe & Firebase are in placeholder mode for testing."
+            subscriptionCancelled && proEndsAt
+              ? `Subscription cancelled. Pro ends on ${formatProEndDate(proEndsAt)}.`
+              : firebaseEnabled
+                ? "Subscription managed via Stripe."
+                : "Stripe & Firebase are in placeholder mode for testing."
           }
         />
       </div>
