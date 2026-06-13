@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@ninesixteen/brand": "workspace:*",
+    "@stripe/react-stripe-js": "^6.6.0",
+    "@stripe/stripe-js": "^9.8.0",
     "firebase": "^11.3.0",
     "firebase-admin": "^13.0.2",
     "next": "^15.1.6",

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 
 type Interval = "monthly" | "yearly";
@@ -30,26 +29,13 @@ const PLANS: Record<
 export function PricingPlans() {
   const { user } = useAuth();
   const router = useRouter();
-  const [busy, setBusy] = useState<Interval | null>(null);
 
   async function startCheckout(interval: Interval) {
     if (!user) {
       router.push(`/sign-up?plan=${interval}`);
       return;
     }
-    setBusy(interval);
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email, uid: user.uid, interval }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else setBusy(null);
-    } catch {
-      setBusy(null);
-    }
+    router.push(`/checkout?interval=${interval}`);
   }
 
   return (
@@ -81,14 +67,11 @@ export function PricingPlans() {
               <p className="mt-1 font-mono text-xs text-inksoft">{plan.note}</p>
               <button
                 onClick={() => startCheckout(interval)}
-                disabled={busy === interval}
-                className={`ns-cta mt-auto pt-8 w-full disabled:opacity-60 ${plan.featured ? "ns-cta--accent" : "ns-cta--primary"}`}
+                className={`ns-cta mt-auto pt-8 w-full ${plan.featured ? "ns-cta--accent" : "ns-cta--primary"}`}
               >
-                {busy === interval
-                  ? "…"
-                  : user
-                    ? `Subscribe ${interval === "yearly" ? "yearly" : "monthly"}`
-                    : "Sign up to subscribe"}
+                {user
+                  ? `Subscribe ${interval === "yearly" ? "yearly" : "monthly"}`
+                  : "Sign up to subscribe"}
               </button>
             </div>
           );

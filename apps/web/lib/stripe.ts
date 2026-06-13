@@ -12,6 +12,7 @@ import Stripe from "stripe";
 export type BillingInterval = "monthly" | "yearly";
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
+export const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 
 export const STRIPE_PRICE_MONTHLY =
@@ -22,7 +23,9 @@ export function priceForInterval(interval: BillingInterval): string {
   return interval === "yearly" ? STRIPE_PRICE_YEARLY : STRIPE_PRICE_MONTHLY;
 }
 
-export const isStripeConfigured = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICE_MONTHLY);
+export const isStripeConfigured = Boolean(
+  STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY && STRIPE_PRICE_MONTHLY
+);
 
 let stripe: Stripe | null = null;
 

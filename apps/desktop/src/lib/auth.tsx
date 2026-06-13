@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const openCheckout = useCallback(
     async (interval: "monthly" | "yearly") => {
-      const url = new URL("/pricing", WEB_URL);
+      const url = new URL("/checkout", WEB_URL);
       url.searchParams.set("interval", interval);
       if (user?.uid) url.searchParams.set("uid", user.uid);
       if (user?.email) url.searchParams.set("email", user.email);

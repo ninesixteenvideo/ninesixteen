@@ -222,3 +222,11 @@ a {
 .ns-cta-panel {
   background: linear-gradient(165deg, var(--color-surface) 0%, var(--color-bgalt) 100%);
 }
+
+/* Stripe Embedded Checkout */
+.stripe-embedded-checkout,
+.stripe-embedded-checkout iframe {
+  display: block;
+  width: 100%;
+  min-height: 520px;
+}

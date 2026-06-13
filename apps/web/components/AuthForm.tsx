@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useAuth } from "@/lib/auth";
 
-export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
+function AuthFormInner({ mode }: { mode: "sign-in" | "sign-up" }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { signIn, signUp, signInWithGoogle, firebaseEnabled } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -17,6 +18,26 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
 
   const isSignUp = mode === "sign-up";
 
+  function afterAuth() {
+    const plan = searchParams.get("plan");
+    const next = searchParams.get("next");
+    const interval = searchParams.get("interval");
+
+    if (plan === "monthly" || plan === "yearly") {
+      router.push(`/checkout?interval=${plan}`);
+      return;
+    }
+    if (next?.startsWith("/")) {
+      if (next === "/checkout" && (interval === "monthly" || interval === "yearly")) {
+        router.push(`/checkout?interval=${interval}`);
+        return;
+      }
+      router.push(next);
+      return;
+    }
+    router.push("/dashboard");
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -24,7 +45,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     try {
       if (isSignUp) await signUp(email, password, name);
       else await signIn(email, password);
-      router.push("/dashboard");
+      afterAuth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -37,7 +58,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     setBusy(true);
     try {
       await signInWithGoogle();
-      router.push("/dashboard");
+      afterAuth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");
     } finally {
@@ -201,5 +222,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
+  );
+}
+
+export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-md px-5 py-24 text-center font-mono text-inksoft">
+          Loading…
+        </div>
+      }
+    >
+      <AuthFormInner mode={mode} />
+    </Suspense>
   );
 }

@@ -9,13 +9,13 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Creates a Stripe Checkout session for the Pro plan ($12/mo or $39/yr).
+ * Creates an embedded Stripe Checkout session for the Pro plan ($12/mo or $39/yr).
  *
- * The caller passes the Firebase `uid` so we can stamp it onto the session
- * (`client_reference_id`) and the resulting subscription (`metadata.uid`).
- * The webhook then writes the entitlement to Firestore keyed by that uid —
- * which is the same account the desktop app reads, so a web purchase unlocks
- * export on the desktop instantly.
+ * Returns a `clientSecret` for Embedded Checkout on /checkout. The caller passes
+ * the Firebase `uid` so we can stamp it onto the session (`client_reference_id`)
+ * and the resulting subscription (`metadata.uid`). The webhook then writes the
+ * entitlement to Firestore keyed by that uid — which is the same account the
+ * desktop app reads, so a web purchase unlocks export on the desktop instantly.
  *
  * In mock mode (no keys) it returns a local URL that simulates a successful
  * upgrade so the flow is testable today.
@@ -58,19 +58,22 @@ export async function POST(req: Request) {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      ui_mode: "embedded",
       payment_method_types: ["card"],
       line_items: [{ price, quantity: 1 }],
       customer_email: email,
       client_reference_id: uid,
-      // Stamp the uid onto the subscription so subscription.* webhook events
-      // (which only carry the subscription object) can resolve the user.
       subscription_data: uid ? { metadata: { uid } } : undefined,
       metadata: uid ? { uid } : undefined,
-      success_url: `${origin}/dashboard?upgraded=1&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/pricing?canceled=1`,
+      return_url: `${origin}/dashboard?upgraded=1&session_id={CHECKOUT_SESSION_ID}`,
       allow_promotion_codes: true,
     });
-    return NextResponse.json({ url: session.url });
+
+    if (!session.client_secret) {
+      return NextResponse.json({ error: "Checkout session missing client secret" }, { status: 500 });
+    }
+
+    return NextResponse.json({ clientSecret: session.client_secret });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Checkout failed";
     return NextResponse.json({ error: message }, { status: 500 });
