@@ -1127,7 +1127,7 @@ input[type="range"] {
   color: var(--ns-ink);
 }
 .card-action.local {
-  background: var(--ns-blue);
+  background: #fff;
   color: var(--ns-ink);
 }
 .card-action.cancel {

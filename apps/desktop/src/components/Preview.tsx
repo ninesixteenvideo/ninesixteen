@@ -76,34 +76,44 @@ export function Preview() {
     setCardMode("export");
   }
 
-  async function runExport(rec: RecordingInfo, kind: ExportKind) {
-    setExporting(kind);
+  async function runLocalExport(rec: RecordingInfo) {
+    setExporting("local");
     try {
-      if (kind === "local") {
-        const dest = await invoke<string>("export_recording_local", { id: rec.id });
-        showToast(`Saved to ${dest}`);
-        setCardMode("default");
-        return;
-      }
-
-      const token = await ensureDriveToken();
-      const link = await invoke<string>("export_recording_to_drive", {
-        id: rec.id,
-        accessToken: token,
-      });
-      showToast("Uploaded to Google Drive ✓");
+      const dest = await invoke<string>("export_recording_local", { id: rec.id });
+      showToast(`Saved to ${dest}`);
       setCardMode("default");
-      try {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(link);
-      } catch {
-        /* optional */
-      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Export failed");
     } finally {
       setExporting(null);
     }
+  }
+
+  function startDriveExport(rec: RecordingInfo) {
+    setCardMode("default");
+    showToast("Google Drive export started — finish sign-in in your browser if prompted.");
+
+    void (async () => {
+      try {
+        const token = await ensureDriveToken();
+        const link = await invoke<string>("export_recording_to_drive", {
+          id: rec.id,
+          accessToken: token,
+        });
+        showToast("Uploaded to Google Drive ✓");
+        try {
+          const { openUrl } = await import("@tauri-apps/plugin-opener");
+          await openUrl(link);
+        } catch {
+          /* optional */
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Drive export failed";
+        if (!msg.toLowerCase().includes("timed out")) {
+          showToast(msg);
+        }
+      }
+    })();
   }
 
   async function confirmDelete(id: string) {
@@ -145,8 +155,8 @@ export function Preview() {
               exporting={exporting}
               onDelete={() => setCardMode("delete")}
               onExport={openExport}
-              onExportDrive={() => runExport(r, "drive")}
-              onExportLocal={() => runExport(r, "local")}
+              onExportDrive={() => startDriveExport(r)}
+              onExportLocal={() => runLocalExport(r)}
               onCancelDelete={() => setCardMode("default")}
               onConfirmDelete={() => confirmDelete(r.id)}
             />
@@ -275,11 +285,7 @@ function SelectedRecordingCard({
               title="Save to Google Drive"
               aria-label="Save to Google Drive"
             >
-              {exporting === "drive" ? (
-                <span className="card-action-spinner" aria-hidden="true" />
-              ) : (
-                <GoogleDriveGlyph />
-              )}
+              <GoogleDriveGlyph />
             </button>
             <button
               className="card-action local icon-only"
