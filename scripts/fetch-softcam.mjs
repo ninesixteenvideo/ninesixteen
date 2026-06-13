@@ -79,6 +79,11 @@ async function main() {
   }
   run(msbuild, [sln, "/p:Configuration=Release", "/p:Platform=x64", "/m"]);
 
+  const installerProj = join(thirdParty, "examples", "softcam_installer", "softcam_installer.vcxproj");
+  if (existsSync(installerProj)) {
+    run(msbuild, [installerProj, "/p:Configuration=Release", "/p:Platform=x64", "/m"]);
+  }
+
   if (!existsSync(dllSrc)) {
     console.error(`Expected DLL at ${dllSrc}`);
     process.exit(1);
@@ -98,6 +103,10 @@ async function main() {
   }
 
   console.log("softcam.dll ready in resources/softcam and target/{debug,release}");
+  console.log("");
+  console.log("IMPORTANT (one-time, as Administrator):");
+  console.log("  Right-click scripts/register-softcam.bat → Run as administrator");
+  console.log("  Without this, other apps cannot see the ninesixteen.video camera device.");
 }
 
 main().catch((e) => {

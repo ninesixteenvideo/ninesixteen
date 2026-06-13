@@ -6,20 +6,20 @@ export function CamStatus() {
   const status = !cameraEnabled
     ? {
         label: "Unavailable",
-        hint: "Virtual camera could not start. Check the log in your Videos folder.",
+        hint: "Virtual camera did not start. Check ~/Videos/ninesixteen/ninesixteen.log — if registration failed, run scripts/register-softcam.bat as Administrator once, then restart.",
         tone: "off" as const,
       }
     : cameraConnected
       ? {
-          label: recording ? "Live · recording" : "Live",
+          label: recording ? "In use · recording" : "In use",
           hint: recording
-            ? "Your 9×16 stream is active while you record."
-            : "An app is receiving your ninesixteen.video feed.",
+            ? "Another app is receiving your framed 9×16 feed while you record."
+            : "Another app is receiving your ninesixteen.video camera feed.",
           tone: "live" as const,
         }
       : {
           label: "Ready",
-          hint: 'Pick "ninesixteen.video" in OBS, Twitch, Zoom, or your browser.',
+          hint: "Pick ninesixteen.video in any app that lists camera devices. Keep this app running. First time on this PC? Run scripts/register-softcam.bat as Administrator once.",
           tone: "ready" as const,
         };
 

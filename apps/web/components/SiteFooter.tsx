@@ -9,7 +9,7 @@ export function SiteFooter() {
           <Wordmark size={26} showSuffix />
           <p className="mt-4 max-w-xs font-body text-sm leading-relaxed text-inksoft">
             Vertical desktop capture for creators. Frame with your cursor, record locally,
-            stream through a virtual camera.
+            and export MP4 with Pro.
           </p>
         </div>
         <div>

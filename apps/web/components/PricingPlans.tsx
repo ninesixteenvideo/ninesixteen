@@ -83,8 +83,8 @@ export function PricingPlans() {
         <Link href="/download" className="font-semibold text-bluedeep hover:underline">
           Free download
         </Link>{" "}
-        — install the app and try everything except export. Record, preview, and stream with
-        the virtual camera at no cost.
+        — install the app and try everything except export. Record and preview at
+        no cost.
       </p>
     </div>
   );

@@ -23,22 +23,20 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "ninesixteen.video — vertical desktop capture for creators",
   description:
-    "Record and stream your desktop in crisp 9×16. Frame with your cursor, zoom with Alt + scroll, and pipe the feed into OBS or export MP4 with Pro.",
+    "Record your desktop in crisp 9×16. Frame with your cursor, zoom with Alt + scroll, preview locally, export MP4 with Pro, and use ninesixteen.video as a camera in other apps.",
   applicationName: "ninesixteen.video",
   keywords: [
     "screen recorder",
     "vertical video",
     "9x16",
     "short form",
-    "virtual camera",
-    "OBS",
     "content creators",
     "windows app",
   ],
   openGraph: {
     title: "ninesixteen.video",
     description:
-      "Vertical desktop capture for Shorts, Reels, and live streams. Frame in five seconds. Record locally or via virtual camera.",
+      "Vertical desktop capture for Shorts, Reels, and TikTok. Frame in five seconds. Record locally, export with Pro, or use as a virtual camera in other apps.",
     type: "website",
   },
 };

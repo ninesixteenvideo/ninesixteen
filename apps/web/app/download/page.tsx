@@ -17,16 +17,17 @@ const REQUIREMENTS = [
 
 const AFTER_INSTALL = [
   "Open the app and hit Record — free to try, no account required",
-  "Pick ninesixteen.video as your camera in OBS, Twitch, Zoom, or your browser",
-  "Sign in and upgrade to Pro when you want to export MP4 files",
+  "Preview recordings in the app — export MP4 with Pro",
+  "Sign in and upgrade to Pro when you want to export files",
 ];
 
 const INCLUDED = [
   "Native Windows Graphics Capture — low CPU overhead",
   "9×16 vertical framing with cursor + Alt-scroll zoom",
-  "Virtual camera for OBS, Twitch, Zoom, and browsers",
   "Encrypted local recordings with in-app preview",
-  "FFmpeg & virtual camera bundled — nothing extra to install",
+  "System & microphone audio with level meters",
+  "Virtual camera device — ninesixteen.video in any app that lists cameras",
+  "FFmpeg bundled — nothing extra to install",
 ];
 
 export default function DownloadPage() {
@@ -38,7 +39,7 @@ export default function DownloadPage() {
           Download <Wordmark size={36} showSuffix />
         </h1>
         <p className="mx-auto mt-4 max-w-lg font-body text-lg text-inksoft">
-          One installer. Record, preview, and stream right away — no command line, no
+          One installer. Record, preview, and export — no command line, no
           drivers, no account. Subscribe to Pro only when you need MP4 export.
         </p>
       </div>

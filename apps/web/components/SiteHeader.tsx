@@ -16,9 +16,10 @@ const TICKER = [
   "9×16 vertical capture",
   "cursor framing",
   "Alt + scroll zoom",
-  "virtual camera",
   "encrypted local recordings",
-  "OBS · Twitch · Zoom",
+  "virtual camera device",
+  "preview in-app",
+  "export MP4 with Pro",
 ];
 
 export function SiteHeader() {

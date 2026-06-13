@@ -13,7 +13,7 @@ export default function PricingPage() {
         <p className="mt-4 font-body text-lg text-inksoft">
           Subscribe for decrypted MP4 export and priority support. The app is{" "}
           <b className="font-semibold text-ink">free to try</b> — download, record, preview,
-          and stream without paying.
+          and preview without paying.
         </p>
       </div>
       <PricingPlans />

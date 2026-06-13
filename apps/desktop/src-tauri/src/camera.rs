@@ -2,7 +2,7 @@
 
 use libloading::Library;
 use parking_lot::Mutex;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 type ScCamera = *mut std::ffi::c_void;
@@ -22,6 +22,7 @@ struct SoftcamApi {
 impl SoftcamApi {
     fn load() -> Result<Self, String> {
         let path = locate_dll()?;
+        register_directshow_filter(&path);
         unsafe {
             let lib = Library::new(&path).map_err(|e| format!("load softcam.dll: {e}"))?;
             let create = *lib
@@ -75,6 +76,47 @@ fn locate_dll() -> Result<PathBuf, String> {
         "softcam.dll not found. Run: node scripts/fetch-softcam.mjs (requires Visual Studio Build Tools)."
             .into(),
     )
+}
+
+/// softcam must be registered with DirectShow once so other apps can enumerate the device.
+fn register_directshow_filter(path: &Path) {
+    use std::sync::OnceLock;
+    static ATTEMPTED: OnceLock<()> = OnceLock::new();
+    ATTEMPTED.get_or_init(|| {
+        const E_ACCESSDENIED: i32 = 0x80070005u32 as i32;
+        unsafe {
+            let lib = match Library::new(path) {
+                Ok(lib) => lib,
+                Err(e) => {
+                    crate::log::capture_log(&format!("DirectShow registration skipped (load failed: {e})"));
+                    return;
+                }
+            };
+            type DllRegisterServer = unsafe extern "system" fn() -> i32;
+            let register: libloading::Symbol<DllRegisterServer> = match lib.get(b"DllRegisterServer") {
+                Ok(sym) => sym,
+                Err(e) => {
+                    crate::log::capture_log(&format!("DirectShow registration skipped ({e})"));
+                    return;
+                }
+            };
+            let hr = register();
+            if hr >= 0 {
+                crate::log::capture_log(&format!(
+                    "Registered virtual camera filter ({})",
+                    path.display()
+                ));
+            } else if hr == E_ACCESSDENIED {
+                crate::log::capture_log(
+                    "DirectShow registration skipped (admin required; OK if you already ran scripts/register-softcam.bat).",
+                );
+            } else {
+                crate::log::capture_log(&format!(
+                    "DirectShow registration failed ({hr:#010x}). Run scripts/register-softcam.bat as Administrator once."
+                ));
+            }
+        }
+    });
 }
 
 static API: OnceLock<Result<SoftcamApi, String>> = OnceLock::new();

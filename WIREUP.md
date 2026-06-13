@@ -5,12 +5,13 @@ are faked locally) to **live mode** (real Google/email auth, real Stripe billing
 and a Pro entitlement shared between the web app and the desktop app).
 
 > **The one idea to understand:** there is a single source of truth for who is Pro —
-> the Firestore document `users/{uid}.plan` (`"trial"` or `"pro"`).
+> the Firestore document `users/{uid}.plan` (`"trial"` = free, `"pro"` = paying).
 > The Firebase **uid is the same** on web and desktop, so a purchase made in the
-> browser unlocks **Export** in the desktop app in real time. The Stripe webhook is
-> the only thing that writes `plan = "pro"`.
+> browser unlocks **Export** in the desktop app in real time. Sign-in creates the
+> user doc; the Stripe webhook upgrades it to `"pro"`.
 
 ```
+Sign-in ──> POST /api/users/sync ──> Firestore users/{uid}.plan = "trial" (free)
 Web checkout ──> Stripe ──> webhook ──> Firestore users/{uid}.plan = "pro"
                                               │
                           ┌───────────────────┴───────────────────┐
@@ -61,20 +62,24 @@ shared uid / shared Pro status work.
 2. Add this security rule so a signed-in user can read their **own** entitlement, but
    only the server (Admin SDK) can write it:
 
-**Firestore → Rules:**
+**Firestore → Rules:** (same as `firestore.rules` in the repo)
+
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false; // only the Stripe webhook (Admin SDK) writes
+      allow write: if false; // server only: sign-in sync + Stripe webhook (Admin SDK)
     }
   }
 }
 ```
-You don't need to create the `users` collection manually — the webhook creates each
-doc on first purchase.
+
+On first sign-in (Google or email), the app calls **`POST /api/users/sync`**, which
+creates `users/{uid}` with `plan: "trial"` (shown as **Free** in the UI). After a
+Stripe purchase, the webhook sets `plan: "pro"`. You should see a document in
+Firestore for every signed-in user — not only paying customers.
 
 ### 1e. Service account (for the webhook to write Firestore)
 1. **Project settings → Service accounts → Generate new private key** → downloads a

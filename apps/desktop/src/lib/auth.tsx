@@ -16,6 +16,7 @@ import {
   WEB_URL,
 } from "./firebase";
 import { isDesktop } from "./bridge";
+import { syncUserProfile } from "./userSync";
 
 export type Plan = "trial" | "pro";
 
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unsub = onAuthStateChanged(auth, (fbUser) => {
           if (fbUser) {
             setUser(mapFirebaseUser(fbUser));
+            void syncUserProfile(fbUser);
             void watchPlan(fbUser.uid);
           } else {
             planUnsub.current();
@@ -115,6 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Belt-and-suspenders: listener may lag behind persisted session restore.
         if (auth.currentUser) {
           setUser(mapFirebaseUser(auth.currentUser));
+          void syncUserProfile(auth.currentUser);
           void watchPlan(auth.currentUser.uid);
           setLoading(false);
         }

@@ -300,6 +300,11 @@ pub fn run() {
                 std::thread::sleep(std::time::Duration::from_millis(900));
                 match capture::start_camera(cam_state.clone()) {
                     Ok(()) => {
+                        let dims = cam_state.lock().current_dims;
+                        log::capture_log(&format!(
+                            "Virtual camera ready — pick \"ninesixteen.video\" in any app that lists cameras ({}×{})",
+                            dims.0, dims.1
+                        ));
                         let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": true }));
                         commands::apply_overlay_visibility(&cam_app, &cam_state.lock());
                     }
@@ -308,6 +313,10 @@ pub fn run() {
                         let _ = cam_app.emit(
                             "app:log",
                             format!("Virtual camera unavailable: {e}"),
+                        );
+                        let _ = cam_app.emit(
+                            "camera:state",
+                            serde_json::json!({ "enabled": false }),
                         );
                     }
                 }

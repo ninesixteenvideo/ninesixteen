@@ -38,8 +38,15 @@ export function Settings() {
       <section className="panel">
         <h3>Recording &amp; camera</h3>
         <p className="muted" style={{ marginBottom: 12 }}>
-          Record saves a file you can browse in Preview. The virtual camera starts automatically — choose{" "}
-          <b>ninesixteen.video</b> as the video source in your streaming app or browser.
+          Recordings save as encrypted files you can preview in the app. Pro unlocks MP4 export.
+          A virtual camera named <b>ninesixteen.video</b> also starts with the app — any
+          application that lists camera devices can use your live 9×16 frame. Keep this app
+          running while you use it elsewhere.
+        </p>
+        <p className="muted" style={{ marginBottom: 12, fontSize: "0.85rem" }}>
+          <b>First-time setup (Windows):</b> run <code>scripts/register-softcam.bat</code> as
+          Administrator once so other apps can see the device. If a camera picker was already
+          open, close and reopen it.
         </p>
         <div className="row" style={{ marginBottom: 12 }}>
           <span className="label">Source display</span>

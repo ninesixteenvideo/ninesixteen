@@ -8,6 +8,7 @@
  * absent we run in "mock" mode and skip persistence so local dev still works.
  */
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
+import { getAuth as getFirebaseAdminAuth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 const projectId = process.env.FIREBASE_PROJECT_ID ?? "";
@@ -35,6 +36,18 @@ export function getAdminDb(): Firestore | null {
   return getFirestore(a);
 }
 
+/** Verify a Firebase ID token from the client (web or desktop). */
+export async function verifyUserIdToken(token: string): Promise<{ uid: string; email?: string; name?: string } | null> {
+  const app = getAdminApp();
+  if (!app) return null;
+  try {
+    const decoded = await getFirebaseAdminAuth(app).verifyIdToken(token);
+    return { uid: decoded.uid, email: decoded.email, name: decoded.name };
+  } catch {
+    return null;
+  }
+}
+
 type EntitlementUpdate = {
   plan: "trial" | "pro";
   stripeCustomerId?: string;
@@ -54,4 +67,29 @@ export async function setUserEntitlement(
     .doc(uid)
     .set({ ...update, updatedAt: Date.now() }, { merge: true });
   return true;
+}
+
+/** Create or refresh a user profile on sign-in. Preserves an existing Pro plan. */
+export async function upsertUserProfileOnSignIn(
+  uid: string,
+  profile: { email?: string | null; displayName?: string | null }
+): Promise<"trial" | "pro" | null> {
+  const dbAdmin = getAdminDb();
+  if (!dbAdmin || !uid) return null;
+  const ref = dbAdmin.collection("users").doc(uid);
+  const existing = await ref.get();
+  const data = existing.data();
+  const plan: "trial" | "pro" = data?.plan === "pro" ? "pro" : "trial";
+  await ref.set(
+    {
+      email: profile.email ?? data?.email ?? "",
+      displayName: profile.displayName ?? data?.displayName ?? null,
+      plan,
+      createdAt: data?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+      lastSignInAt: Date.now(),
+    },
+    { merge: true }
+  );
+  return plan;
 }

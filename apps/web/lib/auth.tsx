@@ -15,6 +15,7 @@ import {
   googleProvider,
   isFirebaseConfigured,
 } from "./firebase";
+import { syncUserProfile } from "./userSync";
 
 export type Plan = "trial" | "pro";
 
@@ -31,6 +32,7 @@ type AuthState = {
   user: NsUser | null;
   loading: boolean;
   firebaseEnabled: boolean;
+  isPro: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               plan: "trial",
               demo: false,
             });
+            void syncUserProfile(fbUser);
             void watchPlan(fbUser.uid);
           } else {
             planUnsub.current();
@@ -200,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       firebaseEnabled: isFirebaseConfigured,
+      isPro: user?.plan === "pro",
       signIn,
       signUp,
       signInWithGoogle,

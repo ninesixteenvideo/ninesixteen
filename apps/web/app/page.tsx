@@ -22,8 +22,10 @@ export default function HomePage() {
           <p className="mt-6 max-w-lg font-body text-lg leading-relaxed text-inksoft">
             <Wordmark size={20} /> captures a crisp{" "}
             <b className="font-semibold text-ink">9×16</b> frame from your screen. Press
-            Record, take five seconds to position and zoom, then record locally or pipe the
-            feed straight into OBS, Twitch, or Zoom.
+            Record, take five seconds to position and zoom, then save an encrypted
+            recording you can preview in the app. It also appears as its own camera
+            device — choose <b className="font-semibold text-ink">ninesixteen.video</b>{" "}
+            anywhere you pick a video source.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
@@ -58,7 +60,7 @@ export default function HomePage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <SectionHeading
             kicker="Built for vertical"
-            title="Short-form, live, and polished."
+            title="Short-form, tutorials, and polished."
           />
           <p className="max-w-sm font-body text-sm text-inksoft">
             One native app. One framing workflow. Output that already fits the platforms you
@@ -154,14 +156,14 @@ export default function HomePage() {
 const STATS = [
   { value: "9×16", label: "Portrait output" },
   { value: "5s", label: "Framing countdown" },
-  { value: "OBS", label: "Virtual camera ready" },
+  { value: "60fps", label: "Up to 1440p" },
   { value: "Local", label: "Encrypted on disk" },
 ];
 
 const USE_CASES = [
   { icon: "📱", title: "Shorts & Reels", desc: "Vertical canvas from day one — no crop step in post." },
-  { icon: "🎙️", title: "Live streams", desc: "Pick ninesixteen.video as a camera in OBS or Twitch." },
   { icon: "💻", title: "Tutorials", desc: "Follow the cursor while keeping the frame tight on your UI." },
+  { icon: "🎚️", title: "Voice & system audio", desc: "Capture mic, desktop audio, or both with level meters before you roll." },
   { icon: "🔒", title: "Private by default", desc: "Recordings stay on your machine until you export them." },
 ];
 
@@ -169,17 +171,12 @@ const FEATURES = [
   {
     icon: "▯",
     title: "9×16 vertical capture",
-    desc: "Every recording and live feed is portrait-native — built for Shorts, Reels, and TikTok.",
+    desc: "Every recording is portrait-native — built for Shorts, Reels, and TikTok.",
   },
   {
     icon: "◎",
     title: "Cursor-driven framing",
     desc: "Move the mouse to position the frame. Hold Alt + scroll to zoom from full desktop down to a tight crop.",
-  },
-  {
-    icon: "📷",
-    title: "Virtual camera",
-    desc: "The app starts a DirectShow camera named ninesixteen.video — drop it into any streaming tool.",
   },
   {
     icon: "🎚️",
@@ -190,6 +187,11 @@ const FEATURES = [
     icon: "🪶",
     title: "Native & lightweight",
     desc: "Tauri on Windows Graphics Capture — low overhead, no bloated Electron shell.",
+  },
+  {
+    icon: "📷",
+    title: "Virtual camera device",
+    desc: "ninesixteen.video shows up as its own camera in other applications — your live 9×16 frame, no re-export needed.",
   },
   {
     icon: "💾",
@@ -210,8 +212,8 @@ const STEPS = [
     points: ["Rule-of-thirds guides on the overlay", "Show or hide the frame before you roll"],
   },
   {
-    title: "Record or stream",
-    desc: "Capture encrypted video locally, preview it in-app, and send the same framed feed to your virtual camera.",
+    title: "Save & preview",
+    desc: "Capture encrypted video locally, preview it in-app, and export MP4 with Pro when you are ready.",
     points: ["Up to 1440p · 30 or 60 fps", "Export MP4 anywhere with Pro"],
   },
 ];
