@@ -8,6 +8,11 @@ const VERSION = "0.1.0";
 const REQUIREMENTS = [
   "Windows 10 or 11 (64-bit)",
   "WebView2 — the installer will set this up if needed",
+  "64-bit x64 CPU — Intel 8th gen / AMD Ryzen 2000 series or newer recommended",
+  "8 GB RAM minimum · 16 GB recommended for longer recordings",
+  "DirectX 11–compatible GPU with 2 GB VRAM or more",
+  "1920×1080 display or higher (multi-monitor supported)",
+  "~500 MB free disk space for the app · SSD recommended for recordings",
 ];
 
 const AFTER_INSTALL = [
@@ -82,7 +87,7 @@ export default function DownloadPage() {
       </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
-        <InfoBlock title="Requirements" items={REQUIREMENTS} />
+        <InfoBlock title="Windows requirements" items={REQUIREMENTS} />
         <InfoBlock title="After install" items={AFTER_INSTALL} />
       </div>
 

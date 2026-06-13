@@ -53,6 +53,17 @@ mod imp {
 
     use crate::log::capture_log;
 
+    use tauri::Emitter;
+
+    struct SaveProgressGuard;
+
+    impl Drop for SaveProgressGuard {
+        fn drop(&mut self) {
+            crate::save_progress::end_timing();
+            crate::save_progress::set_reporter(None);
+        }
+    }
+
     use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11DeviceContext};
 
     use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiHandler};
@@ -839,7 +850,24 @@ mod imp {
         clear_gpu_bridge();
     }
 
-    pub fn stop_recording(state: SharedState) -> Result<Option<crate::state::RecordingInfo>, CaptureError> {
+    pub fn stop_recording(
+        state: SharedState,
+        app: Option<tauri::AppHandle>,
+    ) -> Result<Option<crate::state::RecordingInfo>, CaptureError> {
+        let _progress_guard = app.as_ref().map(|handle| {
+            let handle = handle.clone();
+            crate::save_progress::begin_timing();
+            crate::save_progress::set_reporter(Some(std::sync::Arc::new(
+                move |percent, phase| {
+                    let _ = handle.emit(
+                        "recording:save-progress",
+                        serde_json::json!({ "percent": percent, "phase": phase }),
+                    );
+                },
+            )));
+            SaveProgressGuard
+        });
+
         let (was_streaming, was_camera) = {
             let st = state.lock();
             (st.streaming, st.camera_enabled)
@@ -870,6 +898,7 @@ mod imp {
             st.recording = false;
         }
 
+        crate::save_progress::report(8, "starting");
         let (frames, size_bytes, duration) = close_recorder()?;
 
         if !was_streaming && !was_camera {
@@ -904,7 +933,11 @@ mod imp {
         // Encrypt the finished MP4 at rest and drop the plaintext so nothing
         // playable is ever left in the recordings folder (export decrypts it).
         let ns_path = path.with_extension("ns");
-        let stored = match crate::crypto::encrypt_file(&path, &ns_path) {
+        crate::save_progress::report(65, "encrypting");
+        let stored = match crate::crypto::encrypt_file_with_progress(&path, &ns_path, |pct| {
+            let overall = 65u8.saturating_add((pct as u16 * 34 / 100) as u8);
+            crate::save_progress::report(overall.min(99), "encrypting");
+        }) {
             Ok(()) => {
                 let _ = std::fs::remove_file(&path);
                 ns_path
@@ -914,6 +947,7 @@ mod imp {
                 path.clone()
             }
         };
+        crate::save_progress::report(100, "encrypting");
 
         let info = crate::state::RecordingInfo {
             id: stem,
@@ -1012,7 +1046,10 @@ pub fn start_both(_state: SharedState) -> Result<(), CaptureError> {
 }
 
 #[cfg(not(windows))]
-pub fn stop_recording(_state: SharedState) -> Result<Option<crate::state::RecordingInfo>, CaptureError> {
+pub fn stop_recording(
+    _state: SharedState,
+    _app: Option<tauri::AppHandle>,
+) -> Result<Option<crate::state::RecordingInfo>, CaptureError> {
     Ok(None)
 }
 

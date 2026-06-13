@@ -24,7 +24,7 @@ export function Overlay() {
   const recording = useRef(false);
   const arming = useRef(false);
   const countdown = useRef(0);
-  const elapsed = useRef(0);
+  const recordingStartedAt = useRef<number | null>(null);
 
   // Initial state + live subscriptions.
   useEffect(() => {
@@ -59,6 +59,9 @@ export function Overlay() {
           }
           if (p.recording) {
             countdown.current = 0;
+            recordingStartedAt.current = performance.now();
+          } else {
+            recordingStartedAt.current = null;
           }
         })
       );
@@ -69,11 +72,6 @@ export function Overlay() {
           if (p.seconds === 0) {
             arming.current = false;
           }
-        })
-      );
-      unsubs.push(
-        await listen("recording:tick", (p: { elapsed: number }) => {
-          elapsed.current = p.elapsed;
         })
       );
     })();
@@ -192,7 +190,11 @@ export function Overlay() {
         ctx.arc(dotX, cy, 4 * dpr, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#ffd0d0";
-        ctx.fillText(fmt(elapsed.current), dotX + 9 * dpr, cy);
+        const secs =
+          recordingStartedAt.current !== null
+            ? (performance.now() - recordingStartedAt.current) / 1000
+            : 0;
+        ctx.fillText(fmt(secs), dotX + 9 * dpr, cy);
       }
 
       // Pre-record countdown — centered in the viewport, scales with zoom/pan.

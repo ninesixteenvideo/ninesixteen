@@ -34,19 +34,45 @@ fn cipher_with(iv: &[u8; 16]) -> NsCipher {
     NsCipher::new_from_slices(&key(), iv).expect("valid key/iv length")
 }
 
-/// Encrypt `src` (a plaintext file) into `dst` (an `.ns` file). Whole-file.
-pub fn encrypt_file(src: &Path, dst: &Path) -> io::Result<()> {
-    let mut data = Vec::new();
-    File::open(src)?.read_to_end(&mut data)?;
+const CHUNK: usize = 1024 * 1024;
 
+/// Encrypt `src` (a plaintext file) into `dst` (an `.ns` file).
+pub fn encrypt_file(src: &Path, dst: &Path) -> io::Result<()> {
+    encrypt_file_with_progress(src, dst, |_| {})
+}
+
+/// Stream-encrypt `src` into `dst`, calling `on_progress` with 0–100 as bytes are written.
+pub fn encrypt_file_with_progress<F>(src: &Path, dst: &Path, mut on_progress: F) -> io::Result<()>
+where
+    F: FnMut(u8),
+{
+    let total = std::fs::metadata(src)?.len();
+    let mut inp = File::open(src)?;
     let iv = *uuid::Uuid::new_v4().as_bytes();
     let mut cipher = cipher_with(&iv);
-    cipher.apply_keystream(&mut data);
-
     let mut out = File::create(dst)?;
     out.write_all(MAGIC)?;
     out.write_all(&iv)?;
-    out.write_all(&data)?;
+
+    let mut buf = vec![0u8; CHUNK];
+    let mut done = 0u64;
+    on_progress(0);
+
+    loop {
+        let n = inp.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        let mut chunk = buf[..n].to_vec();
+        cipher.apply_keystream(&mut chunk);
+        out.write_all(&chunk)?;
+        done += n as u64;
+        if total > 0 {
+            on_progress(((done.saturating_mul(100)) / total).min(100) as u8);
+        }
+    }
+
+    on_progress(100);
     Ok(())
 }
 

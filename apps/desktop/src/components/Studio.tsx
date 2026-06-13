@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../state/store";
+import { useRecordingElapsed } from "../lib/useRecordingElapsed";
 import type { AudioSourceMode } from "../lib/types";
 
 const SOURCE_OPTIONS: { id: AudioSourceMode; label: string; hint: string }[] = [
@@ -9,10 +10,20 @@ const SOURCE_OPTIONS: { id: AudioSourceMode; label: string; hint: string }[] = [
   { id: "system_and_microphone", label: "System + mic", hint: "Desktop audio and voice" },
 ];
 
+const SAVE_PHASE_LABELS: Record<string, string> = {
+  starting: "Starting",
+  finalizing: "Finishing video",
+  timing: "Adjusting timing",
+  audio: "Adding audio",
+  encrypting: "Encrypting",
+};
+
 export function Studio() {
   const {
     recording,
     finalizing,
+    saveProgress,
+    savePhase,
     arming,
     countdownSeconds,
     elapsed,
@@ -39,6 +50,8 @@ export function Studio() {
   const hasAudio = audioSettings.source !== "none";
   const needsCalibration = hasAudio && !audioSettings.calibrated;
 
+  const displayElapsed = useRecordingElapsed(recording, elapsed);
+
   const statusTitle = arming
     ? `Get ready — ${countdownSeconds || "…"}`
     : finalizing
@@ -50,9 +63,9 @@ export function Studio() {
   const statusBody = arming
     ? "Frame is on your desktop — Alt + scroll to zoom, move the mouse to position. Capture starts when the countdown ends."
     : finalizing
-      ? "Writing the MP4 — almost done."
+      ? "Writing and securing your file — this can take a minute on long clips."
       : recording
-        ? `Recording ${formatDuration(elapsed)}`
+        ? `Recording ${formatDuration(displayElapsed)}`
         : "Press Record — you'll get 5 seconds to frame your shot first.";
 
   return (
@@ -62,6 +75,16 @@ export function Studio() {
         <div className="status-text">
           <b>{statusTitle}</b>
           <p className="muted">{statusBody}</p>
+          {finalizing && (
+            <div className="save-progress" role="progressbar" aria-valuenow={saveProgress} aria-valuemin={0} aria-valuemax={100}>
+              <div className="save-progress-track">
+                <div className="save-progress-fill" style={{ width: `${saveProgress}%` }} />
+              </div>
+              <span className="save-progress-label">
+                {saveProgress}% · {SAVE_PHASE_LABELS[savePhase] ?? "Saving"}
+              </span>
+            </div>
+          )}
           {error && <p className="stream-error">{error}</p>}
         </div>
         <span className="ratio-pill">9×16</span>

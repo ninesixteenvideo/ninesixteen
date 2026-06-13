@@ -40,6 +40,8 @@ interface Store {
   viewport: Viewport;
   recording: boolean;
   finalizing: boolean;
+  saveProgress: number;
+  savePhase: string;
   arming: boolean;
   countdownSeconds: number;
   cameraEnabled: boolean;
@@ -83,6 +85,8 @@ export const useStore = create<Store>((set, get) => ({
   viewport: DEFAULT_VIEWPORT,
   recording: false,
   finalizing: false,
+  saveProgress: 0,
+  savePhase: "",
   arming: false,
   countdownSeconds: 0,
   cameraEnabled: false,
@@ -149,10 +153,15 @@ export const useStore = create<Store>((set, get) => ({
       set({
         recording: p.recording,
         finalizing: p.finalizing ?? false,
+        saveProgress: p.finalizing ? get().saveProgress : 0,
+        savePhase: p.finalizing ? get().savePhase : "",
         arming: p.arming ?? (p.recording ? false : get().arming),
         countdownSeconds: p.recording || p.arming === false ? 0 : get().countdownSeconds,
         overlayVisible: p.recording || p.arming ? true : get().overlayVisible,
       })
+    );
+    listen("recording:save-progress", (p: { percent: number; phase: string }) =>
+      set({ saveProgress: p.percent, savePhase: p.phase })
     );
     listen("camera:tick", (p: { connected: boolean }) =>
       set({ cameraConnected: p.connected })
@@ -236,7 +245,7 @@ export const useStore = create<Store>((set, get) => ({
 
   stopRecording: async () => {
     if (get().finalizing) return;
-    set({ error: null, recording: false, finalizing: true });
+    set({ error: null, recording: false, finalizing: true, saveProgress: 0, savePhase: "starting" });
     try {
       const rec = await new Promise<RecordingInfo | null>((resolve, reject) => {
         listen("recording:finished", (payload: RecordingInfo | null) => {
@@ -254,6 +263,8 @@ export const useStore = create<Store>((set, get) => ({
       });
       set((s) => ({
         finalizing: false,
+        saveProgress: 0,
+        savePhase: "",
         arming: false,
         countdownSeconds: 0,
         recordings: rec ? [rec, ...s.recordings] : s.recordings,

@@ -7,6 +7,7 @@
 use crate::capture::{render_recording_frame};
 use crate::ffmpeg_util::find_ffmpeg;
 use crate::log::capture_log;
+use crate::save_progress;
 use crate::state::SharedState;
 #[cfg(windows)]
 use crate::audio::{self, RecordingAudio};
@@ -154,11 +155,13 @@ impl FileRecorder {
             .take()
             .ok_or_else(|| "recorder worker missing".to_string())?;
         drop(rec);
+        save_progress::report(12, "finalizing");
         let (frames, duration) = match worker.join() {
             Ok(Ok(v)) => v,
             Ok(Err(e)) => return Err(e),
             Err(_) => return Err("recorder thread panicked".into()),
         };
+        save_progress::report(52, "finalizing");
         #[cfg(windows)]
         if let Some(audio) = audio {
             if let Err(e) = audio.stop() {
@@ -169,9 +172,11 @@ impl FileRecorder {
         {
             let pcm_path = path.with_extension("pcm");
             if has_audio_sidecar(&pcm_path) {
+                save_progress::report(55, "audio");
                 if let Err(e) = mux_pcm_audio(&path, &pcm_path, duration) {
                     capture_log(&format!("WARN: audio mux failed ({e}"));
                 }
+                save_progress::report(62, "audio");
                 let _ = std::fs::remove_file(&pcm_path);
             }
         }
@@ -458,10 +463,12 @@ fn run(
     let session_secs = stop_session_secs.unwrap_or(encoded_secs);
 
     drop(stdin);
+    save_progress::report(22, "finalizing");
 
     let status = child
         .wait()
         .map_err(|e| format!("wait for FFmpeg: {e}"))?;
+    save_progress::report(38, "finalizing");
 
     if !status.success() {
         let mut err = String::new();
@@ -482,10 +489,13 @@ fn run(
         capture_log(&format!(
             "WARN: timing stretch needed ({encoded_secs:.2}s → {session_secs:.2}s ×{factor:.3})"
         ));
+        save_progress::report(42, "timing");
         if let Err(e) =
             stretch_playback_duration(&path, fps, factor, written, encoded_secs)
         {
             capture_log(&format!("WARN: timing stretch failed ({e}); keeping {encoded_secs:.2}s"));
+        } else {
+            save_progress::report(48, "timing");
         }
     }
 

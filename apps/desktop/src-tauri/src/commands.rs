@@ -285,7 +285,7 @@ pub fn stop_recording(
     let app_bg = app.clone();
     std::thread::Builder::new()
         .name("stop-recording".into())
-        .spawn(move || match capture::stop_recording(shared.clone()) {
+        .spawn(move || match capture::stop_recording(shared.clone(), Some(app_bg.clone())) {
             Ok(info) => {
                 let _ = app_bg.emit(
                     "recording:state",

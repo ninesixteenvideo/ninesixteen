@@ -309,6 +309,31 @@ input[type="range"] {
   margin-top: 3px;
   line-height: 1.45;
 }
+.save-progress {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.save-progress-track {
+  height: 8px;
+  border: 2px solid var(--ns-ink);
+  border-radius: var(--ns-radius-pill);
+  background: var(--ns-surface-sunken);
+  overflow: hidden;
+}
+.save-progress-fill {
+  height: 100%;
+  background: var(--ns-mint);
+  border-radius: inherit;
+  transition: width 0.25s ease;
+}
+.save-progress-label {
+  font-family: var(--ns-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--ns-ink-soft);
+}
 .live-dot {
   width: 12px;
   height: 12px;

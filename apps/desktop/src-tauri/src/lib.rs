@@ -23,6 +23,7 @@ mod file_record;
 #[cfg(windows)]
 mod camera;
 mod log;
+mod save_progress;
 mod state;
 #[cfg(desktop)]
 mod tray;

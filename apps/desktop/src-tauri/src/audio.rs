@@ -532,6 +532,19 @@ mod imp {
         (secs * SAMPLE_RATE as f64).round() as u64
     }
 
+    fn available_mix_frames(
+        settings: &AudioSettings,
+        system_q: &SampleQueue,
+        mic_q: &SampleQueue,
+    ) -> usize {
+        match (wants_system(settings.source), wants_mic(settings.source)) {
+            (true, true) => system_q.len_frames().min(mic_q.len_frames()),
+            (true, false) => system_q.len_frames(),
+            (false, true) => mic_q.len_frames(),
+            (false, false) => 0,
+        }
+    }
+
     fn write_pcm_block(
         writer: &mut File,
         settings: &AudioSettings,
@@ -625,6 +638,7 @@ mod imp {
         let mut frames_written = 0u64;
         let mut bytes_written = 0u64;
         let mut mix_peak_max = 0.0f32;
+        let mut catchup_warned = false;
 
         while !stop.load(Ordering::Relaxed) {
             wait_for_pcm_time(session_start, frames_written, &stop);
@@ -639,7 +653,25 @@ mod imp {
                 continue;
             }
 
-            let chunk = (need as usize).min(max_block).max(1);
+            if need > SAMPLE_RATE as u64 && !catchup_warned {
+                catchup_warned = true;
+                capture_log(&format!(
+                    "WARN: audio PCM {:.2}s behind wall clock — waiting for samples (no zero-fill)",
+                    need as f64 / SAMPLE_RATE as f64
+                ));
+            }
+
+            let avail = {
+                let sys = system_q.lock();
+                let mic = mic_q.lock();
+                available_mix_frames(&settings, &sys, &mic)
+            };
+            if avail == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
+            }
+
+            let chunk = (need as usize).min(max_block).min(avail).max(1);
             let peak = write_pcm_block(
                 &mut writer,
                 &settings,
@@ -667,9 +699,18 @@ mod imp {
         }
         .max(frames_written);
         while frames_written < final_target {
+            let avail = {
+                let sys = system_q.lock();
+                let mic = mic_q.lock();
+                available_mix_frames(&settings, &sys, &mic)
+            };
             let chunk = ((final_target - frames_written) as usize)
                 .min(max_block)
+                .min(avail.max(1))
                 .max(1);
+            if avail == 0 {
+                break;
+            }
             let peak = write_pcm_block(
                 &mut writer,
                 &settings,
