@@ -163,6 +163,18 @@ export const useStore = create<Store>((set, get) => ({
     listen("app:log", (msg: string) => set({ error: msg }));
     listen("audio:levels", (p: AudioLevels) => set({ audioLevels: p }));
     listen("audio:settings", (p: AudioSettings) => set({ audioSettings: p }));
+    listen("hotkey:toggle-recording", () => {
+      const s = get();
+      if (s.finalizing) return;
+      if (s.recording) void s.stopRecording();
+      else if (s.arming) void s.cancelRecordingCountdown();
+      else void s.startRecording().catch(() => {});
+    });
+    listen("hotkey:toggle-overlay", () => {
+      const s = get();
+      if (s.recording || s.arming || s.finalizing) return;
+      void s.setOverlayVisible(!s.overlayVisible);
+    });
   },
 
   setTab: (tab) => set({ tab }),

@@ -194,13 +194,17 @@ export function Studio() {
             <span className="kbd">Alt</span>
             <span className="frame-plus">+</span>
             <span className="kbd">scroll</span>
+            <span className="frame-plus">·</span>
+            <span className="kbd">Alt</span>
+            <span className="frame-plus">+</span>
+            <span className="kbd">V</span>
           </span>
           <span className="muted">
             {arming
               ? "Position your shot before the countdown ends."
               : sessionActive
                 ? "Frame stays visible while recording."
-                : "Zoom in / out — pauses 1s at full 9×16."}
+                : "Zoom in / out — Alt+V toggles the frame."}
           </span>
         </div>
         {!sessionActive && (

@@ -3,6 +3,7 @@ mod capture;
 mod commands;
 mod crypto;
 mod geometry;
+mod hotkeys;
 #[cfg(windows)]
 mod flv;
 #[cfg(windows)]
@@ -23,6 +24,8 @@ mod file_record;
 mod camera;
 mod log;
 mod state;
+#[cfg(desktop)]
+mod tray;
 
 use state::new_app_handles;
 use tauri::{Emitter, LogicalSize, Manager};
@@ -156,6 +159,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts(["Alt+KeyR", "Alt+KeyV"])
+                .expect("valid global shortcut definitions")
+                .with_handler(|app, shortcut, event| hotkeys::handle(app, shortcut, event))
+                .build(),
+        )
         .register_uri_scheme_protocol("nsmedia", |_app, request| nsmedia_response(request))
         .manage(handles)
         .setup(move |app| {
@@ -191,6 +201,13 @@ pub fn run() {
             }
 
             fit_main_window_portrait(app.handle());
+
+            #[cfg(desktop)]
+            {
+                if let Err(e) = tray::setup_tray(app.handle()) {
+                    log::capture_log(&format!("System tray unavailable: {e}"));
+                }
+            }
 
             rawinput::start(app.handle().clone(), viewport.clone(), shared.clone());
             rawinput::start_cursor_follow(app.handle().clone(), viewport.clone(), shared.clone());
@@ -296,6 +313,10 @@ pub fn run() {
             });
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            tray::on_main_window_event(window, event);
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_monitors,
