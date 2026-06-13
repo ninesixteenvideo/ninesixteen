@@ -1,31 +1,44 @@
 import { NextResponse } from "next/server";
 import { isAdminConfigured } from "@/lib/firebaseAdmin";
 import { consumeDriveAuthSession } from "@/lib/driveAuthSession";
+import { corsHeaders } from "@/lib/cors";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
 export async function GET(req: Request) {
+  const headers = corsHeaders(req);
+
+  const blocked = productionConfigRequired("Firebase Admin");
+  if (blocked) return blocked;
+
   if (!isAdminConfigured) {
-    return NextResponse.json({ status: "mock" }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "mock" }, { headers });
   }
 
-  const code = new URL(req.url).searchParams.get("code")?.trim();
-  if (!code) {
+  const ip = clientIp(req);
+  if (!rateLimit(`drive-session:${ip}`, 120, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers });
+  }
+
+  const url = new URL(req.url);
+  const code = url.searchParams.get("code")?.trim();
+  const secret = url.searchParams.get("secret")?.trim();
+  if (!code || !secret) {
     return NextResponse.json(
-      { error: "Missing code" },
-      { status: 400, headers: CORS_HEADERS }
+      { error: "Missing code or secret" },
+      { status: 400, headers }
     );
   }
 
-  const session = await consumeDriveAuthSession(code);
+  if (!rateLimit(`drive-session:${code}`, 60, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers });
+  }
+
+  const session = await consumeDriveAuthSession(code, secret);
   if (!session) {
-    return NextResponse.json({ status: "pending" }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "pending" }, { headers });
   }
 
   return NextResponse.json(
@@ -34,10 +47,10 @@ export async function GET(req: Request) {
       accessToken: session.accessToken,
       expiresIn: session.expiresIn,
     },
-    { headers: CORS_HEADERS }
+    { headers }
   );
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+export async function OPTIONS(req: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
 }

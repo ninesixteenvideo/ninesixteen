@@ -2,6 +2,8 @@ mod audio;
 mod capture;
 mod commands;
 mod crypto;
+mod entitlement;
+mod entitlement_store;
 mod export;
 mod geometry;
 mod hotkeys;
@@ -57,9 +59,33 @@ fn parse_range(header: Option<&str>, total: u64) -> Option<(u64, u64)> {
     Some((start, end))
 }
 
+/// Free / unsigned preview length in seconds. Pro users get the full file.
+const PREVIEW_SECS: f64 = 15.0;
+
+fn preview_byte_limit(total: u64, duration_secs: f64) -> u64 {
+    if total == 0 {
+        return 0;
+    }
+    let dur = duration_secs.max(1.0);
+    let cap = ((PREVIEW_SECS / dur) * total as f64).ceil() as u64;
+    cap.clamp(1, total)
+}
+
+fn clamp_range(start: u64, end: u64, max_end: u64) -> Option<(u64, u64)> {
+    if max_end == 0 {
+        return None;
+    }
+    let start = start.min(max_end);
+    let end = end.min(max_end);
+    if start > end {
+        return None;
+    }
+    Some((start, end))
+}
+
 /// `nsmedia://localhost/<id>` — streams a decrypted recording to the in-app
 /// player with HTTP range support (so seeking works), without ever writing
-/// plaintext to disk.
+/// plaintext to disk. Non-Pro users are limited to the first 15 seconds.
 fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::{header, Response, StatusCode};
 
@@ -83,14 +109,33 @@ fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Resp
         Err(_) => return fail(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
+    let is_pro = state::global_entitlement().lock().is_pro();
+    let served_total = if is_pro {
+        total
+    } else {
+        preview_byte_limit(total, recordings::recording_duration(&id))
+    };
+    let max_end = served_total.saturating_sub(1);
+
     let range_hdr = request
         .headers()
         .get(header::RANGE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     let has_range = range_hdr.is_some();
-    let (start, end) = parse_range(range_hdr.as_deref(), total).unwrap_or((0, total.saturating_sub(1)));
-    let len = if total == 0 { 0 } else { (end - start + 1) as usize };
+    let (start, end) = match parse_range(range_hdr.as_deref(), served_total) {
+        Some(r) => r,
+        None => (0, max_end),
+    };
+    let (start, end) = match clamp_range(start, end, max_end) {
+        Some(r) => r,
+        None => return fail(StatusCode::RANGE_NOT_SATISFIABLE),
+    };
+    let len = if served_total == 0 {
+        0
+    } else {
+        (end - start + 1) as usize
+    };
 
     let data = match crypto::decrypt_range(&ns, start, len) {
         Ok(d) => d,
@@ -105,7 +150,10 @@ fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Resp
     builder = if has_range {
         builder
             .status(StatusCode::PARTIAL_CONTENT)
-            .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}"))
+            .header(
+                header::CONTENT_RANGE,
+                format!("bytes {start}-{end}/{served_total}"),
+            )
     } else {
         builder.status(StatusCode::OK)
     };
@@ -173,6 +221,7 @@ pub fn run() {
         .setup(move |app| {
             // Encrypt any leftover plaintext recordings before anything reads them.
             recordings::migrate_plaintext();
+            crate::entitlement::hydrate_from_disk();
 
             #[cfg(windows)]
             {
@@ -350,6 +399,9 @@ pub fn run() {
             commands::export_recording,
             commands::export_recording_local,
             commands::export_recording_to_drive,
+            commands::sync_entitlement,
+            commands::apply_entitlement_cache,
+            commands::clear_entitlement,
             commands::open_recordings_folder,
             commands::set_input_settings,
             commands::set_recording_settings,

@@ -1,55 +1,62 @@
 import { NextResponse } from "next/server";
 import { createCustomToken, isAdminConfigured } from "@/lib/firebaseAdmin";
 import { consumeDesktopAuthSession } from "@/lib/desktopAuthSession";
+import { corsHeaders } from "@/lib/cors";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
 /** Desktop app polls until the browser sign-in completes, then receives a custom token. */
 export async function GET(req: Request) {
+  const headers = corsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+    return new NextResponse(null, { status: 204, headers });
   }
+
+  const blocked = productionConfigRequired("Firebase Admin");
+  if (blocked) return blocked;
 
   if (!isAdminConfigured) {
+    return NextResponse.json({ status: "mock" }, { headers });
+  }
+
+  const ip = clientIp(req);
+  if (!rateLimit(`desktop-session:${ip}`, 120, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers });
+  }
+
+  const url = new URL(req.url);
+  const code = url.searchParams.get("code")?.trim();
+  const secret = url.searchParams.get("secret")?.trim();
+  if (!code || !secret) {
     return NextResponse.json(
-      { status: "mock" },
-      { headers: CORS_HEADERS }
+      { error: "Missing code or secret" },
+      { status: 400, headers }
     );
   }
 
-  const code = new URL(req.url).searchParams.get("code")?.trim();
-  if (!code) {
-    return NextResponse.json(
-      { error: "Missing code" },
-      { status: 400, headers: CORS_HEADERS }
-    );
+  if (!rateLimit(`desktop-session:${code}`, 60, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers });
   }
 
-  const session = await consumeDesktopAuthSession(code);
+  const session = await consumeDesktopAuthSession(code, secret);
   if (!session) {
-    return NextResponse.json({ status: "pending" }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "pending" }, { headers });
   }
 
   const customToken = await createCustomToken(session.uid);
   if (!customToken) {
     return NextResponse.json(
       { error: "Could not create sign-in token" },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers }
     );
   }
 
-  return NextResponse.json(
-    { status: "ready", customToken },
-    { headers: CORS_HEADERS }
-  );
+  return NextResponse.json({ status: "ready", customToken }, { headers });
 }
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+export async function OPTIONS(req: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
 }

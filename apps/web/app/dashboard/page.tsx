@@ -21,11 +21,14 @@ function DashboardInner() {
   const router = useRouter();
   const params = useSearchParams();
 
-  // On return from checkout: in demo/mock mode there's no webhook to flip the
-  // plan, so upgrade optimistically. With real Firebase the Stripe webhook
-  // writes Firestore and the live subscription updates the plan for us.
+  // On return from mock checkout (dev only): upgrade demo users optimistically.
   useEffect(() => {
-    if (params.get("upgraded") && user && user.demo && user.plan !== "pro") {
+    if (
+      params.get("upgraded") === "mock" &&
+      user &&
+      user.demo &&
+      user.plan !== "pro"
+    ) {
       setPlan("pro");
     }
   }, [params, user, setPlan]);
@@ -62,7 +65,7 @@ function DashboardInner() {
       {params.get("upgraded") && (
         <div className="ns-card mt-6 bg-mint/40 p-4 font-body text-sm">
           🎉 You’re on <b>Pro</b>{" "}
-          {params.get("upgraded") === "mock" && (
+          {params.get("upgraded") === "mock" && user.demo && (
             <span className="font-mono text-xs text-inksoft">(mock checkout — Stripe not live yet)</span>
           )}
         </div>

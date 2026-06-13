@@ -55,12 +55,19 @@ export function getAdminDb(): Firestore | null {
 }
 
 /** Verify a Firebase ID token from the client (web or desktop). */
-export async function verifyUserIdToken(token: string): Promise<{ uid: string; email?: string; name?: string } | null> {
+export async function verifyUserIdToken(
+  token: string
+): Promise<{ uid: string; email?: string; name?: string; emailVerified: boolean } | null> {
   const app = getAdminApp();
   if (!app) return null;
   try {
     const decoded = await getFirebaseAdminAuth(app).verifyIdToken(token);
-    return { uid: decoded.uid, email: decoded.email, name: decoded.name };
+    return {
+      uid: decoded.uid,
+      email: decoded.email,
+      name: decoded.name,
+      emailVerified: decoded.email_verified === true,
+    };
   } catch {
     return null;
   }

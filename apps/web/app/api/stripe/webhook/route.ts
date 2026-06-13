@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { getStripe, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
 import { setUserEntitlement } from "@/lib/firebaseAdmin";
 import { entitlementFromStripeSubscription } from "@/lib/stripeEntitlement";
+import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,9 @@ export const runtime = "nodejs";
  * current_period_end (proEndsAt), then revert to trial on deletion.
  */
 export async function POST(req: Request) {
+  const blocked = productionConfigRequired("Stripe webhook");
+  if (blocked) return blocked;
+
   const stripe = getStripe();
   if (!stripe || !STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json({ received: true, mock: true });

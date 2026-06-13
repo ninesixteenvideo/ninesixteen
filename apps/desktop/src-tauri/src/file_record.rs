@@ -208,7 +208,24 @@ fn wait_until_or_stop(deadline: Instant, stop_rx: &Receiver<()>) -> bool {
     }
 }
 
-fn write_arc_frame(stdin: &mut impl Write, bgra: &Arc<Vec<u8>>) -> Result<(), String> {
+fn write_arc_frame(
+    stdin: &mut impl Write,
+    bgra: &Arc<Vec<u8>>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let expected = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(4);
+    if bgra.len() != expected {
+        return Err(format!(
+            "frame size mismatch: got {} bytes, expected {} for {}x{}",
+            bgra.len(),
+            expected,
+            width,
+            height
+        ));
+    }
     stdin
         .write_all(bgra.as_slice())
         .map_err(|e| format!("write frame to FFmpeg: {e}"))
@@ -240,8 +257,9 @@ impl GpuFeeder {
                         *latest_t.lock() = Some(Arc::new(b));
                         generation_t.fetch_add(1, Ordering::Relaxed);
                         renders_t.fetch_add(1, Ordering::Relaxed);
+                    } else {
+                        std::thread::sleep(Duration::from_micros(500));
                     }
-                    std::thread::sleep(Duration::from_millis(1));
                 }
             })
             .expect("spawn rec-gpu-feed");
@@ -405,7 +423,7 @@ fn run(
                 {
                     hold_frames += 1;
                 }
-                write_arc_frame(&mut stdin, &arc)?;
+                write_arc_frame(&mut stdin, &arc, width, height)?;
                 last_arc = Some(arc);
                 written += 1;
             }
@@ -425,7 +443,7 @@ fn run(
         {
             hold_frames += 1;
         }
-        write_arc_frame(&mut stdin, &arc)?;
+        write_arc_frame(&mut stdin, &arc, width, height)?;
         last_arc = Some(arc);
         written += 1;
     }
@@ -696,6 +714,7 @@ fn spawn_ffmpeg_with_encoder(
     let bitrate = format!("{}k", bitrate_kbps.max(500));
     let bufsize = format!("{}k", bitrate_kbps.saturating_mul(2).max(1000));
     let gop = fps.saturating_mul(2).max(30).to_string();
+    let crf = if width <= 720 { "20" } else { "18" };
 
     let mut cmd = Command::new(ffmpeg);
     cmd.args([
@@ -719,7 +738,16 @@ fn spawn_ffmpeg_with_encoder(
 
     match enc {
         "libx264" => {
-            cmd.args(["-preset", "veryfast", "-crf", "18", "-g", &gop]);
+            cmd.args([
+                "-preset",
+                "fast",
+                "-tune",
+                "zerolatency",
+                "-crf",
+                crf,
+                "-g",
+                &gop,
+            ]);
         }
         "h264_amf" => {
             cmd.args([

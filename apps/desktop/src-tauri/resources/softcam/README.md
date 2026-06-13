@@ -17,3 +17,9 @@ scripts\register-softcam.bat
 ```
 
 Then keep the ninesixteen app running and choose **ninesixteen.video** wherever you pick a camera device. If the list was open before the app started, close and reopen it.
+
+## Supply chain (release builds)
+
+- `fetch-softcam.mjs` clones/builds from a pinned upstream source — review that script before release.
+- Rebuild softcam when upgrading the capture stack; do not swap in third-party DLLs manually.
+- Scan `softcam.dll` before bundling in production installers.

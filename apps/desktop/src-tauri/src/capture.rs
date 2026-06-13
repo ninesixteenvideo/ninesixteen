@@ -129,6 +129,54 @@ mod imp {
         shared_viewport().lock().viewport.orientation
     }
 
+    fn capture_output_dims(state: &SharedState) -> (u32, u32) {
+        let st = state.lock();
+        output_dims(viewport_orientation(), st.recording_settings.quality)
+    }
+
+    fn ensure_gpu_scaler(
+        device: &ID3D11Device,
+        state: &SharedState,
+        bridge: &mut GpuBridge,
+    ) -> Result<(), String> {
+        let (out_w, out_h) = capture_output_dims(state);
+        let needs_new = match bridge.scaler.as_ref() {
+            Some(s) => s.dimensions() != (out_w, out_h),
+            None => true,
+        };
+        if needs_new {
+            bridge.scaler = Some(GpuScaler::new(device, out_w, out_h)?);
+            capture_log(&format!("GPU scaler → {out_w}×{out_h}"));
+        }
+        Ok(())
+    }
+
+    /// Keep the GPU scaler + virtual camera aligned with recording settings while capture runs.
+    pub fn sync_output_dimensions(state: SharedState) -> Result<(), CaptureError> {
+        let (out_w, out_h, fps) = {
+            let st = state.lock();
+            let (w, h) = output_dims(viewport_orientation(), st.recording_settings.quality);
+            (w, h, st.recording_settings.fps.max(1))
+        };
+        state.lock().current_dims = (out_w, out_h);
+
+        {
+            let mut bridge = gpu_bridge().lock();
+            if let Some(device) = bridge.device.clone() {
+                ensure_gpu_scaler(&device, &state, &mut bridge)
+                    .map_err(CaptureError::Other)?;
+            } else {
+                bridge.scaler = None;
+            }
+        }
+
+        if state.lock().camera_enabled {
+            camera::stop_camera();
+            camera::start_camera(out_w, out_h, fps).map_err(CaptureError::Other)?;
+        }
+        Ok(())
+    }
+
     pub fn render_output_frame(state: &SharedState) -> Option<Vec<u8>> {
         let vp = shared_viewport().lock().viewport;
         let mut bridge = gpu_bridge().lock();
@@ -136,16 +184,12 @@ mod imp {
             return None;
         }
         let ctx = bridge.context.clone()?;
+        let device = bridge.device.clone()?;
         let src_w = bridge.src_w;
         let src_h = bridge.src_h;
+        ensure_gpu_scaler(&device, state, &mut bridge).ok()?;
         let scaler = bridge.scaler.as_mut()?;
-        let (out_w, out_h) = {
-            let st = state.lock();
-            output_dims(
-                st.recording_settings.orientation,
-                st.recording_settings.quality,
-            )
-        };
+        let (out_w, out_h) = scaler.dimensions();
         let layout = frame_layout(&vp, src_w, src_h, out_w, out_h);
         scaler.render_cached(&ctx, src_w, src_h, &layout).ok()?;
         let bgra = scaler.read_bgra(&ctx).ok()?;
@@ -376,9 +420,19 @@ mod imp {
     }
 
     fn broadcast_bitrate(w: u32, h: u32, fps: u32) -> u32 {
-        let bpp = 0.22;
-        ((w as u64 * h as u64 * fps as u64) as f64 * bpp)
-            .clamp(25_000_000.0, 120_000_000.0) as u32
+        let fps = fps.max(1);
+        let bps = match (w, h, fps) {
+            (720, 1280, 30) => 8_000_000,
+            (720, 1280, 60) => 12_000_000,
+            (1080, 1920, 30) => 15_000_000,
+            (1080, 1920, 60) => 25_000_000,
+            _ => {
+                let bpp = if w <= 720 { 0.18 } else { 0.16 };
+                ((w as u64 * h as u64 * fps as u64) as f64 * bpp)
+                    .clamp(6_000_000.0, 30_000_000.0) as u32
+            }
+        };
+        bps
     }
 
     pub struct Flags {
@@ -423,14 +477,10 @@ mod imp {
             let src_w = frame.width();
             let src_h = frame.height();
             let mut bridge = gpu_bridge().lock();
-            if bridge.scaler.is_none() {
-                bridge.scaler = Some(
-                    GpuScaler::new(frame.device(), self.out_w, self.out_h)
-                        .map_err(|e| format!("GPU scaler init: {e}"))?,
-                );
-                bridge.device = Some(frame.device().clone());
-                bridge.context = Some(frame.device_context().clone());
-            }
+            bridge.device = Some(frame.device().clone());
+            bridge.context = Some(frame.device_context().clone());
+            ensure_gpu_scaler(frame.device(), &self.state, &mut bridge)
+                .map_err(|e| format!("GPU scaler init: {e}"))?;
             bridge.src_w = src_w;
             bridge.src_h = src_h;
             bridge.ready = true;
@@ -539,6 +589,7 @@ mod imp {
         }
         let viewport = shared_viewport().lock().viewport;
         let path = new_recording_path(viewport.orientation);
+        sync_output_dimensions(state.clone())?;
         let (out_w, out_h, fps, bitrate_kbps) = recording_dims(&state);
         open_recorder(&path, out_w, out_h, fps, bitrate_kbps, state.clone())?;
         {
@@ -721,6 +772,10 @@ mod imp {
             let mut st = state.lock();
             st.current_path = Some(path.clone());
             st.current_dims = (out_w, out_h);
+        }
+
+        if capture_already_running() {
+            sync_output_dimensions(state.clone())?;
         }
 
         if let Err(e) = begin_capture(state.clone(), Some(path), None) {
@@ -991,12 +1046,17 @@ mod imp {
 pub use imp::{
     attach_camera, attach_recording, attach_stream, dispatch_recording_outputs, is_capture_running,
     poll_camera_connected, render_output_frame, start_both, start_camera, start_recording,
-    start_streaming, stop_camera, stop_recording, stop_streaming,
+    start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
 };
 
 #[cfg(windows)]
 pub fn render_recording_frame(state: &SharedState) -> Option<Vec<u8>> {
     imp::render_output_frame(state)
+}
+
+#[cfg(not(windows))]
+pub fn sync_output_dimensions(_state: SharedState) -> Result<(), CaptureError> {
+    Ok(())
 }
 
 #[cfg(not(windows))]

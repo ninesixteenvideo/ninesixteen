@@ -1,5 +1,6 @@
 import { getFirebaseAuth, WEB_URL } from "./firebase";
 import { isDesktop } from "./bridge";
+import { registerAuthHandoff } from "./handoffRegister";
 
 async function openExternal(url: string) {
   try {
@@ -28,6 +29,9 @@ export async function signInViaDesktopBrowser(): Promise<void> {
   if (!auth) throw new Error("Firebase is not configured.");
 
   const code = crypto.randomUUID();
+  const secret = crypto.randomUUID();
+  await registerAuthHandoff("desktop", code, secret);
+
   const url = new URL("/auth/desktop", WEB_URL);
   url.searchParams.set("code", code);
   await openExternal(url.toString());
@@ -37,9 +41,10 @@ export async function signInViaDesktopBrowser(): Promise<void> {
     await sleep(2000);
     let res: Response;
     try {
-      res = await fetch(
-        `${WEB_URL}/api/auth/desktop/session?code=${encodeURIComponent(code)}`
-      );
+      const poll = new URL(`${WEB_URL}/api/auth/desktop/session`);
+      poll.searchParams.set("code", code);
+      poll.searchParams.set("secret", secret);
+      res = await fetch(poll.toString());
     } catch {
       continue;
     }

@@ -1,12 +1,18 @@
 //! At-rest encryption for recordings.
 //!
 //! Recordings are stored as `.ns` files (AES-256-CTR). The in-app player streams
-//! decrypted bytes through the `nsmedia` protocol, and a paid Export decrypts to a
-//! real `.mp4`. This stops a free user from copying playable files out of the
-//! recordings folder — they only ever see encrypted blobs on disk.
+//! decrypted bytes through the `nsmedia` protocol (15s preview for free users;
+//! full playback for Pro), and paid Export decrypts to a real `.mp4`.
 //!
-//! Note: the key is embedded in the binary. This is deliberate, casual-copy
-//! protection (not unbreakable DRM); it raises the bar far above plaintext MP4s.
+//! ## Threat model (read before changing this module)
+//!
+//! - **Not DRM.** The decryption key ships inside the desktop binary. Anyone with
+//!   the app can extract it and decrypt `.ns` files offline. Do not market this
+//!   as “secure encryption” or unbreakable protection.
+//! - **Casual copy protection.** Plaintext MP4s are not left in the recordings
+//!   folder; that stops non-technical users from double-clicking exports.
+//! - **Commercial boundary.** Pro export and full preview are enforced server-side
+//!   (`/api/entitlement/verify`) and in `nsmedia` byte limits — not by this key alone.
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};

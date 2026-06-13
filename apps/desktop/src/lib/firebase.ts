@@ -6,8 +6,8 @@
  * `users/{uid}.plan` — is identical across web and desktop. A purchase made
  * in the browser unlocks export here in real time via an onSnapshot listener.
  *
- * If the env vars are absent the auth layer falls back to a local demo mode,
- * so the app stays fully usable during development.
+ * Auth uses local persistence so sign-in survives restarts. Firestore uses
+ * IndexedDB persistence so entitlement reads work offline after first sync.
  */
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import {
@@ -18,7 +18,7 @@ import {
   initializeAuth,
   type Auth,
 } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { enableIndexedDbPersistence, getFirestore, type Firestore } from "firebase/firestore";
 
 const env = import.meta.env;
 
@@ -41,6 +41,7 @@ export const WEB_URL: string = env.VITE_WEB_URL || "https://ninesixteen.video";
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
+let persistenceEnabled = false;
 
 function ensureApp(): FirebaseApp | null {
   if (!isFirebaseConfigured) return null;
@@ -67,7 +68,15 @@ export function getFirebaseAuth(): Auth | null {
 export function getDb(): Firestore | null {
   const a = ensureApp();
   if (!a) return null;
-  if (!db) db = getFirestore(a);
+  if (!db) {
+    db = getFirestore(a);
+    if (!persistenceEnabled) {
+      persistenceEnabled = true;
+      void enableIndexedDbPersistence(db).catch(() => {
+        /* private mode or multi-tab — online-only fallback */
+      });
+    }
+  }
   return db;
 }
 

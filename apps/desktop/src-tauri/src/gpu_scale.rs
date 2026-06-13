@@ -339,6 +339,10 @@ impl GpuScaler {
         }
     }
 
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.out_w, self.out_h)
+    }
+
     /// Read the latest scaled frame as tightly-packed BGRA bytes (for live streaming).
     pub fn read_bgra(&self, ctx: &ID3D11DeviceContext) -> Result<Vec<u8>, String> {
         unsafe {

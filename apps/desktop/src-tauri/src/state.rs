@@ -289,16 +289,76 @@ pub fn new_shared() -> SharedState {
     Arc::new(Mutex::new(AppState::default()))
 }
 
+/// Cached Pro entitlement for in-app media playback (`nsmedia://`) and export.
+#[derive(Default)]
+pub struct EntitlementCache {
+    uid: Option<String>,
+    pro: bool,
+    pro_ends_at_ms: Option<i64>,
+}
+
+impl EntitlementCache {
+    pub fn apply(&mut self, uid: &str, pro: bool, pro_ends_at_ms: Option<i64>) {
+        self.uid = Some(uid.to_string());
+        self.pro = pro;
+        self.pro_ends_at_ms = pro_ends_at_ms;
+    }
+
+    pub fn set_pro(&mut self, pro: bool) {
+        self.pro = pro;
+    }
+
+    pub fn clear(&mut self) {
+        self.uid = None;
+        self.pro = false;
+        self.pro_ends_at_ms = None;
+    }
+
+    /// Active Pro subscription (respects proEndsAt; survives offline once cached).
+    pub fn is_pro(&self) -> bool {
+        if !self.pro {
+            return false;
+        }
+        if let Some(ends) = self.pro_ends_at_ms {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0);
+            if ends <= now {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+pub type SharedEntitlement = Arc<Mutex<EntitlementCache>>;
+
+pub fn new_shared_entitlement() -> SharedEntitlement {
+    Arc::new(Mutex::new(EntitlementCache::default()))
+}
+
+static GLOBAL_ENTITLEMENT: std::sync::OnceLock<SharedEntitlement> = std::sync::OnceLock::new();
+
+/// Shared entitlement cache — used by `nsmedia` (no app state handle) and Tauri commands.
+pub fn global_entitlement() -> SharedEntitlement {
+    GLOBAL_ENTITLEMENT
+        .get_or_init(new_shared_entitlement)
+        .clone()
+}
+
 /// Single Tauri-managed handle — avoids dual `.manage()` linker issues on Windows.
 #[derive(Clone)]
 pub struct AppHandles {
     pub state: SharedState,
     pub viewport: SharedViewport,
+    pub entitlement: SharedEntitlement,
 }
 
 pub fn new_app_handles() -> AppHandles {
     AppHandles {
         state: new_shared(),
         viewport: new_shared_viewport(),
+        entitlement: global_entitlement(),
     }
 }

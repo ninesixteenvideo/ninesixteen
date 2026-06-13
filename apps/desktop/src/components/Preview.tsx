@@ -3,6 +3,7 @@ import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, mediaSrc } from "../lib/bridge";
 import { ensureDriveToken } from "../lib/driveAuth";
+import { isOnline } from "../lib/entitlementCache";
 import type { RecordingInfo } from "../lib/types";
 import { Paywall } from "./Paywall";
 
@@ -11,7 +12,7 @@ type CardMode = "default" | "export" | "delete";
 
 export function Preview() {
   const { recordings, deleteRecording } = useStore();
-  const { isPro } = useAuth();
+  const { isPro, getIdToken } = useAuth();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [srcMap, setSrcMap] = useState<Record<string, string>>({});
@@ -60,6 +61,8 @@ export function Preview() {
     [recordings, selectedId]
   );
 
+  const sectionTitle = isPro ? "Library" : "Preview";
+
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3200);
@@ -80,7 +83,15 @@ export function Preview() {
   async function runLocalExport(rec: RecordingInfo) {
     setExporting("local");
     try {
-      const dest = await invoke<string>("export_recording_local", { id: rec.id });
+      const idToken = await getIdToken();
+      if (!idToken) {
+        showToast("Sign in required to export");
+        return;
+      }
+      const dest = await invoke<string>("export_recording_local", {
+        id: rec.id,
+        idToken,
+      });
       showToast(`Saved to ${dest}`);
       setCardMode("default");
     } catch (e) {
@@ -91,6 +102,10 @@ export function Preview() {
   }
 
   function startDriveExport(rec: RecordingInfo) {
+    if (!isOnline()) {
+      showToast("Google Drive export requires an internet connection.");
+      return;
+    }
     if (driveExportRef.current === rec.id) {
       showToast("Google Drive export already in progress…");
       return;
@@ -102,11 +117,17 @@ export function Preview() {
 
     void (async () => {
       try {
+        const idToken = await getIdToken();
+        if (!idToken) {
+          showToast("Sign in required to export");
+          return;
+        }
         const token = await ensureDriveToken();
         showToast("Uploading to Google Drive…");
         const link = await invoke<string>("export_recording_to_drive", {
           id: rec.id,
           accessToken: token,
+          idToken,
         });
         showToast("Uploaded to Google Drive ✓");
         try {
@@ -137,7 +158,7 @@ export function Preview() {
     return (
       <div className="content">
         <div className="row" style={{ marginBottom: 16 }}>
-          <h3 className="preview-heading">Preview</h3>
+          <h3 className="preview-heading">{sectionTitle}</h3>
         </div>
         <div className="empty" style={{ minHeight: 320 }}>
           <span style={{ fontSize: 40 }}>🎬</span>
@@ -154,7 +175,7 @@ export function Preview() {
       <aside className="preview-list scroll">
         <div className="row preview-list-head">
           <h3 className="preview-heading">
-            Preview <span className="muted">({recordings.length})</span>
+            {sectionTitle} <span className="muted">({recordings.length})</span>
           </h3>
         </div>
         {recordings.map((r) =>
@@ -227,6 +248,18 @@ export function Preview() {
                   {(selected.size_bytes / 1e6).toFixed(1)} MB ·{" "}
                   {new Date(selected.created_at).toLocaleString()}
                 </div>
+                {!isPro && (
+                  <div className="preview-cap-note">
+                    Preview limited to 15 seconds ·{" "}
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() => setShowPaywall(true)}
+                    >
+                      Upgrade for full playback &amp; export
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </>

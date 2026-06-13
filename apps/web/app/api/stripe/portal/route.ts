@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { getAdminDb, verifyUserIdToken } from "@/lib/firebaseAdmin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { isProduction, productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
 /** Open Stripe Customer Portal so the user can manage or cancel their subscription. */
 export async function POST(req: Request) {
   if (!isStripeConfigured) {
+    if (isProduction()) {
+      return (
+        productionConfigRequired("Stripe") ??
+        NextResponse.json({ error: "Stripe not configured" }, { status: 503 })
+      );
+    }
     return NextResponse.json({ mock: true, url: "/dashboard" });
   }
 

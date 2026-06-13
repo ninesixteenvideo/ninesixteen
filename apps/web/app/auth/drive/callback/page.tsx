@@ -2,37 +2,52 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
+import { driveRedirectUri } from "@/lib/googlePkce";
+
+const PKCE_PREFIX = "ns-drive-pkce-";
+const HANDOFF_PREFIX = "ns-drive-handoff-";
 
 function DriveCallbackInner() {
   const [message, setMessage] = useState("Finishing Google Drive connection…");
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const accessToken = hash.get("access_token");
-    const expiresIn = Number(hash.get("expires_in") ?? "3600");
-    const state = hash.get("state") ?? "";
-    const error = hash.get("error");
+    const params = new URLSearchParams(window.location.search);
+    const googleCode = params.get("code");
+    const state = params.get("state") ?? "";
+    const error = params.get("error");
 
     if (error) {
       setMessage(`Google Drive authorization failed: ${error}`);
       return;
     }
 
-    if (!accessToken || !state) {
+    if (!googleCode || !state) {
       setMessage("Missing authorization data. Close this tab and try again from the desktop app.");
       return;
     }
 
-    (async () => {
+    const secret = sessionStorage.getItem(`${HANDOFF_PREFIX}${state}`);
+    const codeVerifier = sessionStorage.getItem(`${PKCE_PREFIX}${state}`);
+    sessionStorage.removeItem(`${HANDOFF_PREFIX}${state}`);
+    sessionStorage.removeItem(`${PKCE_PREFIX}${state}`);
+
+    if (!secret || !codeVerifier) {
+      setMessage("Missing secure handoff. Close this tab and try again from the desktop app.");
+      return;
+    }
+
+    void (async () => {
       try {
         const res = await fetch("/api/auth/drive/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             code: state,
-            accessToken,
-            expiresIn,
+            secret,
+            googleCode,
+            codeVerifier,
+            redirectUri: driveRedirectUri(window.location.origin),
           }),
         });
         if (!res.ok) {

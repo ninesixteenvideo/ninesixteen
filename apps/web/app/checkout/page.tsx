@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmbeddedCheckoutForm } from "@/components/EmbeddedCheckoutForm";
 import { useAuth } from "@/lib/auth";
+import { getFirebaseAuth } from "@/lib/firebase";
 import type { BillingInterval } from "@/lib/stripe";
 
 const PLAN_LABELS: Record<BillingInterval, string> = {
@@ -39,12 +40,29 @@ function CheckoutInner() {
 
     (async () => {
       try {
+        const auth = getFirebaseAuth();
+        if (!auth?.currentUser?.emailVerified) {
+          if (!cancelled) {
+            setError("Verify your email address before subscribing. Check your inbox for the Firebase verification link.");
+          }
+          return;
+        }
+        const token = auth?.currentUser
+          ? await auth.currentUser.getIdToken()
+          : null;
+        if (!token) {
+          if (!cancelled) setError("Sign in required.");
+          return;
+        }
+
         const res = await fetch("/api/stripe/checkout", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             email: user.email,
-            uid: user.uid,
             interval,
           }),
         });

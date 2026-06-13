@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import {
   isAdminConfigured,
   upsertUserProfileOnSignIn,
-  verifyUserIdToken,
 } from "@/lib/firebaseAdmin";
+import { requireBearerUser } from "@/lib/requireAuth";
+import { productionConfigRequired } from "@/lib/serverEnv";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -13,19 +15,21 @@ export const runtime = "nodejs";
  * succeeds; the Stripe webhook still owns plan upgrades/downgrades.
  */
 export async function POST(req: Request) {
+  const blocked = productionConfigRequired("Firebase Admin");
+  if (blocked) return blocked;
+
+  const ip = clientIp(req);
+  if (!rateLimit(`users-sync:${ip}`, 60, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   if (!isAdminConfigured) {
     return NextResponse.json({ ok: true, mock: true, plan: "trial" });
   }
 
-  const header = req.headers.get("authorization");
-  if (!header?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Missing token" }, { status: 401 });
-  }
-
-  const token = header.slice("Bearer ".length);
-  const decoded = await verifyUserIdToken(token);
+  const decoded = await requireBearerUser(req);
   if (!decoded) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    return NextResponse.json({ error: "Missing token" }, { status: 401 });
   }
 
   let body: { email?: string | null; displayName?: string | null } = {};

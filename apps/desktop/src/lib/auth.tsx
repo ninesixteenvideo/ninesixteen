@@ -25,6 +25,14 @@ import {
 import { isDesktop } from "./bridge";
 import { syncUserProfile } from "./userSync";
 import { signInViaDesktopBrowser } from "./desktopAuthHandoff";
+import { clearStoredDriveToken } from "./driveAuth";
+import {
+  clearPersistedEntitlement,
+  isOnline,
+  loadPersistedEntitlement,
+  savePersistedEntitlement,
+} from "./entitlementCache";
+import { invoke } from "./bridge";
 
 export type { Plan };
 
@@ -52,6 +60,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   openCheckout: (interval: "monthly" | "yearly") => Promise<void>;
   openBillingPortal: () => Promise<void>;
+  getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -77,6 +86,36 @@ function saveDemoUser(user: NsUser | null) {
   else window.localStorage.removeItem(DEMO_KEY);
 }
 
+async function syncEntitlementToRust(user: NsUser | null, getToken: () => Promise<string | null>) {
+  if (!isDesktop) return;
+  if (!user || user.demo) {
+    await invoke("clear_entitlement");
+    return;
+  }
+
+  const pro = isProEntitlement(user);
+  await invoke("apply_entitlement_cache", {
+    uid: user.uid,
+    pro,
+    proEndsAt: user.proEndsAt,
+  });
+
+  if (!isOnline()) return;
+
+  const token = await getToken();
+  if (!token) return;
+
+  try {
+    await invoke("sync_entitlement", {
+      idToken: token,
+      uid: user.uid,
+      proEndsAt: user.proEndsAt,
+    });
+  } catch {
+    /* offline or API unreachable — cached entitlement remains active */
+  }
+}
+
 async function openExternal(url: string) {
   try {
     const { openUrl } = await import("@tauri-apps/plugin-opener");
@@ -87,7 +126,7 @@ async function openExternal(url: string) {
 }
 
 function mapFirebaseUser(fbUser: User): NsUser {
-  return {
+  const base: NsUser = {
     uid: fbUser.uid,
     email: fbUser.email ?? "",
     displayName: fbUser.displayName,
@@ -95,6 +134,25 @@ function mapFirebaseUser(fbUser: User): NsUser {
     ...emptyEntitlement,
     demo: false,
   };
+  const cached = loadPersistedEntitlement(fbUser.uid);
+  if (!cached) return base;
+  return {
+    ...base,
+    plan: cached.plan,
+    proEndsAt: cached.proEndsAt,
+    subscriptionCancelAtPeriodEnd: cached.subscriptionCancelAtPeriodEnd,
+  };
+}
+
+function persistUserEntitlement(user: NsUser) {
+  if (user.demo) return;
+  savePersistedEntitlement({
+    uid: user.uid,
+    plan: user.plan,
+    proEndsAt: user.proEndsAt,
+    subscriptionCancelAtPeriodEnd: user.subscriptionCancelAtPeriodEnd,
+    updatedAt: Date.now(),
+  });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -110,16 +168,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { doc, onSnapshot } = await import("firebase/firestore");
     planUnsub.current = onSnapshot(doc(db, "users", uid), (snap) => {
       const ent = parseEntitlement(snap.data());
-      setUser((prev) =>
-        prev && prev.uid === uid
-          ? {
-              ...prev,
-              plan: ent.plan,
-              proEndsAt: ent.proEndsAt,
-              subscriptionCancelAtPeriodEnd: ent.subscriptionCancelAtPeriodEnd,
-            }
-          : prev
-      );
+      setUser((prev) => {
+        if (!prev || prev.uid !== uid) return prev;
+        const next = {
+          ...prev,
+          plan: ent.plan,
+          proEndsAt: ent.proEndsAt,
+          subscriptionCancelAtPeriodEnd: ent.subscriptionCancelAtPeriodEnd,
+        };
+        persistUserEntitlement(next);
+        return next;
+      });
     });
   }, []);
 
@@ -148,7 +207,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         }
       } else {
-        setUser(loadDemoUser());
+        if (import.meta.env.PROD) {
+          console.error(
+            "[NineSixteen] Firebase is not configured — sign-in is disabled in production builds."
+          );
+          setUser(null);
+        } else {
+          setUser(loadDemoUser());
+        }
         setLoading(false);
       }
     })();
@@ -164,6 +230,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { signInWithEmailAndPassword } = await import("firebase/auth");
       await signInWithEmailAndPassword(auth, email, password);
       return;
+    }
+    if (import.meta.env.PROD) {
+      throw new Error("Sign-in is unavailable — Firebase is not configured.");
     }
     const demoUser: NsUser = {
       uid: "demo-" + btoa(email).slice(0, 10),
@@ -187,6 +256,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
         if (displayName) await updateProfile(cred.user, { displayName });
         return;
+      }
+      if (import.meta.env.PROD) {
+        throw new Error("Sign-up is unavailable — Firebase is not configured.");
       }
       const demoUser: NsUser = {
         uid: "demo-" + btoa(email).slice(0, 10),
@@ -213,6 +285,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signInWithPopup(auth, googleProvider());
       return;
     }
+    if (import.meta.env.PROD) {
+      throw new Error("Sign-in is unavailable — Firebase is not configured.");
+    }
     const demoUser: NsUser = {
       uid: "demo-google",
       email: "you@gmail.com",
@@ -228,6 +303,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     planUnsub.current();
     planUnsub.current = () => {};
+    clearStoredDriveToken();
+    clearPersistedEntitlement();
+    void syncEntitlementToRust(null, async () => null);
     const auth = getFirebaseAuth();
     if (auth) {
       const { signOut: fbSignOut } = await import("firebase/auth");
@@ -248,6 +326,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [user]
   );
+
+  const getIdToken = useCallback(async (): Promise<string | null> => {
+    const auth = getFirebaseAuth();
+    if (!auth?.currentUser) return null;
+    return auth.currentUser.getIdToken();
+  }, []);
+
+  useEffect(() => {
+    if (!user || user.demo) {
+      void syncEntitlementToRust(null, async () => null);
+      return;
+    }
+    void syncEntitlementToRust(user, getIdToken);
+  }, [user, getIdToken]);
 
   const openBillingPortal = useCallback(async () => {
     const auth = getFirebaseAuth();
@@ -276,8 +368,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       openCheckout,
       openBillingPortal,
+      getIdToken,
     }),
-    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout, openBillingPortal]
+    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout, openBillingPortal, getIdToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

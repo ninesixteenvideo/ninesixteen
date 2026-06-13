@@ -29,6 +29,7 @@ export function Overlay() {
   // Initial state + live subscriptions.
   useEffect(() => {
     let unsubs: Array<() => void> = [];
+    let pollId = 0;
     (async () => {
       try {
         const st = await invoke<CaptureState>("get_state");
@@ -46,9 +47,7 @@ export function Overlay() {
       unsubs.push(
         await listen("viewport:update", (p: Viewport) => {
           target.current = { ...p, orientation: "portrait" };
-          if (recording.current) {
-            anim.current = { ...target.current };
-          }
+          anim.current = { ...target.current };
         })
       );
       unsubs.push(
@@ -74,8 +73,23 @@ export function Overlay() {
           }
         })
       );
+      pollId = window.setInterval(async () => {
+        try {
+          const st = await invoke<CaptureState>("get_state");
+          if (st.monitor) monitor.current = { w: st.monitor.width, h: st.monitor.height };
+          if (st.viewport) {
+            target.current = { ...st.viewport, orientation: "portrait" };
+            anim.current = { ...target.current };
+          }
+        } catch {
+          /* ignore poll errors */
+        }
+      }, 50);
     })();
-    return () => unsubs.forEach((u) => u());
+    return () => {
+      unsubs.forEach((u) => u());
+      if (pollId) window.clearInterval(pollId);
+    };
   }, []);
 
   // Render loop.
@@ -86,7 +100,6 @@ export function Overlay() {
     const ctx = canvas.getContext("2d")!;
 
     const draw = (now: number) => {
-      const dt = Math.min(0.05, (now - lastFrame) / 1000);
       lastFrame = now;
       const dpr = window.devicePixelRatio || 1;
       const cw = window.innerWidth;
@@ -101,21 +114,12 @@ export function Overlay() {
       // Map source (monitor physical px) -> canvas backing px.
       const scale = canvas.width / monitor.current.w;
 
-      // Smooth follow — during countdown, snap to target so prep framing feels direct.
+      // Overlay must match the exact recorded region — no smoothing lag.
       const a = anim.current;
       const t = target.current;
-      const prepping = countdown.current > 0 && arming.current;
-      if (recording.current || prepping) {
-        a.x = t.x;
-        a.y = t.y;
-        a.zoom = t.zoom;
-      } else {
-        const panK = 1 - Math.exp(-11 * dt);
-        const zoomK = 1 - Math.exp(-3.8 * dt);
-        a.x += (t.x - a.x) * panK;
-        a.y += (t.y - a.y) * panK;
-        a.zoom += (t.zoom - a.zoom) * zoomK;
-      }
+      a.x = t.x;
+      a.y = t.y;
+      a.zoom = t.zoom;
       a.orientation = "portrait";
 
       const r = cropRect(a, monitor.current.w, monitor.current.h);

@@ -419,23 +419,65 @@ pub fn delete_recording(id: String) {
     recordings::delete_recording(&id);
 }
 
+#[tauri::command]
+pub fn sync_entitlement(
+    handles: State<'_, AppHandles>,
+    id_token: String,
+    uid: String,
+    pro_ends_at: Option<i64>,
+) -> Result<bool, String> {
+    let pro = crate::entitlement::check_entitlement(&id_token)?;
+    handles
+        .entitlement
+        .lock()
+        .apply(&uid, pro, pro_ends_at);
+    crate::entitlement::persist_entitlement(&uid, pro, pro_ends_at);
+    Ok(pro)
+}
+
+#[tauri::command]
+pub fn apply_entitlement_cache(
+    handles: State<'_, AppHandles>,
+    uid: String,
+    pro: bool,
+    pro_ends_at: Option<i64>,
+) {
+    handles
+        .entitlement
+        .lock()
+        .apply(&uid, pro, pro_ends_at);
+    crate::entitlement::persist_entitlement(&uid, pro, pro_ends_at);
+}
+
+#[tauri::command]
+pub fn clear_entitlement(_handles: State<'_, AppHandles>) {
+    crate::entitlement::clear_persisted_entitlement();
+}
+
 /// Copy a recording to a user-chosen destination (legacy save dialog flow).
 #[tauri::command]
-pub fn export_recording(id: String, dest: String) -> Result<(), String> {
+pub fn export_recording(id: String, dest: String, id_token: String) -> Result<(), String> {
+    crate::entitlement::verify_pro_export(&id_token)?;
     let rec = crate::export::resolve_recording(&id)?;
     crate::export::export_decrypted_mp4(&rec, std::path::Path::new(&dest))?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn export_recording_local(id: String) -> Result<String, String> {
+pub async fn export_recording_local(id: String, id_token: String) -> Result<String, String> {
+    crate::entitlement::verify_pro_export(&id_token)?;
     tauri::async_runtime::spawn_blocking(move || crate::export::export_recording_local(&id))
         .await
         .map_err(|e| format!("Export task failed: {e}"))?
 }
 
 #[tauri::command]
-pub async fn export_recording_to_drive(id: String, access_token: String) -> Result<String, String> {
+pub async fn export_recording_to_drive(
+    id: String,
+    access_token: String,
+    id_token: String,
+) -> Result<String, String> {
+    crate::entitlement::verify_pro_export(&id_token)?;
     tauri::async_runtime::spawn_blocking(move || {
         crate::export::upload_recording_to_drive(&id, &access_token)
     })
@@ -479,6 +521,10 @@ pub fn set_recording_settings(
     };
     st.recording_settings.orientation = Orientation::Portrait;
     handles.viewport.lock().viewport.orientation = Orientation::Portrait;
+    drop(st);
+    if let Err(e) = capture::sync_output_dimensions(handles.state.clone()) {
+        crate::log::capture_log(&format!("WARN: output dimension sync failed: {e}"));
+    }
 }
 
 #[tauri::command]

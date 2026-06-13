@@ -129,7 +129,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
         });
       } else {
-        setUser(loadDemoUser());
+        if (process.env.NODE_ENV === "production") {
+          console.error(
+            "[NineSixteen] Firebase is not configured — demo auth is disabled in production."
+          );
+          setUser(null);
+        } else {
+          setUser(loadDemoUser());
+        }
         setLoading(false);
       }
     })();
@@ -145,6 +152,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { signInWithEmailAndPassword } = await import("firebase/auth");
       await signInWithEmailAndPassword(auth, email, password);
       return;
+    }
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Sign-in is unavailable — Firebase is not configured.");
     }
     const demoUser: NsUser = {
       uid: "demo-" + btoa(email).slice(0, 10),
@@ -170,6 +180,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (displayName) await updateProfile(cred.user, { displayName });
         return;
       }
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("Sign-up is unavailable — Firebase is not configured.");
+      }
       const demoUser: NsUser = {
         uid: "demo-" + btoa(email).slice(0, 10),
         email,
@@ -191,6 +204,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { signInWithPopup } = await import("firebase/auth");
       await signInWithPopup(auth, googleProvider());
       return;
+    }
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Sign-in is unavailable — Firebase is not configured.");
     }
     // Demo fallback so the button works without Firebase configured.
     const demoUser: NsUser = {

@@ -118,3 +118,14 @@ pub fn delete_recording(id: &str) {
         }
     }
 }
+
+/// Recording duration in seconds from sidecar metadata (0 if unknown).
+pub fn recording_duration(id: &str) -> f64 {
+    let json = recordings_dir().join(format!("{id}.json"));
+    let Ok(txt) = std::fs::read_to_string(json) else {
+        return 0.0;
+    };
+    serde_json::from_str::<RecordingInfo>(&txt)
+        .map(|info| info.duration)
+        .unwrap_or(0.0)
+}

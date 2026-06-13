@@ -17,8 +17,9 @@ const tauriDir = join(repoRoot, "apps", "desktop", "src-tauri");
 const resDir = join(tauriDir, "resources", "ffmpeg");
 const thirdParty = join(repoRoot, "third_party", "ffmpeg");
 
-// BtbN win64-gpl essentials (widely used, includes libx264)
+// Pin a specific BtbN release for production builds (override with FFMPEG_BUILD_URL).
 const FFMPEG_URL =
+  process.env.FFMPEG_BUILD_URL ??
   "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
 
 async function download(url, dest) {

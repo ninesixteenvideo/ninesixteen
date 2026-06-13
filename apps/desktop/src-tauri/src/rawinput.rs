@@ -16,8 +16,11 @@ mod imp {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU, VK_RMENU};
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
-        HC_ACTION, MSLLHOOKSTRUCT, MSG, WH_MOUSE_LL, WM_MOUSEHWHEEL, WM_MOUSEWHEEL,
+        HC_ACTION, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL,
+        WM_KEYDOWN, WM_KEYUP, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
+
+    static ALT_HELD: AtomicBool = AtomicBool::new(false);
 
     struct Ctx {
         viewport: SharedViewport,
@@ -34,9 +37,9 @@ mod imp {
     /// Wheel deltas queued by the hook; drained on the follow thread only.
     static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
 
-    const CURSOR_TICK_MS: u64 = 8;
-    const PAN_SMOOTH_HZ: f64 = 11.0;
-    const ZOOM_SMOOTH_HZ: f64 = 3.8;
+    const CURSOR_TICK_MS: u64 = 4;
+    const PAN_SMOOTH_HZ: f64 = 14.0;
+    const ZOOM_SMOOTH_HZ: f64 = 5.0;
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
     const FULL_FRAME_LOCK: Duration = Duration::from_secs(1);
@@ -49,11 +52,24 @@ mod imp {
     }
 
     fn alt_held() -> bool {
+        if ALT_HELD.load(Ordering::Acquire) {
+            return true;
+        }
         unsafe {
             let left = GetAsyncKeyState(VK_MENU.0 as i32) as u16;
             let right = GetAsyncKeyState(VK_RMENU.0 as i32) as u16;
             (left & 0x8000) != 0 || (right & 0x8000) != 0
         }
+    }
+
+    fn is_alt_vk(vk: u32) -> bool {
+        vk == VK_MENU.0 as u32 || vk == VK_RMENU.0 as u32
+    }
+
+    fn release_alt_zoom_state() {
+        ALT_HELD.store(false, Ordering::Release);
+        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        *PENDING_WHEEL_DELTA.lock() = 0.0;
     }
 
     fn zoom_hold_active() -> bool {
@@ -93,7 +109,36 @@ mod imp {
     }
 
     fn wheel_delta_from_hook(mouse_data: u32) -> f64 {
-        ((mouse_data >> 16) as i16) as f64 / 120.0
+        let steps = ((mouse_data >> 16) as i16) as f64 / 120.0;
+        // Trackpads often emit smaller deltas — keep zoom responsive.
+        if steps.abs() > 0.0 && steps.abs() < 0.35 {
+            steps * 2.5
+        } else {
+            steps
+        }
+    }
+
+    /// Hook thread: track Alt reliably; swallow Alt+wheel (never touch viewport mutex).
+    unsafe extern "system" fn keyboard_ll_proc(
+        code: i32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        if code == HC_ACTION as i32 {
+            let msg = wparam.0 as u32;
+            if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP) {
+                let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+                if is_alt_vk(kb.vkCode) {
+                    match msg {
+                        WM_KEYDOWN | WM_SYSKEYDOWN => {
+                            ALT_HELD.store(true, Ordering::Release);
+                        }
+                        _ => release_alt_zoom_state(),
+                    }
+                }
+            }
+        }
+        CallNextHookEx(None, code, wparam, lparam)
     }
 
     /// Hook thread: swallow Alt+wheel (never touch viewport mutex — that starved cursor follow).
@@ -109,7 +154,11 @@ mod imp {
         if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) && alt_held() {
             if !scroll_input_blocked() {
                 let info = &*(lparam.0 as *const MSLLHOOKSTRUCT);
-                let delta = wheel_delta_from_hook(info.mouseData);
+                let mut delta = wheel_delta_from_hook(info.mouseData);
+                // Some touchpads map vertical scroll to HWHEEL — treat as zoom input.
+                if msg == WM_MOUSEHWHEEL {
+                    delta = -delta;
+                }
                 if delta.abs() > f64::EPSILON {
                     *PENDING_WHEEL_DELTA.lock() += delta;
                 }
@@ -187,6 +236,12 @@ mod imp {
             Err(_) => return,
         };
 
+        let _kb_hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_ll_proc), Some(hinst), 0)
+        {
+            Ok(h) => h,
+            Err(_) => return,
+        };
+
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
             let _ = TranslateMessage(&msg);
@@ -194,14 +249,11 @@ mod imp {
         }
 
         let _ = windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx(hook);
+        let _ = windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx(_kb_hook);
     }
 
     fn emit_viewport_now(app: &AppHandle, viewport: crate::state::Viewport) {
-        let now = now_ms();
-        if now.saturating_sub(LAST_EMIT_MS.load(Ordering::Relaxed)) >= 8 {
-            LAST_EMIT_MS.store(now, Ordering::Relaxed);
-            emit_viewport_update(app, viewport);
-        }
+        emit_viewport_update(app, viewport);
     }
 
     fn cursor_pos_for_monitor(
@@ -302,7 +354,7 @@ mod imp {
             (st.recording, st.recording_armed)
         };
         let now_ms = now_ms();
-        let min_emit = if recording || arming { 16 } else { CURSOR_TICK_MS };
+        let min_emit = if recording || arming { 8 } else { CURSOR_TICK_MS };
         if moved
             || animating
             || blocked

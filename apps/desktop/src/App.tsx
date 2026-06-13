@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useStore } from "./state/store";
+import { useAuth } from "./lib/auth";
 import { Studio } from "./components/Studio";
 import { Preview } from "./components/Preview";
 import { Settings } from "./components/Settings";
@@ -8,7 +9,7 @@ import { AccountMenu } from "./components/AccountMenu";
 import { CamStatus } from "./components/CamStatus";
 import { isDesktop } from "./lib/bridge";
 
-const TABS = [
+const BASE_TABS = [
   { id: "studio", label: "Studio" },
   { id: "preview", label: "Preview" },
   { id: "settings", label: "Settings" },
@@ -16,6 +17,11 @@ const TABS = [
 
 export function App() {
   const { ready, tab, setTab, init, recording } = useStore();
+  const { isPro } = useAuth();
+
+  const tabs = BASE_TABS.map((t) =>
+    t.id === "preview" ? { ...t, label: isPro ? "Library" : "Preview" } : t
+  );
 
   useEffect(() => {
     init();
@@ -26,7 +32,7 @@ export function App() {
       <header className="topbar">
         <Wordmark size={22} showSuffix />
         <nav className="tabs">
-          {TABS.map(({ id, label }) => (
+          {tabs.map(({ id, label }) => (
             <button
               key={id}
               className={`tab ${tab === id ? "active" : ""}`}

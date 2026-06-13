@@ -5,37 +5,38 @@ import {
   priceForInterval,
   type BillingInterval,
 } from "@/lib/stripe";
+import { requireBearerUser } from "@/lib/requireAuth";
+import { isProduction, productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
 /**
  * Creates an embedded Stripe Checkout session for the Pro plan ($12/mo or $39/yr).
  *
- * Returns a `clientSecret` for Embedded Checkout on /checkout. The caller passes
- * the Firebase `uid` so we can stamp it onto the session (`client_reference_id`)
- * and the resulting subscription (`metadata.uid`). The webhook then writes the
- * entitlement to Firestore keyed by that uid — which is the same account the
- * desktop app reads, so a web purchase unlocks export on the desktop instantly.
- *
- * In mock mode (no keys) it returns a local URL that simulates a successful
- * upgrade so the flow is testable today.
+ * Requires a Firebase ID token — the authenticated uid is stamped onto the
+ * session so the webhook can write the entitlement to Firestore.
  */
 export async function POST(req: Request) {
-  const origin = req.headers.get("origin") ?? "http://localhost:3000";
-  let email: string | undefined;
-  let uid: string | undefined;
-  let interval: BillingInterval = "monthly";
-  try {
-    const body = await req.json();
-    email = body?.email;
-    uid = body?.uid;
-    if (body?.interval === "yearly") interval = "yearly";
-  } catch {
-    /* no body is fine */
+  const user = await requireBearerUser(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!user.emailVerified) {
+    return NextResponse.json(
+      { error: "Verify your email address before subscribing to Pro." },
+      { status: 403 }
+    );
   }
 
   if (!isStripeConfigured) {
-    // Placeholder: pretend checkout succeeded and bounce to the dashboard.
+    if (isProduction()) {
+      return (
+        productionConfigRequired("Stripe") ??
+        NextResponse.json({ error: "Stripe not configured" }, { status: 503 })
+      );
+    }
+    const origin = req.headers.get("origin") ?? "http://localhost:3000";
     return NextResponse.json({
       mock: true,
       url: `${origin}/dashboard?upgraded=mock`,
@@ -47,6 +48,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Stripe not initialised" }, { status: 500 });
   }
 
+  const origin = req.headers.get("origin") ?? "http://localhost:3000";
+  let email: string | undefined = user.email ?? undefined;
+  let interval: BillingInterval = "monthly";
+  try {
+    const body = await req.json();
+    if (body?.email) email = body.email;
+    if (body?.interval === "yearly") interval = "yearly";
+  } catch {
+    /* no body is fine */
+  }
+
+  const uid = user.uid;
   const price = priceForInterval(interval);
   if (!price) {
     return NextResponse.json(
@@ -63,8 +76,8 @@ export async function POST(req: Request) {
       line_items: [{ price, quantity: 1 }],
       customer_email: email,
       client_reference_id: uid,
-      subscription_data: uid ? { metadata: { uid } } : undefined,
-      metadata: uid ? { uid } : undefined,
+      subscription_data: { metadata: { uid } },
+      metadata: { uid },
       return_url: `${origin}/dashboard?upgraded=1&session_id={CHECKOUT_SESSION_ID}`,
       allow_promotion_codes: true,
     });
