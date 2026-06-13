@@ -6,41 +6,35 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-5">
       {/* HERO */}
-      <section className="grid items-center gap-10 py-14 md:grid-cols-[1.05fr_1fr] md:py-20">
+      <section className="grid items-center gap-12 py-16 md:grid-cols-[1.05fr_1fr] md:py-24">
         <div>
-          <span className="ns-chip inline-block">Desktop recorder &amp; live streamer</span>
-          <h1 className="mt-5 font-display text-5xl leading-[1.05] sm:text-6xl">
-            Record &amp; stream,
+          <span className="ns-chip inline-block">Windows · 9×16 vertical capture</span>
+          <h1 className="mt-6 font-display text-[2.75rem] leading-[1.02] tracking-tight sm:text-6xl lg:text-[4.25rem]">
+            Your desktop,
             <br />
-            framed by{" "}
-            <span className="relative whitespace-nowrap text-bluedeep">
-              hand
-              <span className="absolute -bottom-1 left-0 h-2 w-full -skew-x-6 bg-yellow" />
+            shot{" "}
+            <span className="relative whitespace-nowrap text-pinkdeep">
+              vertical
+              <span className="absolute -bottom-1 left-0 h-2.5 w-full -skew-x-6 bg-yellow" />
             </span>
             .
           </h1>
-          <p className="mt-6 max-w-md font-body text-lg text-inksoft">
-            <Wordmark size={20} /> is a lightweight desktop capture tool with a tactile,
-            two-handed framing viewport. Shoot in <b className="text-ink">16×9</b> or{" "}
-            <b className="text-ink">9×16</b> and pan, zoom &amp; rotate the frame live with your
-            other hand.
+          <p className="mt-6 max-w-lg font-body text-lg leading-relaxed text-inksoft">
+            <Wordmark size={20} /> captures a crisp{" "}
+            <b className="font-semibold text-ink">9×16</b> frame from your screen. Press
+            Record, take five seconds to position and zoom, then record locally or pipe the
+            feed straight into OBS, Twitch, or Zoom.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href="/download"
-              className="rounded-full border-2 border-ink bg-blue px-6 py-3 font-display text-lg shadow-[5px_5px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
-            >
-              Download free
+          <div className="mt-9 flex flex-wrap gap-3">
+            <Link href="/download" className="ns-cta ns-cta--primary">
+              Download for Windows
             </Link>
-            <Link
-              href="/pricing"
-              className="rounded-full border-2 border-ink bg-surface px-6 py-3 font-display text-lg shadow-[5px_5px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
-            >
-              See pricing
+            <Link href="/pricing" className="ns-cta ns-cta--ghost">
+              View pricing
             </Link>
           </div>
-          <p className="mt-4 font-mono text-xs text-inkfaint">
-            Free while in beta · Windows · no credit card
+          <p className="mt-5 font-mono text-xs text-inkfaint">
+            Record &amp; preview free · Pro unlocks export · No account required to try
           </p>
         </div>
 
@@ -49,89 +43,105 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ASPECT STRIP */}
-      <section className="grid gap-4 py-6 sm:grid-cols-2">
-        <AspectCard
-          label="16×9"
-          title="Widescreen"
-          desc="Tutorials, gameplay, talking-head — the classic landscape canvas."
-          ratio="16 / 9"
-        />
-        <AspectCard
-          label="9×16"
-          title="Vertical"
-          desc="Shorts, Reels, TikTok — born-vertical, not letterboxed."
-          ratio="9 / 16"
-          accent="pink"
-        />
+      {/* STATS */}
+      <section className="ns-stats-row py-4">
+        {STATS.map((s) => (
+          <div key={s.label} className="ns-stat">
+            <span className="ns-stat-value">{s.value}</span>
+            <span className="ns-stat-label">{s.label}</span>
+          </div>
+        ))}
       </section>
 
-      {/* FEATURES */}
-      <section id="features" className="py-16">
-        <SectionHeading kicker="What it does" title="Everything a creator needs, nothing they don't." />
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="ns-card p-6">
-              <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl border-2 border-ink bg-bg text-2xl">
-                {f.icon}
-              </div>
-              <h3 className="font-display text-xl">{f.title}</h3>
-              <p className="mt-2 font-body text-sm text-inksoft">{f.desc}</p>
+      {/* USE CASES */}
+      <section className="py-14">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <SectionHeading
+            kicker="Built for vertical"
+            title="Short-form, live, and polished."
+          />
+          <p className="max-w-sm font-body text-sm text-inksoft">
+            One native app. One framing workflow. Output that already fits the platforms you
+            publish to.
+          </p>
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {USE_CASES.map((u) => (
+            <div key={u.title} className="ns-card ns-card--flat p-5">
+              <span className="text-2xl">{u.icon}</span>
+              <h3 className="mt-3 font-display text-lg">{u.title}</h3>
+              <p className="mt-1.5 font-body text-sm text-inksoft">{u.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* TWO-HANDED */}
-      <section id="two-handed" className="py-16">
+      {/* FEATURES */}
+      <section id="features" className="py-16">
+        <SectionHeading
+          kicker="What you get"
+          title="Precise capture. Nothing extra."
+        />
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="ns-card p-6">
+              <div className="mb-4 grid h-11 w-11 place-items-center rounded-xl border-2 border-ink bg-bgalt text-xl">
+                {f.icon}
+              </div>
+              <h3 className="font-display text-xl">{f.title}</h3>
+              <p className="mt-2 font-body text-sm leading-relaxed text-inksoft">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section id="how-it-works" className="py-16">
         <div className="ns-card overflow-hidden">
-          <div className="grid gap-0 md:grid-cols-[1fr_1.1fr]">
-            <div className="border-b-2 border-ink p-8 md:border-b-0 md:border-r-2">
-              <span className="ns-chip">The unique part</span>
-              <h2 className="mt-4 font-display text-3xl leading-tight">
-                Your non-dominant hand becomes the camera operator.
-              </h2>
-              <p className="mt-4 font-body text-inksoft">
-                Plug in a second mouse (or any input device). It never touches your cursor —
-                instead it drives the framing viewport, so you can keep working with your main
-                hand while you direct the shot with the other.
-              </p>
-              <ul className="mt-6 space-y-3">
-                {CONTROLS.map((c) => (
-                  <li key={c.k} className="flex items-center gap-3">
-                    <kbd className="rounded-md border-2 border-ink bg-bg px-2.5 py-1 font-mono text-xs shadow-[2px_2px_0_var(--color-ink)]">
-                      {c.k}
-                    </kbd>
-                    <span className="font-body text-sm text-ink">{c.v}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="bg-bgalt p-8">
-              <HandDiagram />
-            </div>
+          <div className="border-b-2 border-ink bg-bgalt px-8 py-6 md:px-10">
+            <span className="ns-chip">How it works</span>
+            <h2 className="mt-4 max-w-xl font-display text-3xl leading-tight sm:text-4xl">
+              Frame in five seconds. Record with confidence.
+            </h2>
+          </div>
+          <div className="grid gap-0 md:grid-cols-3">
+            {STEPS.map((step, i) => (
+              <div
+                key={step.title}
+                className={`p-8 md:p-9 ${i < STEPS.length - 1 ? "md:border-r-2 md:border-ink" : ""} ${i > 0 ? "border-t-2 border-ink md:border-t-0" : ""}`}
+              >
+                <span className="font-mono text-xs text-inkfaint">0{i + 1}</span>
+                <h3 className="mt-3 font-display text-xl">{step.title}</h3>
+                <p className="mt-3 font-body text-sm leading-relaxed text-inksoft">
+                  {step.desc}
+                </p>
+                <ul className="mt-4 space-y-2">
+                  {step.points.map((p) => (
+                    <li key={p} className="flex items-start gap-2 font-mono text-[11px] text-ink">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-pink" />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       {/* CTA */}
-      <section className="py-16">
-        <div className="ns-card flex flex-col items-center gap-5 bg-surface px-6 py-12 text-center">
-          <Wordmark size={44} showSuffix />
-          <p className="max-w-md font-body text-inksoft">
-            Download the free beta and start framing your desktop with both hands.
+      <section className="py-16 pb-24">
+        <div className="ns-card ns-cta-panel flex flex-col items-center gap-6 px-6 py-14 text-center md:px-12 md:py-16">
+          <Wordmark size={48} showSuffix />
+          <p className="max-w-lg font-body text-lg text-inksoft">
+            Download free on Windows. Record and preview forever. Upgrade when you need to
+            export MP4 files from the app.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Link
-              href="/download"
-              className="rounded-full border-2 border-ink bg-pink px-6 py-3 font-display text-lg shadow-[5px_5px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
-            >
-              Download for Windows
+            <Link href="/download" className="ns-cta ns-cta--accent">
+              Get the app
             </Link>
-            <Link
-              href="/sign-up"
-              className="rounded-full border-2 border-ink bg-surface px-6 py-3 font-display text-lg shadow-[5px_5px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
-            >
+            <Link href="/sign-up" className="ns-cta ns-cta--ghost">
               Create account
             </Link>
           </div>
@@ -141,82 +151,78 @@ export default function HomePage() {
   );
 }
 
-const FEATURES = [
-  { icon: "🎞️", title: "16×9 & 9×16 capture", desc: "Switch the canvas between widescreen and vertical instantly — no re-cropping later." },
-  { icon: "🖐️", title: "Two-handed framing", desc: "A second input device pans, zooms and rotates the viewport while you keep working." },
-  { icon: "🪶", title: "Lightweight & native", desc: "A tiny Tauri app using native Windows capture — low CPU, no bloated Electron." },
-  { icon: "💾", title: "Local-first storage", desc: "Recordings save straight to your disk. Your footage never leaves your machine." },
-  { icon: "📡", title: "Live streaming ready", desc: "Stream the framed output to your platform of choice (rolling out in beta)." },
-  { icon: "🎛️", title: "Buttery-smooth motion", desc: "Pan, zoom and rotation are interpolated for silky, broadcast-quality moves." },
+const STATS = [
+  { value: "9×16", label: "Portrait output" },
+  { value: "5s", label: "Framing countdown" },
+  { value: "OBS", label: "Virtual camera ready" },
+  { value: "Local", label: "Encrypted on disk" },
 ];
 
-const CONTROLS = [
-  { k: "2nd mouse move", v: "Pan the framing viewport" },
-  { k: "Scroll wheel", v: "Zoom the viewport in / out" },
-  { k: "Side button", v: "Rotate between 9×16 ⇄ 16×9" },
-  { k: "Press R", v: "Quick orientation flip" },
+const USE_CASES = [
+  { icon: "📱", title: "Shorts & Reels", desc: "Vertical canvas from day one — no crop step in post." },
+  { icon: "🎙️", title: "Live streams", desc: "Pick ninesixteen.video as a camera in OBS or Twitch." },
+  { icon: "💻", title: "Tutorials", desc: "Follow the cursor while keeping the frame tight on your UI." },
+  { icon: "🔒", title: "Private by default", desc: "Recordings stay on your machine until you export them." },
+];
+
+const FEATURES = [
+  {
+    icon: "▯",
+    title: "9×16 vertical capture",
+    desc: "Every recording and live feed is portrait-native — built for Shorts, Reels, and TikTok.",
+  },
+  {
+    icon: "◎",
+    title: "Cursor-driven framing",
+    desc: "Move the mouse to position the frame. Hold Alt + scroll to zoom from full desktop down to a tight crop.",
+  },
+  {
+    icon: "📷",
+    title: "Virtual camera",
+    desc: "The app starts a DirectShow camera named ninesixteen.video — drop it into any streaming tool.",
+  },
+  {
+    icon: "🎚️",
+    title: "System & mic audio",
+    desc: "Capture system audio, microphone, or both with gain meters and a quick level check before you roll.",
+  },
+  {
+    icon: "🪶",
+    title: "Native & lightweight",
+    desc: "Tauri on Windows Graphics Capture — low overhead, no bloated Electron shell.",
+  },
+  {
+    icon: "💾",
+    title: "Encrypted local files",
+    desc: "Recordings save as encrypted .ns files on disk. Preview in-app; export decrypted MP4 with Pro.",
+  },
+];
+
+const STEPS = [
+  {
+    title: "Press Record",
+    desc: "Hit the record button in Studio. The app minimizes and gives you a live framing overlay on your desktop.",
+    points: ["5-second countdown before capture starts", "Cancel anytime during the countdown"],
+  },
+  {
+    title: "Frame the shot",
+    desc: "Position the 9×16 viewport with your cursor. Zoom with Alt + scroll — snap to full frame when you need precision.",
+    points: ["Rule-of-thirds guides on the overlay", "Show or hide the frame before you roll"],
+  },
+  {
+    title: "Record or stream",
+    desc: "Capture encrypted video locally, preview it in-app, and send the same framed feed to your virtual camera.",
+    points: ["Up to 1440p · 30 or 60 fps", "Export MP4 anywhere with Pro"],
+  },
 ];
 
 function SectionHeading({ kicker, title }: { kicker: string; title: string }) {
   return (
     <div className="max-w-2xl">
       <span className="ns-chip">{kicker}</span>
-      <h2 className="mt-4 font-display text-3xl leading-tight sm:text-4xl">{title}</h2>
-    </div>
-  );
-}
-
-function AspectCard({
-  label,
-  title,
-  desc,
-  ratio,
-  accent = "blue",
-}: {
-  label: string;
-  title: string;
-  desc: string;
-  ratio: string;
-  accent?: "blue" | "pink";
-}) {
-  return (
-    <div className="ns-card flex items-center gap-5 p-5">
-      <div
-        className="grid shrink-0 place-items-center rounded-lg border-2 border-ink"
-        style={{
-          aspectRatio: ratio,
-          width: ratio === "16 / 9" ? 110 : 56,
-          background: accent === "blue" ? "var(--color-blue)" : "var(--color-pink)",
-        }}
-      >
-        <span className="font-display text-sm text-ink">{label}</span>
-      </div>
-      <div>
-        <h3 className="font-display text-xl">{title}</h3>
-        <p className="mt-1 font-body text-sm text-inksoft">{desc}</p>
-      </div>
-    </div>
-  );
-}
-
-function HandDiagram() {
-  return (
-    <div className="grid h-full grid-cols-2 gap-4">
-      <div className="ns-card flex flex-col items-center justify-center gap-2 bg-surface p-5 text-center">
-        <span className="text-4xl">🖱️</span>
-        <span className="font-display text-sm">Main hand</span>
-        <span className="font-mono text-[11px] text-inksoft">work as usual</span>
-      </div>
-      <div className="ns-card flex flex-col items-center justify-center gap-2 bg-blue/30 p-5 text-center">
-        <span className="text-4xl">🤚</span>
-        <span className="font-display text-sm">Other hand</span>
-        <span className="font-mono text-[11px] text-inksoft">drive the frame</span>
-      </div>
-      <div className="col-span-2 ns-card flex items-center justify-around bg-surface p-4 font-mono text-[11px] text-inksoft">
-        <span>pan ⇄</span>
-        <span>zoom ⊕⊖</span>
-        <span>rotate ↻</span>
-      </div>
+      <h2 className="mt-4 font-display text-3xl leading-tight tracking-tight sm:text-4xl">
+        {title}
+      </h2>
     </div>
   );
 }

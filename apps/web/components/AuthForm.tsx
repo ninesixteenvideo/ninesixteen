@@ -56,8 +56,8 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
         </h1>
         <p className="mt-1 font-body text-sm text-inksoft">
           {isSignUp
-            ? "Start recording free — no limits during beta."
-            : "Sign in to manage your account & downloads."}
+            ? "Create an account to sync Pro across desktop and web."
+            : "Sign in to manage billing and export entitlements."}
         </p>
 
         {!firebaseEnabled && (
@@ -160,7 +160,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
           border-radius: 12px;
           background: var(--color-bg);
           padding: 0.7rem 0.9rem;
-          font-family: var(--font-body);
+          font-family: var(--ns-font-body);
           font-size: 0.95rem;
           outline: none;
         }

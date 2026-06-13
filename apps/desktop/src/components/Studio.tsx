@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../state/store";
 import type { AudioSourceMode } from "../lib/types";
 
@@ -247,7 +247,21 @@ function Channel({
   gain: number;
   onGain: (gain: number) => void;
 }) {
+  const [draft, setDraft] = useState(gain);
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    if (!dragging.current) setDraft(gain);
+  }, [gain]);
+
   const pct = Math.min(100, Math.round(level * 100));
+
+  const commit = (value: number) => {
+    const clamped = Math.min(2, Math.max(0, value));
+    setDraft(clamped);
+    onGain(clamped);
+  };
+
   return (
     <div className="chan">
       <div className="chan-head">
@@ -264,10 +278,25 @@ function Channel({
           min={0}
           max={2}
           step={0.05}
-          value={gain}
-          onChange={(e) => onGain(Number(e.target.value))}
+          value={draft}
+          onPointerDown={() => {
+            dragging.current = true;
+          }}
+          onPointerUp={(e) => {
+            dragging.current = false;
+            commit(Number(e.currentTarget.value));
+          }}
+          onPointerCancel={() => {
+            dragging.current = false;
+            setDraft(gain);
+          }}
+          onChange={(e) => setDraft(Number(e.target.value))}
+          onBlur={(e) => {
+            if (dragging.current) return;
+            commit(Number(e.currentTarget.value));
+          }}
         />
-        <span className="chan-gain-val">{gain.toFixed(2)}×</span>
+        <span className="chan-gain-val">{draft.toFixed(2)}×</span>
       </div>
     </div>
   );

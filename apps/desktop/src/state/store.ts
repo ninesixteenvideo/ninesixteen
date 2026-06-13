@@ -30,6 +30,9 @@ const DEFAULT_VIEWPORT: Viewport = {
   orientation: "portrait",
 };
 
+/** Drops stale `set_audio_settings` responses when sliders move quickly. */
+let audioSettingsRequest = 0;
+
 interface Store {
   ready: boolean;
   monitors: MonitorInfo[];
@@ -321,11 +324,14 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setAudioSettings: async (partial) => {
+    const req = ++audioSettingsRequest;
     const next = { ...get().audioSettings, ...partial };
     set({ audioSettings: next });
     try {
       const saved = await invoke<AudioSettings>("set_audio_settings", { settings: next });
-      set({ audioSettings: saved });
+      if (req === audioSettingsRequest) {
+        set({ audioSettings: saved });
+      }
     } catch (e) {
       set({ error: String(e) });
     }

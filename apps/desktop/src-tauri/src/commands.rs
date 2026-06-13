@@ -496,10 +496,13 @@ pub fn set_audio_settings(
     } else if !settings.calibrated {
         settings.calibrated = false;
     }
+    let prev = handles.state.lock().audio_settings.clone();
+    let monitor_needs_restart =
+        prev.source != settings.source || prev.microphone_id != settings.microphone_id;
     handles.state.lock().audio_settings = settings.clone();
     if settings.source == crate::state::AudioSourceMode::None {
         audio::stop_monitor();
-    } else {
+    } else if monitor_needs_restart {
         audio::start_monitor(settings.clone())?;
     }
     let _ = app.emit("audio:settings", &settings);

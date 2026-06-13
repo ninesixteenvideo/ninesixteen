@@ -1,28 +1,44 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, Inter } from "next/font/google";
 import "@ninesixteen/brand/theme.css";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-ibm-plex-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "ninesixteen.video — record & stream, framed by hand",
+  title: "ninesixteen.video — vertical desktop capture for creators",
   description:
-    "A lightweight desktop recorder & live streamer with a tactile two-handed framing viewport. Capture in 16×9 or 9×16 and shift the frame on the fly with your other hand.",
+    "Record and stream your desktop in crisp 9×16. Frame with your cursor, zoom with Alt + scroll, and pipe the feed into OBS or export MP4 with Pro.",
   applicationName: "ninesixteen.video",
   keywords: [
     "screen recorder",
-    "live streaming",
     "vertical video",
     "9x16",
-    "16x9",
+    "short form",
+    "virtual camera",
+    "OBS",
     "content creators",
-    "tauri app",
+    "windows app",
   ],
   openGraph: {
     title: "ninesixteen.video",
     description:
-      "Record & stream your desktop. Frame it with your other hand. 16×9 or 9×16, panned, zoomed and rotated live.",
+      "Vertical desktop capture for Shorts, Reels, and live streams. Frame in five seconds. Record locally or via virtual camera.",
     type: "website",
   },
 };
@@ -35,8 +51,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="ns-grain min-h-screen">
+    <html lang="en" className={`${inter.variable} ${ibmPlexMono.variable}`}>
+      <body className="ns-grain min-h-screen font-body antialiased">
         <AuthProvider>
           <div className="relative z-10 flex min-h-screen flex-col">
             <SiteHeader />

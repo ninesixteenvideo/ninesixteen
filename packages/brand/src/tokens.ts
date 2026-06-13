@@ -80,7 +80,7 @@ export const aspect = {
 } as const;
 
 export const brandName = "ninesixteen.video";
-export const tagline = "Record & stream your desktop. Frame it with your other hand.";
+export const tagline = "Vertical desktop capture for Shorts, Reels, and live streams.";
 
 export type Tokens = {
   colors: typeof colors;

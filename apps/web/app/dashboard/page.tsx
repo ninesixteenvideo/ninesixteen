@@ -99,7 +99,7 @@ function DashboardInner() {
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <InfoCard title="Recordings" body="Your captures are stored locally on your device. Open the desktop app to browse them." />
+        <InfoCard title="Recordings" body="Captures live in ~/Videos/ninesixteen as encrypted .ns files. Browse and preview them in the desktop app." />
         <InfoCard
           title="Billing"
           body={

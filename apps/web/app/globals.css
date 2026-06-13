@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
-/* Map the shared brand tokens into Tailwind's theme so we get utilities like
-   bg-bg, text-ink, text-blue, font-display, etc. */
+/* Tailwind utilities → same tokens as desktop (packages/brand/theme.css) */
 @theme {
   --color-bg: #f4f3ef;
   --color-bgalt: #eae8e2;
@@ -20,23 +19,52 @@
   --color-mint: #6b9e8a;
   --color-line: #323238;
   --color-linesoft: #d5d2cb;
+  --color-danger: #b84a4f;
 
-  --font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  --font-display: var(--ns-font-display);
+  --font-body: var(--ns-font-body);
+  --font-mono: var(--ns-font-mono);
 
   --radius-retro: 22px;
 }
 
-html,
+html {
+  --ns-font-display: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ns-font-body: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ns-font-mono: var(--font-ibm-plex-mono), "IBM Plex Mono", "JetBrains Mono", ui-monospace,
+    monospace;
+  font-family: var(--ns-font-body);
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-ink);
-  font-family: var(--font-body);
+  font-family: var(--ns-font-body);
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   scroll-behavior: smooth;
+}
+
+button,
+input,
+select,
+textarea,
+optgroup {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--ns-font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 ::selection {
@@ -44,7 +72,6 @@ body {
   color: var(--color-surface);
 }
 
-/* Animated sunburst + marquee helpers */
 @keyframes ns-spin {
   to {
     transform: rotate(360deg);
@@ -75,19 +102,123 @@ body {
   animation: ns-float 5s ease-in-out infinite;
 }
 .ns-marquee {
-  animation: ns-marquee 22s linear infinite;
+  animation: ns-marquee 28s linear infinite;
 }
 
 a {
   color: inherit;
 }
 
+/* Match desktop: display = Inter semibold, body = Inter, mono = IBM Plex Mono */
 .font-display {
+  font-family: var(--ns-font-display);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-/* Colored CTAs — light text on slate / terracotta fills */
+.font-body {
+  font-family: var(--ns-font-body);
+}
+
+.font-mono {
+  font-family: var(--ns-font-mono);
+}
+
 .bg-blue,
 .bg-pink {
   color: var(--color-surface);
+}
+
+/* CTAs — same as desktop .tab / .ns-btn weight */
+.ns-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-ink);
+  border-radius: 999px;
+  padding: 0.85rem 1.6rem;
+  font-family: var(--ns-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 5px 5px 0 var(--color-ink);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.ns-cta:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--color-ink);
+}
+.ns-cta--sm {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+.ns-cta--sm:hover {
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+.ns-cta--primary {
+  background: var(--color-blue);
+  color: var(--color-surface);
+}
+.ns-cta--accent {
+  background: var(--color-pink);
+  color: var(--color-surface);
+}
+.ns-cta--ghost {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* Stats row */
+.ns-stats-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  border-top: 2px solid var(--color-ink);
+  border-bottom: 2px solid var(--color-ink);
+}
+@media (min-width: 768px) {
+  .ns-stats-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.ns-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 1rem;
+  border-right: 2px solid var(--color-linesoft);
+}
+.ns-stat:last-child {
+  border-right: none;
+}
+@media (max-width: 767px) {
+  .ns-stat:nth-child(2n) {
+    border-right: none;
+  }
+  .ns-stat:nth-child(-n + 2) {
+    border-bottom: 2px solid var(--color-linesoft);
+  }
+}
+.ns-stat-value {
+  font-family: var(--ns-font-display);
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.ns-stat-label {
+  font-family: var(--ns-font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-inksoft);
+}
+
+/* Card variants */
+.ns-card--flat {
+  box-shadow: none;
+  background: var(--color-surface);
+}
+.ns-cta-panel {
+  background: linear-gradient(165deg, var(--color-surface) 0%, var(--color-bgalt) 100%);
 }
