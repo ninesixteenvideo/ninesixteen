@@ -96,11 +96,18 @@ pub fn plaintext_len(src: &Path) -> io::Result<u64> {
 pub fn decrypt_to_file(src: &Path, dst: &Path) -> io::Result<()> {
     let mut f = File::open(src)?;
     let iv = read_iv(&mut f)?;
-    let mut data = Vec::new();
-    f.read_to_end(&mut data)?;
     let mut cipher = cipher_with(&iv);
-    cipher.apply_keystream(&mut data);
-    File::create(dst)?.write_all(&data)?;
+    let mut out = File::create(dst)?;
+    let mut buf = vec![0u8; CHUNK];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        let mut chunk = buf[..n].to_vec();
+        cipher.apply_keystream(&mut chunk);
+        out.write_all(&chunk)?;
+    }
     Ok(())
 }
 

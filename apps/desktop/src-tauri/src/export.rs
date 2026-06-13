@@ -1,4 +1,5 @@
 use crate::state::RecordingInfo;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 /// Default folder for exported MP4s: Documents/Videos.
@@ -48,9 +49,16 @@ pub fn upload_recording_to_drive(id: &str, access_token: &str) -> Result<String,
     let temp_mp4 = temp_dir.join(&rec.filename);
     export_decrypted_mp4(&rec, &temp_mp4)?;
 
-    let file_bytes =
-        std::fs::read(&temp_mp4).map_err(|e| format!("Read export file: {e}"))?;
+    let result = upload_mp4_to_drive(&temp_mp4, &rec.filename, access_token);
     let _ = std::fs::remove_file(&temp_mp4);
+    result
+}
+
+fn upload_mp4_to_drive(path: &Path, filename: &str, access_token: &str) -> Result<String, String> {
+    let file_size = std::fs::metadata(path)
+        .map_err(|e| format!("Read export file: {e}"))?
+        .len();
+    let file = File::open(path).map_err(|e| format!("Open export file: {e}"))?;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(60 * 30))
@@ -62,9 +70,9 @@ pub fn upload_recording_to_drive(id: &str, access_token: &str) -> Result<String,
         .bearer_auth(access_token)
         .header("Content-Type", "application/json; charset=UTF-8")
         .header("X-Upload-Content-Type", "video/mp4")
-        .header("X-Upload-Content-Length", file_bytes.len().to_string())
+        .header("X-Upload-Content-Length", file_size.to_string())
         .json(&serde_json::json!({
-            "name": rec.filename,
+            "name": filename,
             "mimeType": "video/mp4",
         }))
         .send()
@@ -85,8 +93,8 @@ pub fn upload_recording_to_drive(id: &str, access_token: &str) -> Result<String,
     let upload = client
         .put(upload_url)
         .header("Content-Type", "video/mp4")
-        .header("Content-Length", file_bytes.len().to_string())
-        .body(file_bytes)
+        .header("Content-Length", file_size.to_string())
+        .body(reqwest::blocking::Body::sized(file, file_size))
         .send()
         .map_err(|e| format!("Drive upload: {e}"))?;
 

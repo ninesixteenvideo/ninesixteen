@@ -428,13 +428,19 @@ pub fn export_recording(id: String, dest: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn export_recording_local(id: String) -> Result<String, String> {
-    crate::export::export_recording_local(&id)
+pub async fn export_recording_local(id: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::export::export_recording_local(&id))
+        .await
+        .map_err(|e| format!("Export task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn export_recording_to_drive(id: String, access_token: String) -> Result<String, String> {
-    crate::export::upload_recording_to_drive(&id, &access_token)
+pub async fn export_recording_to_drive(id: String, access_token: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::export::upload_recording_to_drive(&id, &access_token)
+    })
+    .await
+    .map_err(|e| format!("Drive export task failed: {e}"))?
 }
 
 #[tauri::command]

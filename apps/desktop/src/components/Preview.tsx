@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, mediaSrc } from "../lib/bridge";
@@ -19,6 +19,7 @@ export function Preview() {
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [cardMode, setCardMode] = useState<CardMode>("default");
   const [toast, setToast] = useState<string | null>(null);
+  const driveExportRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (recordings.length === 0) {
@@ -90,12 +91,19 @@ export function Preview() {
   }
 
   function startDriveExport(rec: RecordingInfo) {
+    if (driveExportRef.current === rec.id) {
+      showToast("Google Drive export already in progress…");
+      return;
+    }
+
     setCardMode("default");
     showToast("Google Drive export started — finish sign-in in your browser if prompted.");
+    driveExportRef.current = rec.id;
 
     void (async () => {
       try {
         const token = await ensureDriveToken();
+        showToast("Uploading to Google Drive…");
         const link = await invoke<string>("export_recording_to_drive", {
           id: rec.id,
           accessToken: token,
@@ -111,6 +119,10 @@ export function Preview() {
         const msg = e instanceof Error ? e.message : "Drive export failed";
         if (!msg.toLowerCase().includes("timed out")) {
           showToast(msg);
+        }
+      } finally {
+        if (driveExportRef.current === rec.id) {
+          driveExportRef.current = null;
         }
       }
     })();
