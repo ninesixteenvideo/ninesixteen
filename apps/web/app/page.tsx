@@ -156,7 +156,7 @@ export default function HomePage() {
 const STATS = [
   { value: "9×16", label: "Portrait output" },
   { value: "5s", label: "Framing countdown" },
-  { value: "60fps", label: "Up to 1440p" },
+  { value: "60fps", label: "Up to 1080p" },
   { value: "Local", label: "Encrypted on disk" },
 ];
 
@@ -214,7 +214,7 @@ const STEPS = [
   {
     title: "Save & preview",
     desc: "Capture encrypted video locally, preview it in-app, and export MP4 with Pro when you are ready.",
-    points: ["Up to 1440p · 30 or 60 fps", "Export MP4 anywhere with Pro"],
+    points: ["Up to 1080p · 30 or 60 fps", "Export MP4 anywhere with Pro"],
   },
 ];
 

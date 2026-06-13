@@ -65,7 +65,7 @@ export interface InputSettings {
 export interface RecordingSettings {
   orientation: Orientation;
   fps: number;
-  quality: 720 | 1080 | 1440;
+  quality: 720 | 1080;
   captureCursor: boolean;
 }
 

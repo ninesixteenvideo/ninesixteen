@@ -163,7 +163,21 @@ function AuthFormInner({
           </button>
         </form>
 
-        <p className="mt-5 text-center font-body text-sm text-inksoft">
+        {isSignUp && (
+          <p className="mt-5 text-center font-body text-sm text-inksoft">
+            By creating an account, you agree to our{" "}
+            <Link href="/terms" className="font-semibold text-bluedeep hover:underline">
+              Terms of Use
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="font-semibold text-bluedeep hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        )}
+
+        <p className={`text-center font-body text-sm text-inksoft ${isSignUp ? "mt-3" : "mt-5"}`}>
           {isSignUp ? (
             <>
               Already have an account?{" "}

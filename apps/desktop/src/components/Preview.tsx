@@ -309,7 +309,7 @@ function SelectedRecordingCard({
               {exporting === "local" ? (
                 <span className="card-action-spinner" aria-hidden="true" />
               ) : (
-                <LocalFileGlyph />
+                <LocalFolderGlyph />
               )}
             </button>
           </div>
@@ -343,38 +343,52 @@ function SelectedRecordingCard({
 
 function GoogleDriveGlyph() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-      <path fill="#3777e3" d="M6.75 3.25 1.5 12l5.25 8.75h10.5L22.5 12 17.25 3.25z" />
-      <path fill="#ffcf63" d="M6.75 3.25h10.5L17.25 12H6.75z" />
-      <path fill="#11a861" d="M1.5 12h10.5L8.25 20.75H1.5z" />
+    <svg
+      className="card-action-glyph card-action-glyph--drive"
+      viewBox="0 0 87.3 78"
+      aria-hidden="true"
+    >
+      <path
+        fill="#0066DA"
+        d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.24l13.75-23.8h-27.5c0 1.55.4 3.04 1.15 4.35z"
+      />
+      <path
+        fill="#00AC47"
+        d="m43.65 25-13.75-23.8c-1.35.74-2.5 1.84-3.3 3.24l-25.4 44a9.06 9.06 0 0 0-1.15 4.35h27.5z"
+      />
+      <path
+        fill="#EA4335"
+        d="m73.55 76.8c1.35-.74 2.5-1.84 3.3-3.24l1.6-2.75 7.65-13.25c.75-1.3 1.15-2.8 1.15-4.35h-27.502l5.925 10.25z"
+      />
+      <path
+        fill="#00832D"
+        d="m43.65 25 13.75-23.8c-1.35-.74-2.8-1.15-4.35-1.15h-18.85c-1.55 0-3 .41-4.25 1.15l-13.75 23.8z"
+      />
+      <path
+        fill="#2684FC"
+        d="m59.8 53h-32.3l-13.75 23.8c1.25.75 2.7 1.15 4.25 1.15h46.85c1.55 0 3-.41 4.25-1.15z"
+      />
+      <path
+        fill="#FFBA00"
+        d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.24l-13.75 23.8 16.15 23.25z"
+      />
     </svg>
   );
 }
 
-function LocalFileGlyph() {
+function LocalFolderGlyph() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+    <svg
+      className="card-action-glyph card-action-glyph--folder"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
       <path
-        fill="currentColor"
-        d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9.5L14.5 2z"
-        opacity="0.2"
+        fill="#F9A825"
+        d="M3 7v11c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2h-7.5L9 5H5C3.9 5 3 5.9 3 7z"
       />
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M14 2v7h7M8 13h8M8 17h6"
-      />
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="m9 16 2 2 4-4"
-      />
+      <path fill="#FBC02D" d="M3 7c0-1.1.9-2 2-2h3.5L11 7H3z" />
+      <path fill="#FFEB3B" d="M5 10h14v8H5z" opacity="0.45" />
     </svg>
   );
 }

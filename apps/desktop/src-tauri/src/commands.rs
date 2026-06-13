@@ -472,6 +472,11 @@ pub fn set_recording_settings(
 ) {
     let mut st = handles.state.lock();
     st.recording_settings = settings;
+    st.recording_settings.quality = if st.recording_settings.quality <= 720 {
+        720
+    } else {
+        1080
+    };
     st.recording_settings.orientation = Orientation::Portrait;
     handles.viewport.lock().viewport.orientation = Orientation::Portrait;
 }

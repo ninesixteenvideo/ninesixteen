@@ -230,3 +230,15 @@ a {
   width: 100%;
   min-height: 520px;
 }
+
+/* Legal pages */
+.legal-section:target h2 {
+  color: var(--color-pinkdeep);
+}
+.legal-toc a {
+  text-decoration: none;
+}
+.legal-toc a:hover {
+  text-decoration: underline;
+}
+

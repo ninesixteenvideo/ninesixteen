@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { isDesktop } from "../lib/bridge";
+import { WEB_URL } from "../lib/firebase";
+
+async function openLegalPage(path: "/terms" | "/privacy") {
+  const url = `${WEB_URL}${path}`;
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
 
 /**
  * Compact sign-in / sign-up panel used inside the account modal and the
@@ -123,6 +134,20 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           {isSignUp ? "Sign in" : "Create one"}
         </button>
       </p>
+
+      {isSignUp && (
+        <p className="auth-legal muted">
+          By creating an account, you agree to our{" "}
+          <button type="button" className="link-btn" onClick={() => openLegalPage("/terms")}>
+            Terms of Use
+          </button>{" "}
+          and{" "}
+          <button type="button" className="link-btn" onClick={() => openLegalPage("/privacy")}>
+            Privacy Policy
+          </button>
+          .
+        </p>
+      )}
     </div>
   );
 }

@@ -163,10 +163,10 @@ pub fn crop_rect(vp: &Viewport, src_w: u32, src_h: u32) -> CropRect {
 }
 
 /// Output dimensions for the recording. `short_edge` is the quality the user
-/// picks (720/1080/1440) — i.e. the 9-side — and the long (16-) side is
+/// picks (720 or 1080) — i.e. the 9-side — and the long (16-) side is
 /// derived so the file is an exact standard resolution.
 pub fn output_dims(o: Orientation, short_edge: u32) -> (u32, u32) {
-    let short = short_edge.clamp(2, 2160);
+    let short = if short_edge <= 720 { 720 } else { 1080 };
     let long = (((short as f64) * 16.0 / 9.0).round() as u32).max(2);
     let (w, h) = match o {
         Orientation::Landscape => (long, short),

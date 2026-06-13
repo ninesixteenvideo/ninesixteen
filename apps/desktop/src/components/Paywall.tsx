@@ -5,7 +5,7 @@ import { AuthPanel } from "./AuthPanel";
 const PRO_FEATURES = [
   "Export & save unlimited videos",
   "No watermark",
-  "4K / 60fps encoding",
+  "1080p / 60fps encoding",
   "Priority builds & support",
 ];
 

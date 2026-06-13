@@ -1,5 +1,16 @@
 import { useStore } from "../state/store";
 import { isDesktop } from "../lib/bridge";
+import { WEB_URL } from "../lib/firebase";
+
+async function openLegalPage(path: "/terms" | "/privacy") {
+  const url = `${WEB_URL}${path}`;
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
 
 export function Settings() {
   const {
@@ -57,7 +68,7 @@ export function Settings() {
         <div className="row" style={{ marginBottom: 12 }}>
           <span className="label">Resolution</span>
           <div className="seg">
-            {([720, 1080, 1440] as const).map((q) => (
+            {([720, 1080] as const).map((q) => (
               <button
                 key={q}
                 className={recordingSettings.quality === q ? "on" : ""}
@@ -91,6 +102,23 @@ export function Settings() {
               setRecordingSettings({ captureCursor: !recordingSettings.captureCursor })
             }
           />
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <h3>Legal</h3>
+        <p className="muted" style={{ marginBottom: 12 }}>
+          Terms of Use and Privacy Policy for {isDesktop ? "the desktop app and" : ""} the
+          ninesixteen.video website. Contact{" "}
+          <a href="mailto:dev@ninesixteen.video">dev@ninesixteen.video</a> with questions.
+        </p>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <button className="btn ghost sm" onClick={() => openLegalPage("/terms")}>
+            Terms of Use
+          </button>
+          <button className="btn ghost sm" onClick={() => openLegalPage("/privacy")}>
+            Privacy Policy
+          </button>
         </div>
       </section>
     </div>

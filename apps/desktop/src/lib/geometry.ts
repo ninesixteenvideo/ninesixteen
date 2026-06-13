@@ -101,12 +101,11 @@ export function cropRect(vp: Viewport, srcW: number, srcH: number): Rect {
 
 /**
  * Output dimensions for an orientation + selected quality (the 9-side / short
- * edge: 720/1080/1440). The 16-side is derived for an exact standard
+ * edge: 720 or 1080). The 16-side is derived for an exact standard
  * resolution, e.g. 1080 → 1920×1080 (landscape) / 1080×1920 (portrait).
- * Capped at 2160 on the GPU encode path.
  */
 export function outputDims(o: Orientation, shortEdge: number): { w: number; h: number } {
-  const capped = Math.min(shortEdge, 1440);
+  const capped = Math.min(Math.max(shortEdge, 720), 1080);
   const long = Math.round((capped * 16) / 9) & ~1;
   const short = capped & ~1;
   return o === "landscape" ? { w: long, h: short } : { w: short, h: long };

@@ -332,7 +332,9 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setRecordingSettings: async (s) => {
-    const next = { ...get().recordingSettings, ...s, orientation: "portrait" as const };
+    const merged = { ...get().recordingSettings, ...s, orientation: "portrait" as const };
+    const quality = merged.quality <= 720 ? 720 : 1080;
+    const next = { ...merged, quality };
     set({ recordingSettings: next });
     await invoke("set_recording_settings", { settings: next });
   },
