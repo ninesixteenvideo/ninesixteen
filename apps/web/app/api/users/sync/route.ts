@@ -35,10 +35,15 @@ export async function POST(req: Request) {
     // optional body
   }
 
-  const plan = await upsertUserProfileOnSignIn(decoded.uid, {
-    email: body.email ?? decoded.email ?? null,
-    displayName: body.displayName ?? decoded.name ?? null,
-  });
-
-  return NextResponse.json({ ok: true, plan: plan ?? "trial" });
+  try {
+    const plan = await upsertUserProfileOnSignIn(decoded.uid, {
+      email: body.email ?? decoded.email ?? null,
+      displayName: body.displayName ?? decoded.name ?? null,
+    });
+    return NextResponse.json({ ok: true, plan: plan ?? "trial" });
+  } catch (err) {
+    console.error("[users/sync]", err);
+    const message = err instanceof Error ? err.message : "Sync failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
