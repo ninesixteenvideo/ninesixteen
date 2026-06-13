@@ -2,6 +2,7 @@ mod audio;
 mod capture;
 mod commands;
 mod crypto;
+mod export;
 mod geometry;
 mod hotkeys;
 #[cfg(windows)]
@@ -347,6 +348,8 @@ pub fn run() {
             commands::list_recordings,
             commands::delete_recording,
             commands::export_recording,
+            commands::export_recording_local,
+            commands::export_recording_to_drive,
             commands::open_recordings_folder,
             commands::set_input_settings,
             commands::set_recording_settings,

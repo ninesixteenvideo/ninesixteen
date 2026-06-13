@@ -7,5 +7,11 @@ service cloud.firestore {
       // All writes go through the server (Admin SDK): sign-in sync + Stripe webhook.
       allow write: if false;
     }
+    match /desktopAuthSessions/{code} {
+      allow read, write: if false;
+    }
+    match /driveAuthSessions/{code} {
+      allow read, write: if false;
+    }
   }
 }

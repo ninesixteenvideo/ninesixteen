@@ -6,7 +6,13 @@ import { Suspense, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useAuth } from "@/lib/auth";
 
-function AuthFormInner({ mode }: { mode: "sign-in" | "sign-up" }) {
+function AuthFormInner({
+  mode,
+  onAuthenticated,
+}: {
+  mode: "sign-in" | "sign-up";
+  onAuthenticated?: () => void;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { signIn, signUp, signInWithGoogle, firebaseEnabled } = useAuth();
@@ -45,7 +51,8 @@ function AuthFormInner({ mode }: { mode: "sign-in" | "sign-up" }) {
     try {
       if (isSignUp) await signUp(email, password, name);
       else await signIn(email, password);
-      afterAuth();
+      if (onAuthenticated) onAuthenticated();
+      else afterAuth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -58,7 +65,8 @@ function AuthFormInner({ mode }: { mode: "sign-in" | "sign-up" }) {
     setBusy(true);
     try {
       await signInWithGoogle();
-      afterAuth();
+      if (onAuthenticated) onAuthenticated();
+      else afterAuth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Google sign-in failed.");
     } finally {
@@ -225,7 +233,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
+export function AuthForm({
+  mode,
+  onAuthenticated,
+}: {
+  mode: "sign-in" | "sign-up";
+  onAuthenticated?: () => void;
+}) {
   return (
     <Suspense
       fallback={
@@ -234,7 +248,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
         </div>
       }
     >
-      <AuthFormInner mode={mode} />
+      <AuthFormInner mode={mode} onAuthenticated={onAuthenticated} />
     </Suspense>
   );
 }

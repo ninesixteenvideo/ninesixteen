@@ -24,6 +24,7 @@ import {
 } from "./firebase";
 import { isDesktop } from "./bridge";
 import { syncUserProfile } from "./userSync";
+import { signInViaDesktopBrowser } from "./desktopAuthHandoff";
 
 export type { Plan };
 
@@ -204,13 +205,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     const auth = getFirebaseAuth();
     if (auth) {
-      const { signInWithPopup, signInWithRedirect } = await import("firebase/auth");
-      const provider = googleProvider();
       if (isDesktop) {
-        await signInWithRedirect(auth, provider);
+        await signInViaDesktopBrowser();
         return;
       }
-      await signInWithPopup(auth, provider);
+      const { signInWithPopup } = await import("firebase/auth");
+      await signInWithPopup(auth, googleProvider());
       return;
     }
     const demoUser: NsUser = {

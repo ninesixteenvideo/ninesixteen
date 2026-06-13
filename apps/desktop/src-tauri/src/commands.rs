@@ -419,23 +419,22 @@ pub fn delete_recording(id: String) {
     recordings::delete_recording(&id);
 }
 
-/// Copy a recording to a user-chosen destination (the "Export" save flow).
-/// The destination path is picked on the frontend via the save dialog; we
-/// resolve the source by id here so only known recordings can be exported.
+/// Copy a recording to a user-chosen destination (legacy save dialog flow).
 #[tauri::command]
 pub fn export_recording(id: String, dest: String) -> Result<(), String> {
-    let rec = recordings::list_recordings()
-        .into_iter()
-        .find(|r| r.id == id)
-        .ok_or_else(|| "Recording not found".to_string())?;
-    let src = std::path::PathBuf::from(&rec.path);
-    if !src.exists() {
-        return Err("Source file no longer exists".to_string());
-    }
-    // Decrypt the at-rest .ns into the user-chosen .mp4.
-    crate::crypto::decrypt_to_file(&src, std::path::Path::new(&dest))
-        .map_err(|e| format!("Export failed: {e}"))?;
+    let rec = crate::export::resolve_recording(&id)?;
+    crate::export::export_decrypted_mp4(&rec, std::path::Path::new(&dest))?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn export_recording_local(id: String) -> Result<String, String> {
+    crate::export::export_recording_local(&id)
+}
+
+#[tauri::command]
+pub fn export_recording_to_drive(id: String, access_token: String) -> Result<String, String> {
+    crate::export::upload_recording_to_drive(&id, &access_token)
 }
 
 #[tauri::command]

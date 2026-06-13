@@ -29,6 +29,7 @@ chrono = { version = "0.4", features = ["clock"] }
 dirs = "5"
 parking_lot = "0.12"
 base64 = "0.22"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]

@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, mediaSrc } from "../lib/bridge";
+import { ensureDriveToken } from "../lib/driveAuth";
 import type { RecordingInfo } from "../lib/types";
 import { Paywall } from "./Paywall";
+
+type ExportKind = "local" | "drive";
+type CardMode = "default" | "export" | "delete";
 
 export function Preview() {
   const { recordings, deleteRecording } = useStore();
@@ -12,10 +16,10 @@ export function Preview() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [srcMap, setSrcMap] = useState<Record<string, string>>({});
   const [showPaywall, setShowPaywall] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
+  const [cardMode, setCardMode] = useState<CardMode>("default");
   const [toast, setToast] = useState<string | null>(null);
 
-  // Keep a valid selection as the list changes.
   useEffect(() => {
     if (recordings.length === 0) {
       setSelectedId(null);
@@ -24,7 +28,19 @@ export function Preview() {
     }
   }, [recordings, selectedId]);
 
-  // Resolve asset-protocol URLs for every recording path.
+  useEffect(() => {
+    setCardMode("default");
+  }, [selectedId]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape" || cardMode === "default") return;
+      setCardMode("default");
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cardMode]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -43,7 +59,12 @@ export function Preview() {
     [recordings, selectedId]
   );
 
-  async function onExport(rec: RecordingInfo) {
+  function showToast(msg: string) {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 3200);
+  }
+
+  function openExport() {
     if (!isPro) {
       setShowPaywall(true);
       return;
@@ -52,26 +73,42 @@ export function Preview() {
       setToast("Export works in the desktop app.");
       return;
     }
-    setExporting(true);
+    setCardMode("export");
+  }
+
+  async function runExport(rec: RecordingInfo, kind: ExportKind) {
+    setExporting(kind);
     try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const dest = await save({
-        defaultPath: rec.filename,
-        filters: [{ name: "MP4 Video", extensions: ["mp4"] }],
+      if (kind === "local") {
+        const dest = await invoke<string>("export_recording_local", { id: rec.id });
+        showToast(`Saved to ${dest}`);
+        setCardMode("default");
+        return;
+      }
+
+      const token = await ensureDriveToken();
+      const link = await invoke<string>("export_recording_to_drive", {
+        id: rec.id,
+        accessToken: token,
       });
-      if (!dest) return;
-      await invoke("export_recording", { id: rec.id, dest });
-      showToast("Exported ✓");
+      showToast("Uploaded to Google Drive ✓");
+      setCardMode("default");
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(link);
+      } catch {
+        /* optional */
+      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Export failed");
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
-  function showToast(msg: string) {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2600);
+  async function confirmDelete(id: string) {
+    await deleteRecording(id);
+    setCardMode("default");
   }
 
   if (recordings.length === 0) {
@@ -88,6 +125,8 @@ export function Preview() {
     );
   }
 
+  const busy = exporting !== null;
+
   return (
     <div className="preview">
       <aside className="preview-list scroll">
@@ -98,23 +137,19 @@ export function Preview() {
         </div>
         {recordings.map((r) =>
           r.id === selectedId ? (
-            <div key={r.id} className="preview-item active preview-item-actions">
-              <button
-                className="card-action delete"
-                onClick={() => deleteRecording(r.id)}
-                title="Delete this recording"
-              >
-                Delete
-              </button>
-              <button
-                className="card-action export"
-                onClick={() => onExport(r)}
-                disabled={exporting}
-                title={isPro ? "Export to MP4" : "Subscribe to export"}
-              >
-                {exporting ? "…" : isPro ? "Export" : "Export 🔒"}
-              </button>
-            </div>
+            <SelectedRecordingCard
+              key={r.id}
+              mode={cardMode}
+              busy={busy}
+              isPro={isPro}
+              exporting={exporting}
+              onDelete={() => setCardMode("delete")}
+              onExport={openExport}
+              onExportDrive={() => runExport(r, "drive")}
+              onExportLocal={() => runExport(r, "local")}
+              onCancelDelete={() => setCardMode("default")}
+              onConfirmDelete={() => confirmDelete(r.id)}
+            />
           ) : (
             <button
               key={r.id}
@@ -179,6 +214,150 @@ export function Preview() {
       {toast && <div className="toast">{toast}</div>}
       {showPaywall && <Paywall onClose={() => setShowPaywall(false)} />}
     </div>
+  );
+}
+
+type SelectedRecordingCardProps = {
+  mode: CardMode;
+  busy: boolean;
+  isPro: boolean;
+  exporting: ExportKind | null;
+  onDelete: () => void;
+  onExport: () => void;
+  onExportDrive: () => void;
+  onExportLocal: () => void;
+  onCancelDelete: () => void;
+  onConfirmDelete: () => void;
+};
+
+function SelectedRecordingCard({
+  mode,
+  busy,
+  isPro,
+  exporting,
+  onDelete,
+  onExport,
+  onExportDrive,
+  onExportLocal,
+  onCancelDelete,
+  onConfirmDelete,
+}: SelectedRecordingCardProps) {
+  return (
+    <div className="preview-item active preview-item-actions">
+      <div className={`card-action-panel card-action-panel--${mode}`}>
+        {mode === "default" && (
+          <div className="card-action-slide" key="default">
+            <button
+              className="card-action delete"
+              onClick={onDelete}
+              disabled={busy}
+              title="Delete this recording"
+            >
+              Delete
+            </button>
+            <button
+              className="card-action export"
+              onClick={onExport}
+              disabled={busy}
+              title={isPro ? "Export recording" : "Subscribe to export"}
+            >
+              Export{!isPro ? " 🔒" : ""}
+            </button>
+          </div>
+        )}
+
+        {mode === "export" && (
+          <div className="card-action-slide" key="export">
+            <button
+              className="card-action drive icon-only"
+              onClick={onExportDrive}
+              disabled={busy}
+              title="Save to Google Drive"
+              aria-label="Save to Google Drive"
+            >
+              {exporting === "drive" ? (
+                <span className="card-action-spinner" aria-hidden="true" />
+              ) : (
+                <GoogleDriveGlyph />
+              )}
+            </button>
+            <button
+              className="card-action local icon-only"
+              onClick={onExportLocal}
+              disabled={busy}
+              title="Save to Documents/Videos"
+              aria-label="Save locally to Documents/Videos"
+            >
+              {exporting === "local" ? (
+                <span className="card-action-spinner" aria-hidden="true" />
+              ) : (
+                <LocalFileGlyph />
+              )}
+            </button>
+          </div>
+        )}
+
+        {mode === "delete" && (
+          <div className="card-action-slide card-action-confirm" key="delete">
+            <p className="card-action-question">Are you sure?</p>
+            <div className="card-action-row">
+              <button
+                className="card-action cancel"
+                onClick={onCancelDelete}
+                disabled={busy}
+              >
+                No
+              </button>
+              <button
+                className="card-action confirm"
+                onClick={onConfirmDelete}
+                disabled={busy}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GoogleDriveGlyph() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#3777e3" d="M6.75 3.25 1.5 12l5.25 8.75h10.5L22.5 12 17.25 3.25z" />
+      <path fill="#ffcf63" d="M6.75 3.25h10.5L17.25 12H6.75z" />
+      <path fill="#11a861" d="M1.5 12h10.5L8.25 20.75H1.5z" />
+    </svg>
+  );
+}
+
+function LocalFileGlyph() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9.5L14.5 2z"
+        opacity="0.2"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14 2v7h7M8 13h8M8 17h6"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m9 16 2 2 4-4"
+      />
+    </svg>
   );
 }
 

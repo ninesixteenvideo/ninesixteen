@@ -128,3 +128,15 @@ export async function upsertUserProfileOnSignIn(
   );
   return plan;
 }
+
+/** Issue a Firebase custom token so the desktop app can sign in after browser OAuth. */
+export async function createCustomToken(uid: string): Promise<string | null> {
+  const app = getAdminApp();
+  if (!app || !uid) return null;
+  try {
+    return await getFirebaseAdminAuth(app).createCustomToken(uid);
+  } catch (err) {
+    console.error("[firebaseAdmin] createCustomToken failed:", err);
+    return null;
+  }
+}

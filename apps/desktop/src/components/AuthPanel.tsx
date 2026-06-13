@@ -41,7 +41,8 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       </button>
       {isDesktop && firebaseEnabled && (
         <p className="auth-google-note muted">
-          Google opens in this window and returns you here when done.
+          Opens your browser to sign in with Google, then links your account back here
+          automatically.
         </p>
       )}
 

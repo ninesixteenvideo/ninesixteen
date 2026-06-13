@@ -1043,11 +1043,44 @@ input[type="range"] {
   font-weight: 700;
 }
 
-/* Selected recording: the card slot becomes Delete / Export actions, keeping
-   the exact footprint of a normal recording card. */
+/* Selected recording: the card slot becomes a two-button action panel. */
 .preview-item-actions {
-  gap: 8px;
+  gap: 0;
   cursor: default;
+  flex-direction: column;
+  padding: 8px;
+  min-height: 70px;
+}
+.card-action-panel {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  align-items: stretch;
+}
+.card-action-slide {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  animation: cardActionIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-action-confirm {
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+.card-action-question {
+  margin: 0;
+  text-align: center;
+  font-family: var(--ns-font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ns-ink);
+  animation: cardActionIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card-action-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 .preview-item-actions.active {
   background: var(--ns-surface);
@@ -1066,15 +1099,20 @@ input[type="range"] {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 2px 2px 0 var(--ns-ink);
-  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
+  transition:
+    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.12s ease,
+    background 0.12s ease;
 }
-.card-action:hover {
+.card-action:hover:not(:disabled) {
   transform: translate(-1px, -1px);
   box-shadow: 3px 3px 0 var(--ns-ink);
 }
-.card-action:active {
-  transform: translate(1px, 1px);
+.card-action:active:not(:disabled) {
+  transform: translate(1px, 1px) scale(0.98);
   box-shadow: 0 0 0 var(--ns-ink);
+  transition-duration: 0.06s;
 }
 .card-action.delete {
   background: var(--ns-surface);
@@ -1084,11 +1122,55 @@ input[type="range"] {
   background: var(--ns-pink-deep);
   color: #fff;
 }
+.card-action.drive {
+  background: #fff;
+  color: var(--ns-ink);
+}
+.card-action.local {
+  background: var(--ns-blue);
+  color: var(--ns-ink);
+}
+.card-action.cancel {
+  background: var(--ns-surface);
+  color: var(--ns-ink);
+}
+.card-action.confirm {
+  background: #ff5a5a;
+  color: #fff;
+}
+.card-action.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-action-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-top-color: var(--ns-ink);
+  border-radius: 50%;
+  animation: cardActionSpin 0.7s linear infinite;
+}
 .card-action:disabled {
   opacity: 0.6;
   cursor: default;
   transform: none;
   box-shadow: 2px 2px 0 var(--ns-ink);
+}
+@keyframes cardActionIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes cardActionSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Modals (paywall / account) ── */
