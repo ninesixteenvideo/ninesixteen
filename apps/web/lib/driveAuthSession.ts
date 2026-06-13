@@ -31,11 +31,12 @@ export async function consumeDriveAuthSession(
   const snap = await ref.get();
   if (!snap.exists) return null;
   const data = snap.data();
-  if (typeof data?.expiresAt === "number" && data.expiresAt < Date.now()) {
+  if (!data) return null;
+  if (typeof data.expiresAt === "number" && data.expiresAt < Date.now()) {
     await ref.delete();
     return null;
   }
-  const accessToken = data?.accessToken as string | undefined;
+  const accessToken = data.accessToken as string | undefined;
   if (!accessToken) return null;
   await ref.delete();
   return {
