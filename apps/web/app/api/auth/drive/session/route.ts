@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminConfigured } from "@/lib/firebaseAdmin";
 import { consumeDriveAuthSession } from "@/lib/driveAuthSession";
-import { corsHeaders } from "@/lib/cors";
+import { corsHeaders, optionsResponse, withCors } from "@/lib/cors";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
 import { productionConfigRequired } from "@/lib/serverEnv";
 
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const headers = corsHeaders(req);
 
   const blocked = productionConfigRequired("Firebase Admin");
-  if (blocked) return blocked;
+  if (blocked) return withCors(req, blocked);
 
   if (!isAdminConfigured) {
     return NextResponse.json({ status: "mock" }, { headers });
@@ -52,5 +52,5 @@ export async function GET(req: Request) {
 }
 
 export async function OPTIONS(req: Request) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
+  return optionsResponse(req);
 }
