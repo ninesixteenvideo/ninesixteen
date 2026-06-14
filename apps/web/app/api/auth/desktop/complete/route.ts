@@ -15,7 +15,7 @@ const UUID_RE =
 
 /** Web browser completes desktop sign-in after the user authenticates here. */
 export async function POST(req: Request) {
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return blocked;
 
   if (!isAdminConfigured) {

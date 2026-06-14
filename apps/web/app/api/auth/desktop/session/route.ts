@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     return new NextResponse(null, { status: 204, headers });
   }
 
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return withCors(req, blocked);
 
   if (!isAdminConfigured) {

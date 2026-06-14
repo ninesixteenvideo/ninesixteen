@@ -4,7 +4,7 @@ import { markDriveAuthReady } from "@/lib/driveAuthSession";
 import { exchangeGoogleAuthCode, isGoogleDriveOAuthConfigured } from "@/lib/googleOAuthServer";
 import { driveRedirectUri } from "@/lib/googlePkce";
 import { clientIp, rateLimit } from "@/lib/rateLimit";
-import { isProduction, productionConfigRequired } from "@/lib/serverEnv";
+import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
@@ -12,19 +12,18 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(req: Request) {
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return blocked;
 
   if (!isAdminConfigured) {
     return NextResponse.json({ ok: true, mock: true });
   }
 
-  if (isProduction() && !isGoogleDriveOAuthConfigured()) {
-    return (
-      productionConfigRequired("Google OAuth") ??
-      NextResponse.json({ error: "Google OAuth not configured" }, { status: 503 })
-    );
-  }
+  const oauthBlocked = productionConfigRequired(
+    "Google OAuth",
+    isGoogleDriveOAuthConfigured()
+  );
+  if (oauthBlocked) return oauthBlocked;
 
   const ip = clientIp(req);
   if (!rateLimit(`drive-complete:${ip}`, 30, 60_000)) {

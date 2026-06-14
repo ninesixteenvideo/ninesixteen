@@ -6,8 +6,11 @@ export function isProduction(): boolean {
 }
 
 /** Block mock/dev fallbacks in production — returns a 503 response or null. */
-export function productionConfigRequired(service: string): NextResponse | null {
-  if (!isProduction()) return null;
+export function productionConfigRequired(
+  service: string,
+  configured: boolean
+): NextResponse | null {
+  if (!isProduction() || configured) return null;
   return NextResponse.json(
     { error: `${service} is not configured for production` },
     { status: 503 }

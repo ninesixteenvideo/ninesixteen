@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 /** Verify Firebase auth + active Pro entitlement (used by the desktop export commands). */
 export async function GET(req: Request) {
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return blocked;
 
   if (!isAdminConfigured) {

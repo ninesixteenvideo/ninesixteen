@@ -20,7 +20,7 @@ export async function OPTIONS(req: Request) {
  * succeeds; the Stripe webhook still owns plan upgrades/downgrades.
  */
 export async function POST(req: Request) {
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return withCors(req, blocked);
 
   const ip = clientIp(req);

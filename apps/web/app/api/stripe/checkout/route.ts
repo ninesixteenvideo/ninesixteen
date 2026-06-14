@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   if (!isStripeConfigured) {
     if (isProduction()) {
       return (
-        productionConfigRequired("Stripe") ??
+        productionConfigRequired("Stripe", isStripeConfigured) ??
         NextResponse.json({ error: "Stripe not configured" }, { status: 503 })
       );
     }

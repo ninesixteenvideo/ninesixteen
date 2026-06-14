@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const headers = corsHeaders(req);
 
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return withCors(req, blocked);
 
   if (!isAdminConfigured) {

@@ -16,7 +16,7 @@ export async function OPTIONS(req: Request) {
 
 /** Desktop app registers a one-time handoff code + secret before opening the browser. */
 export async function POST(req: Request) {
-  const blocked = productionConfigRequired("Firebase Admin");
+  const blocked = productionConfigRequired("Firebase Admin", isAdminConfigured);
   if (blocked) return withCors(req, blocked);
 
   if (!isAdminConfigured) {
