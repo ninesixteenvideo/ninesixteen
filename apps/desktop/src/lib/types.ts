@@ -53,6 +53,7 @@ export interface CaptureState {
   recordingArmed: boolean;
   countdownSeconds: number;
   overlayFrame?: OverlayFrame | null;
+  captureCursor: boolean;
 }
 
 export interface RecordingInfo {

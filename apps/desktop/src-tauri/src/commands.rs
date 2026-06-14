@@ -68,6 +68,7 @@ fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
         recording_armed: st.recording_armed,
         countdown_seconds: st.countdown_seconds,
         overlay_frame: overlay_frame(vp, st.recording_settings.quality),
+        capture_cursor: st.recording_settings.capture_cursor,
     }
 }
 
@@ -726,6 +727,7 @@ pub fn set_input_settings(
 
 #[tauri::command]
 pub fn set_recording_settings(
+    app: AppHandle,
     handles: State<AppHandles>,
     settings: RecordingSettings,
 ) {
@@ -737,10 +739,21 @@ pub fn set_recording_settings(
         1080
     };
     st.recording_settings.orientation = Orientation::Portrait;
+    let capture_cursor = st.recording_settings.capture_cursor;
     handles.viewport.lock().viewport.orientation = Orientation::Portrait;
     drop(st);
+    emit_cursor_capture(&app, capture_cursor);
     if let Err(e) = capture::sync_output_dimensions(handles.state.clone()) {
         crate::log::capture_log(&format!("WARN: output dimension sync failed: {e}"));
+    }
+}
+
+/// Tell the overlay window whether the cursor will be baked into the recording,
+/// so it can show the "cursor hidden" badge. Main window keeps it in its store.
+fn emit_cursor_capture(app: &AppHandle, capture_cursor: bool) {
+    let _ = app.emit("overlay:cursor-capture", capture_cursor);
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.emit("overlay:cursor-capture", capture_cursor);
     }
 }
 

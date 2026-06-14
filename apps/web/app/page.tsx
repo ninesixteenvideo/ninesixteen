@@ -27,10 +27,10 @@ export default function HomePage() {
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
-              Download for Windows
+              Download free trial
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--ghost">
-              View pricing
+              Purchase for $49
             </Link>
           </div>
           <p className="mt-5 font-mono text-xs text-inkfaint">

@@ -166,6 +166,14 @@ export const useStore = create<Store>((set, get) => ({
       if (s.recording || s.arming || s.finalizing) return;
       void s.setOverlayVisible(!s.overlayVisible);
     });
+    listen("hotkey:toggle-cursor", () => {
+      const s = get();
+      // The cursor setting is locked into the WGC session once recording starts.
+      if (s.recording || s.finalizing) return;
+      void s.setRecordingSettings({
+        captureCursor: !s.recordingSettings.captureCursor,
+      });
+    });
 
     set({ ready: true });
 

@@ -21,6 +21,12 @@ const HOTKEYS: HotkeyEntry[] = [
     detail: "Toggle the on-desktop 9×16 overlay when you're not recording.",
   },
   {
+    group: "global",
+    keys: ["Alt", "C"],
+    title: "Cursor in recording",
+    detail: "Toggle whether the mouse cursor is baked into the saved video. The frame shows \u201ccursor hidden\u201d when it's off. Set it before you record.",
+  },
+  {
     group: "framing",
     keys: ["Alt", "Scroll"],
     title: "Zoom in / out",

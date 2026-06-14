@@ -18,6 +18,7 @@ export function Overlay() {
   const arming = useRef(false);
   const countdown = useRef(0);
   const recordingStartedAt = useRef<number | null>(null);
+  const captureCursor = useRef(true);
 
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -30,9 +31,15 @@ export function Overlay() {
         recording.current = st.recording;
         arming.current = st.recordingArmed ?? false;
         countdown.current = st.countdownSeconds ?? 0;
+        captureCursor.current = st.captureCursor ?? true;
       } catch {
         /* mock / not ready */
       }
+      unsubs.push(
+        await listen("overlay:cursor-capture", (on: boolean) => {
+          captureCursor.current = on;
+        }),
+      );
       unsubs.push(
         await listen("overlay:frame", (p: OverlayFrame) => {
           frame.current = p;
@@ -169,6 +176,23 @@ export function Overlay() {
             ? (performance.now() - recordingStartedAt.current) / 1000
             : 0;
         ctx.fillText(fmt(secs), dotX + 9 * dpr, cy);
+      }
+
+      if (!captureCursor.current) {
+        const text = "cursor hidden";
+        ctx.font = `${12 * dpr}px "IBM Plex Mono", monospace`;
+        const cpadX = 7 * dpr;
+        const ctw = ctx.measureText(text).width;
+        const cChipW = ctw + cpadX * 2;
+        const cChipH = 20 * dpr;
+        const cChipX = rx + rw - cChipW - 6 * dpr;
+        const cChipY = ry + 6 * dpr;
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        roundRect(ctx, cChipX, cChipY, cChipW, cChipH, 6 * dpr);
+        ctx.fill();
+        ctx.fillStyle = "#000000";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, cChipX + cpadX, cChipY + cChipH / 2);
       }
 
       const cd = countdown.current;

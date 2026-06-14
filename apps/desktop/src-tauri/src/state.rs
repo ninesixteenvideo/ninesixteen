@@ -194,6 +194,8 @@ pub struct CaptureState {
     pub recording_armed: bool,
     pub countdown_seconds: u8,
     pub overlay_frame: Option<OverlayFrame>,
+    /// Whether the mouse cursor is baked into the final recording (Alt+C toggles).
+    pub capture_cursor: bool,
 }
 
 #[derive(Clone, Copy, Serialize, Debug)]
