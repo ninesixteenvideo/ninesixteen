@@ -1,11 +1,5 @@
 //! Local MP4 recording via FFmpeg raw BGRA ingest (bypasses Media Foundation).
-//!
-//! CFR is anchored to wall clock. A GPU thread refreshes the latest crop; a slot
-//! scheduler enqueues one sample per 1/fps second on wall time; the encoder drains
-//! that queue to FFmpeg (may block) without shifting timeline positions.
-
-use crate::capture::{render_recording_frame};
-use crate::ffmpeg_util::find_ffmpeg;
+use crate::ffmpeg_util::{find_ffmpeg, ffmpeg_command};
 use crate::log::capture_log;
 use crate::save_progress;
 use crate::state::SharedState;
@@ -13,7 +7,7 @@ use crate::state::SharedState;
 use crate::audio::{self, RecordingAudio};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
 use std::sync::mpsc::{Receiver, SyncSender, RecvTimeoutError};
@@ -190,22 +184,46 @@ impl FileRecorder {
     }
 }
 
-fn wait_until_or_stop(deadline: Instant, stop_rx: &Receiver<()>) -> bool {
+fn wait_until_slot(deadline: Instant) {
     loop {
-        if stop_rx.try_recv().is_ok() {
-            return true;
-        }
         let now = Instant::now();
         if now >= deadline {
-            return false;
+            return;
         }
         let remaining = deadline - now;
         if remaining > Duration::from_millis(2) {
-            std::thread::sleep(Duration::from_millis(1));
+            std::thread::sleep(Duration::from_micros(500));
         } else {
             std::hint::spin_loop();
         }
     }
+}
+
+#[cfg(windows)]
+fn boost_recording_thread_priority() {
+    use windows::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+    };
+    unsafe {
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    }
+}
+
+#[cfg(not(windows))]
+fn boost_recording_thread_priority() {}
+
+/// Latest recording frame written by the capture thread (fresh monitor ingest).
+static REC_CAPTURE_FRAME: OnceLock<parking_lot::Mutex<Option<Arc<Vec<u8>>>>> = OnceLock::new();
+
+pub fn publish_capture_frame(frame: Arc<Vec<u8>>) {
+    let slot = REC_CAPTURE_FRAME.get_or_init(|| parking_lot::Mutex::new(None));
+    *slot.lock() = Some(frame);
+}
+
+fn take_capture_frame() -> Option<Arc<Vec<u8>>> {
+    REC_CAPTURE_FRAME
+        .get()
+        .and_then(|slot| slot.lock().take())
 }
 
 fn write_arc_frame(
@@ -233,47 +251,47 @@ fn write_arc_frame(
 
 struct GpuFeeder {
     latest: Arc<Mutex<Option<Arc<Vec<u8>>>>>,
-    generation: Arc<AtomicU64>,
     renders: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
     thread: JoinHandle<()>,
 }
 
 impl GpuFeeder {
-    fn start(state: SharedState) -> Self {
+    fn start(_state: SharedState, fps: u32) -> Self {
         let latest = Arc::new(Mutex::new(None));
-        let generation = Arc::new(AtomicU64::new(0));
         let renders = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let latest_t = latest.clone();
-        let generation_t = generation.clone();
         let renders_t = renders.clone();
         let stop_t = stop.clone();
+        let period = Duration::from_nanos(1_000_000_000 / fps.max(1) as u64);
         let thread = std::thread::Builder::new()
             .name("rec-gpu-feed".into())
             .spawn(move || {
                 while !stop_t.load(Ordering::Relaxed) {
-                    if let Some(b) = render_recording_frame(&state) {
-                        *latest_t.lock() = Some(Arc::new(b));
-                        generation_t.fetch_add(1, Ordering::Relaxed);
+                    let tick = Instant::now();
+
+                    if let Some(captured) = take_capture_frame() {
+                        *latest_t.lock() = Some(captured);
                         renders_t.fetch_add(1, Ordering::Relaxed);
+                    }
+                    // GPU render runs on the WGC capture thread only — never block ingest here.
+
+                    let wait = period.saturating_sub(tick.elapsed());
+                    if wait > Duration::ZERO {
+                        std::thread::sleep(wait);
                     } else {
-                        std::thread::sleep(Duration::from_micros(500));
+                        std::thread::yield_now();
                     }
                 }
             })
             .expect("spawn rec-gpu-feed");
         Self {
             latest,
-            generation,
             renders,
             stop,
             thread,
         }
-    }
-
-    fn snapshot(&self) -> Option<Arc<Vec<u8>>> {
-        self.latest.lock().clone()
     }
 
     fn stop(self) {
@@ -309,15 +327,16 @@ fn slot_scheduler_loop(
         let elapsed = session_start.elapsed().as_secs_f64();
         let due = (elapsed * fps_f).floor() as u64;
         if pushed >= due {
-            std::thread::sleep(Duration::from_millis(1));
+            std::thread::sleep(Duration::from_micros(500));
             continue;
         }
 
         let slot_deadline =
             session_start + Duration::from_secs_f64((pushed + 1) as f64 / fps_f);
-        if Instant::now() < slot_deadline {
-            std::thread::sleep(Duration::from_millis(1));
-            continue;
+        wait_until_slot(slot_deadline);
+
+        if recording_done.load(Ordering::Acquire) {
+            break;
         }
 
         if push_one(&mut pushed) {
@@ -330,7 +349,6 @@ fn slot_scheduler_loop(
         if push_one(&mut pushed) {
             return;
         }
-        std::thread::sleep(Duration::from_millis(1));
     }
 }
 
@@ -382,7 +400,7 @@ fn run(
     let mut last_arc: Option<Arc<Vec<u8>>> = None;
     let mut stop_session_secs: Option<f64> = None;
 
-    let gpu_feed = GpuFeeder::start(state.clone());
+    let gpu_feed = GpuFeeder::start(state.clone(), fps);
     let gpu_renders = gpu_feed.renders.clone();
     let latest = gpu_feed.latest.clone();
 
@@ -402,6 +420,8 @@ fn run(
             );
         })
         .map_err(|e| format!("spawn slot scheduler: {e}"))?;
+
+    let mut last_stats = Instant::now();
 
     loop {
         if stop_rx.try_recv().is_ok() {
@@ -426,6 +446,23 @@ fn run(
                 write_arc_frame(&mut stdin, &arc, width, height)?;
                 last_arc = Some(arc);
                 written += 1;
+
+                if last_stats.elapsed() >= Duration::from_secs(5) {
+                    let elapsed = session_start.elapsed().as_secs_f64();
+                    let gpu_total = gpu_renders.load(Ordering::Relaxed);
+                    let gpu_fps = gpu_total as f64 / elapsed.max(0.1);
+                    let hold_pct = if written > 0 {
+                        hold_frames as f64 / written as f64 * 100.0
+                    } else {
+                        0.0
+                    };
+                    let (wgc_5s, cap_renders_5s) = crate::capture::recording_pipeline_window_stats();
+                    capture_log(&format!(
+                        "Rec live @ {elapsed:.0}s: {written} encoded, {hold_frames} holds ({hold_pct:.0}%), \
+                         {gpu_fps:.1} unique GPU/s (target {fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s"
+                    ));
+                    last_stats = Instant::now();
+                }
             }
             Err(RecvTimeoutError::Timeout) => continue,
             Err(RecvTimeoutError::Disconnected) => {
@@ -471,8 +508,9 @@ fn run(
             ));
         }
         if hold_frames > 0 {
+            let hold_pct = hold_frames as f64 / written as f64 * 100.0;
             capture_log(&format!(
-                "Recording CFR: {hold_frames} hold frames ({gpu_samples} GPU samples, {written} total @ {fps}fps)"
+                "Recording CFR: {hold_frames} hold frames ({hold_pct:.0}%, {gpu_samples} GPU samples, {written} total @ {fps}fps)"
             ));
         }
     }
@@ -551,7 +589,7 @@ fn stretch_playback_duration(
         "trim=end_frame={frame_count},setpts=PTS-STARTPTS*{factor_s},fps={fps_s}:round=near"
     );
 
-    let mut cmd = Command::new(&ffmpeg);
+    let mut cmd = ffmpeg_command(&ffmpeg);
     cmd.args(["-hide_banner", "-loglevel", "warning", "-y", "-i"]).arg(path);
     cmd.args(["-vf", &vf, "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18"]);
     cmd.args([
@@ -592,7 +630,7 @@ fn mux_pcm_audio(video_path: &Path, pcm_path: &Path, duration_secs: f64) -> Resu
     let ffmpeg = find_ffmpeg()?;
     let temp = video_path.with_extension("mux.tmp.mp4");
     let rate = audio::SAMPLE_RATE.to_string();
-    let mut cmd = Command::new(&ffmpeg);
+    let mut cmd = ffmpeg_command(&ffmpeg);
     cmd.args([
         "-hide_banner",
         "-loglevel",
@@ -674,7 +712,7 @@ fn select_encoder() -> String {
 }
 
 fn test_encoder(ffmpeg: &str, enc: &str) -> bool {
-    Command::new(ffmpeg)
+    ffmpeg_command(ffmpeg)
         .args([
             "-hide_banner",
             "-loglevel",
@@ -716,7 +754,7 @@ fn spawn_ffmpeg_with_encoder(
     let gop = fps.saturating_mul(2).max(30).to_string();
     let crf = if width <= 720 { "20" } else { "18" };
 
-    let mut cmd = Command::new(ffmpeg);
+    let mut cmd = ffmpeg_command(ffmpeg);
     cmd.args([
         "-hide_banner",
         "-loglevel",

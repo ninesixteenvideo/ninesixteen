@@ -41,7 +41,7 @@ mod imp {
     use crate::gpu_scale::GpuScaler;
     use crate::state::Orientation;
     use crate::camera::{self, camera_connected, camera_sink};
-    use crate::file_record::FileRecorder;
+    use crate::file_record::{FileRecorder, publish_capture_frame};
     use crate::recordings::new_recording_path;
     use crate::state::Viewport;
     use crate::stream::{StreamConfig, StreamPipeline};
@@ -83,6 +83,9 @@ mod imp {
     static FILE_RECORDER: OnceLock<Mutex<Option<Arc<FileRecorder>>>> = OnceLock::new();
     static LAST_CAPTURE_FRAME_MS: AtomicU64 = AtomicU64::new(0);
     static GPU_SCALE_LOG_MS: AtomicU64 = AtomicU64::new(0);
+    static WGC_FRAMES_WINDOW: AtomicU64 = AtomicU64::new(0);
+    static REC_CAPTURE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
+    static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
 
     struct PacedOutput {
         stop: Arc<AtomicBool>,
@@ -178,22 +181,26 @@ mod imp {
     }
 
     pub fn render_output_frame(state: &SharedState) -> Option<Vec<u8>> {
-        let vp = shared_viewport().lock().viewport;
         let mut bridge = gpu_bridge().lock();
+        render_with_bridge(&mut bridge, state)
+    }
+
+    fn render_with_bridge(bridge: &mut GpuBridge, state: &SharedState) -> Option<Vec<u8>> {
         if !bridge.ready {
             return None;
         }
+        let vp = shared_viewport().lock().viewport;
         let ctx = bridge.context.clone()?;
         let device = bridge.device.clone()?;
         let src_w = bridge.src_w;
         let src_h = bridge.src_h;
-        ensure_gpu_scaler(&device, state, &mut bridge).ok()?;
+        ensure_gpu_scaler(&device, state, bridge).ok()?;
         let scaler = bridge.scaler.as_mut()?;
         let (out_w, out_h) = scaler.dimensions();
         let layout = frame_layout(&vp, src_w, src_h, out_w, out_h);
         scaler.render_cached(&ctx, src_w, src_h, &layout).ok()?;
         let bgra = scaler.read_bgra(&ctx).ok()?;
-        remember_vp(&mut bridge, &vp);
+        remember_vp(bridge, &vp);
         Some(bgra)
     }
 
@@ -228,6 +235,12 @@ mod imp {
             // While recording, the file-recorder thread renders at CFR from the GPU cache.
             if recording {
                 std::thread::sleep(period);
+                continue;
+            }
+
+            // Camera/stream preview renders on the WGC thread (same D3D context as ingest).
+            if streaming || camera {
+                std::thread::sleep(Duration::from_millis(50));
                 continue;
             }
 
@@ -323,6 +336,27 @@ mod imp {
         bridge.last_vp_x = vp.x;
         bridge.last_vp_y = vp.y;
         bridge.last_vp_zoom = vp.zoom;
+    }
+
+    fn viewport_changed_on_bridge(bridge: &GpuBridge, vp: &Viewport) -> bool {
+        (vp.x - bridge.last_vp_x).abs() > 0.5
+            || (vp.y - bridge.last_vp_y).abs() > 0.5
+            || (vp.zoom - bridge.last_vp_zoom).abs() > 0.002
+    }
+
+    /// True when pan/zoom moved since the last recording render (skip redundant GPU readbacks).
+    pub fn viewport_changed_since_last_render() -> bool {
+        let bridge = gpu_bridge().lock();
+        let vp = shared_viewport().lock().viewport;
+        viewport_changed_on_bridge(&bridge, &vp)
+    }
+
+    fn preview_render_interval_ms(streaming: bool, fps: u32) -> u64 {
+        if streaming {
+            1000 / fps.max(1) as u64
+        } else {
+            1000 / 30
+        }
     }
 
     fn dispatch_preview_outputs(bgra: Vec<u8>, streaming: bool, camera: bool) {
@@ -500,6 +534,42 @@ mod imp {
                 log_gpu_scale_warn(&format!("WARN: monitor ingest skipped: {e}"));
             } else {
                 bridge.last_wgc_ms.store(now_ms(), Ordering::Relaxed);
+                WGC_FRAMES_WINDOW.fetch_add(1, Ordering::Relaxed);
+
+                let (recording, streaming, camera, fps) = {
+                    let st = self.state.lock();
+                    (
+                        st.recording,
+                        st.streaming,
+                        st.camera_enabled,
+                        st.recording_settings.fps.max(1),
+                    )
+                };
+
+                if recording {
+                    let vp = shared_viewport().lock().viewport;
+                    if viewport_changed_on_bridge(&bridge, &vp) {
+                        if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
+                            if streaming {
+                                if let Some(stream) = stream_sink().lock().as_ref() {
+                                    stream.push_frame(bgra.clone());
+                                }
+                            }
+                            publish_capture_frame(Arc::new(bgra));
+                            REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                } else if streaming || camera {
+                    let interval = preview_render_interval_ms(streaming, fps);
+                    let now = now_ms();
+                    let last = LAST_PREVIEW_RENDER_MS.load(Ordering::Relaxed);
+                    if now.saturating_sub(last) >= interval {
+                        LAST_PREVIEW_RENDER_MS.store(now, Ordering::Relaxed);
+                        if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
+                            dispatch_preview_outputs(bgra, streaming, camera);
+                        }
+                    }
+                }
             }
 
             Ok(())
@@ -1040,18 +1110,37 @@ mod imp {
     pub fn is_capture_running() -> bool {
         capture_already_running()
     }
+
+    /// WGC frames and capture-thread recording renders since the last call (then reset).
+    pub fn recording_pipeline_window_stats() -> (u64, u64) {
+        (
+            WGC_FRAMES_WINDOW.swap(0, Ordering::Relaxed),
+            REC_CAPTURE_RENDERS_WINDOW.swap(0, Ordering::Relaxed),
+        )
+    }
 }
 
 #[cfg(windows)]
 pub use imp::{
     attach_camera, attach_recording, attach_stream, dispatch_recording_outputs, is_capture_running,
-    poll_camera_connected, render_output_frame, start_both, start_camera, start_recording,
-    start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
+    poll_camera_connected, recording_pipeline_window_stats, render_output_frame,
+    start_both, start_camera, start_recording, start_streaming, stop_camera, stop_recording,
+    stop_streaming, sync_output_dimensions, viewport_changed_since_last_render,
 };
 
 #[cfg(windows)]
 pub fn render_recording_frame(state: &SharedState) -> Option<Vec<u8>> {
     imp::render_output_frame(state)
+}
+
+#[cfg(not(windows))]
+pub fn viewport_changed_since_last_render() -> bool {
+    true
+}
+
+#[cfg(not(windows))]
+pub fn recording_pipeline_window_stats() -> (u64, u64) {
+    (0, 0)
 }
 
 #[cfg(not(windows))]

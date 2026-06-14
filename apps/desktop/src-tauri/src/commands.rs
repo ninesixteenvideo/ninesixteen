@@ -1,11 +1,38 @@
-use crate::geometry::{normalize_zoom, output_dims};
+use crate::geometry::{frame_layout, normalize_zoom, output_dims};
 use crate::state::{
     AppHandles, AppState, AudioDeviceInfo, AudioLevels, AudioSettings, CaptureState,
-    InputSettings, MonitorInfo, Orientation, RecordingInfo, RecordingSettings, SharedState,
-    StreamSettings, Viewport, ViewportState,
+    InputSettings, MonitorInfo, Orientation, OverlayFrame, RecordingInfo, RecordingSettings,
+    SharedState, StreamSettings, Viewport, ViewportState,
 };
+use std::sync::OnceLock;
+use parking_lot::Mutex;
 use crate::{audio, capture, monitors, recordings, screenshot};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+static LAST_OVERLAY_FRAME: OnceLock<Mutex<Option<OverlayFrame>>> = OnceLock::new();
+
+fn overlay_frame_changed(prev: &OverlayFrame, next: &OverlayFrame) -> bool {
+    const PAN_EPS: f64 = 0.05;
+    const SIZE_EPS: f64 = 0.25;
+    (prev.x - next.x).abs() > PAN_EPS
+        || (prev.y - next.y).abs() > PAN_EPS
+        || (prev.w - next.w).abs() > SIZE_EPS
+        || (prev.h - next.h).abs() > SIZE_EPS
+        || (prev.zoom - next.zoom).abs() > 0.001
+}
+
+fn overlay_frame(vp: &ViewportState, quality: u32) -> Option<OverlayFrame> {
+    let m = vp.monitor.as_ref()?;
+    let (out_w, out_h) = output_dims(vp.viewport.orientation, quality);
+    let crop = frame_layout(&vp.viewport, m.width, m.height, out_w, out_h).crop;
+    Some(OverlayFrame {
+        x: crop.x,
+        y: crop.y,
+        w: crop.w,
+        h: crop.h,
+        zoom: vp.viewport.zoom,
+    })
+}
 
 fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
     let (w, h) = output_dims(vp.viewport.orientation, st.recording_settings.quality);
@@ -33,6 +60,7 @@ fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
         camera_connected: st.camera_connected,
         recording_armed: st.recording_armed,
         countdown_seconds: st.countdown_seconds,
+        overlay_frame: overlay_frame(vp, st.recording_settings.quality),
     }
 }
 
@@ -53,12 +81,41 @@ pub fn apply_overlay_visibility(app: &AppHandle, st: &AppState) {
     }
 }
 
-/// Broadcast viewport changes to the main window and the overlay webview.
+/// Monitor-space crop rectangle for the on-desktop overlay (matches the recorder exactly).
 pub fn emit_viewport_update(app: &AppHandle, viewport: Viewport) {
     let _ = app.emit("viewport:update", viewport);
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.emit("viewport:update", viewport);
     }
+}
+
+pub fn emit_viewport_sync(
+    app: &AppHandle,
+    viewport_state: &ViewportState,
+    quality: u32,
+) {
+    let viewport = viewport_state.viewport;
+    let frame = overlay_frame(viewport_state, quality);
+    emit_viewport_update(app, viewport);
+    if let Some(frame) = frame {
+        let slot = LAST_OVERLAY_FRAME.get_or_init(|| Mutex::new(None));
+        let mut last = slot.lock();
+        let changed = last
+            .as_ref()
+            .map_or(true, |prev| overlay_frame_changed(prev, &frame));
+        if changed {
+            *last = Some(frame);
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.emit("overlay:frame", frame);
+            }
+        }
+    }
+}
+
+pub fn emit_viewport_from_handles(app: &AppHandle, handles: &AppHandles) {
+    let vp = handles.viewport.lock();
+    let quality = handles.state.lock().recording_settings.quality;
+    emit_viewport_sync(app, &vp, quality);
 }
 
 #[tauri::command]
@@ -88,7 +145,7 @@ pub fn set_viewport(
         vp.zoom_target = viewport.zoom;
     }
     let cs = merged_capture_state(handles.inner());
-    emit_viewport_update(&app, viewport);
+    emit_viewport_from_handles(&app, handles.inner());
     cs
 }
 
@@ -110,20 +167,23 @@ pub fn set_zoom(
     handles: State<AppHandles>,
     zoom: f64,
 ) -> CaptureState {
-    let viewport = {
+    let _viewport = {
         let mut vp = handles.viewport.lock();
         vp.zoom_target = normalize_zoom(zoom);
         vp.viewport.zoom = vp.zoom_target;
         vp.viewport
     };
     let cs = merged_capture_state(handles.inner());
-    emit_viewport_update(&app, viewport);
+    emit_viewport_from_handles(&app, handles.inner());
     cs
 }
 
 use std::time::Duration;
 
 fn emit_countdown(app: &AppHandle, seconds: u8) {
+    if seconds > 0 {
+        crate::log::capture_log(&format!("Countdown: {seconds}s"));
+    }
     let payload = serde_json::json!({ "seconds": seconds });
     let _ = app.emit("recording:countdown", payload.clone());
     if let Some(overlay) = app.get_webview_window("overlay") {
@@ -166,6 +226,7 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
         }
     }
 
+    crate::log::capture_log("Countdown finished — starting recording");
     match capture::start_recording(state.clone()) {
         Ok(()) => {
             {
@@ -228,6 +289,7 @@ pub fn start_recording(
 
     ensure_overlay(&app);
     minimize_main_window(&app);
+    crate::log::capture_log("Record countdown armed (5s)");
     let _ = app.emit(
         "recording:state",
         serde_json::json!({ "recording": false, "arming": true }),

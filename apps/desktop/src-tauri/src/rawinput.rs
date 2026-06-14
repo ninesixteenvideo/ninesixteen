@@ -3,8 +3,9 @@ use crate::state::{SharedState, SharedViewport};
 #[cfg(windows)]
 mod imp {
     use super::*;
-    use crate::commands::emit_viewport_update;
+    use crate::commands::emit_viewport_sync;
     use crate::geometry::{clamp, normalize_zoom, smooth_toward, ZOOM_SNAP_EPS};
+    use crate::log::capture_log;
     use crate::state::ViewportState;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::OnceLock;
@@ -29,20 +30,44 @@ mod imp {
     }
 
     static CTX: OnceLock<Ctx> = OnceLock::new();
-    static LAST_EMIT_MS: AtomicU64 = AtomicU64::new(0);
     static LAST_FOLLOW: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
     static ZOOM_LOCK_UNTIL: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
     /// Easing toward full 9×16 — ignore Alt+scroll until the 1s hold starts.
     static PENDING_FULL_LOCK: AtomicBool = AtomicBool::new(false);
     /// Wheel deltas queued by the hook; drained on the follow thread only.
     static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
+    static LAST_ALT_DEBUG_MS: AtomicU64 = AtomicU64::new(0);
 
-    const CURSOR_TICK_MS: u64 = 4;
-    const PAN_SMOOTH_HZ: f64 = 14.0;
-    const ZOOM_SMOOTH_HZ: f64 = 5.0;
+    const CURSOR_TICK_MS: u64 = 8;
+    const PAN_SMOOTH_HZ: f64 = 11.0;
+    const ZOOM_SMOOTH_HZ: f64 = 3.8;
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
     const FULL_FRAME_LOCK: Duration = Duration::from_secs(1);
+
+    fn alt_log(msg: &str) {
+        capture_log(&format!("Alt: {msg}"));
+    }
+
+    /// Throttle noisy hook logs (e.g. repeated blocked wheel events).
+    fn alt_log_throttled(msg: &str, min_interval_ms: u64) {
+        let now = now_ms();
+        let last = LAST_ALT_DEBUG_MS.load(Ordering::Relaxed);
+        if now.saturating_sub(last) >= min_interval_ms {
+            LAST_ALT_DEBUG_MS.store(now, Ordering::Relaxed);
+            alt_log(msg);
+        }
+    }
+
+    fn scroll_block_reason() -> &'static str {
+        if zoom_hold_active() {
+            "full-frame-hold"
+        } else if PENDING_FULL_LOCK.load(Ordering::Acquire) {
+            "easing-to-full"
+        } else {
+            "none"
+        }
+    }
 
     fn now_ms() -> u64 {
         std::time::SystemTime::now()
@@ -67,9 +92,15 @@ mod imp {
     }
 
     fn release_alt_zoom_state() {
+        let pending = *PENDING_WHEEL_DELTA.lock();
         ALT_HELD.store(false, Ordering::Release);
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
+        if pending.abs() > f64::EPSILON {
+            alt_log(&format!("key up — cleared pending wheel delta {pending:.3}"));
+        } else {
+            alt_log("key up — zoom state reset");
+        }
     }
 
     fn zoom_hold_active() -> bool {
@@ -93,12 +124,14 @@ mod imp {
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = Some(Instant::now() + FULL_FRAME_LOCK);
+        alt_log("landed full 9×16 — 1s scroll lock");
     }
 
     fn aim_full_frame(vp: &mut ViewportState) {
         vp.zoom_target = 1.0;
         PENDING_FULL_LOCK.store(true, Ordering::Release);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
+        alt_log("snap toward full 9×16");
     }
 
     fn hits_full_frame_snap(prev: f64, raw_next: f64) -> bool {
@@ -131,7 +164,9 @@ mod imp {
                 if is_alt_vk(kb.vkCode) {
                     match msg {
                         WM_KEYDOWN | WM_SYSKEYDOWN => {
-                            ALT_HELD.store(true, Ordering::Release);
+                            if !ALT_HELD.swap(true, Ordering::Release) {
+                                alt_log("key down");
+                            }
                         }
                         _ => release_alt_zoom_state(),
                     }
@@ -152,15 +187,42 @@ mod imp {
 
         let msg = wparam.0 as u32;
         if (msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL) && alt_held() {
-            if !scroll_input_blocked() {
+            if scroll_input_blocked() {
+                let reason = scroll_block_reason();
+                alt_log_throttled(
+                    &format!("wheel swallowed while blocked ({reason}) — pan still active"),
+                    400,
+                );
+            } else {
                 let info = &*(lparam.0 as *const MSLLHOOKSTRUCT);
                 let mut delta = wheel_delta_from_hook(info.mouseData);
-                // Some touchpads map vertical scroll to HWHEEL — treat as zoom input.
                 if msg == WM_MOUSEHWHEEL {
                     delta = -delta;
                 }
                 if delta.abs() > f64::EPSILON {
-                    *PENDING_WHEEL_DELTA.lock() += delta;
+                    // Drop scroll-in attempts when already at zoom min (avoids queued-but-ignored buildup).
+                    if delta < 0.0 {
+                        if let Some(ctx) = CTX.get() {
+                            let at_min = ctx.viewport.lock().zoom_target
+                                <= crate::geometry::ZOOM_MIN + 0.001;
+                            if at_min {
+                                alt_log_throttled(
+                                    "wheel dropped — already at min zoom (full desktop)",
+                                    600,
+                                );
+                                return LRESULT(1);
+                            }
+                        }
+                    }
+                    let queued = {
+                        let mut acc = PENDING_WHEEL_DELTA.lock();
+                        *acc += delta;
+                        *acc
+                    };
+                    alt_log(&format!(
+                        "wheel queued delta {delta:.3} (total pending {queued:.3}, hwheel={})",
+                        msg == WM_MOUSEHWHEEL
+                    ));
                 }
             }
             return LRESULT(1);
@@ -172,16 +234,39 @@ mod imp {
     /// Follow thread: apply queued wheel deltas (single owner of viewport pan/zoom).
     fn drain_pending_wheel(ctx: &Ctx) -> bool {
         if scroll_input_blocked() {
-            *PENDING_WHEEL_DELTA.lock() = 0.0;
+            let dropped = *PENDING_WHEEL_DELTA.lock();
+            if dropped.abs() > f64::EPSILON {
+                *PENDING_WHEEL_DELTA.lock() = 0.0;
+                alt_log_throttled(
+                    &format!(
+                        "dropped pending delta {dropped:.3} while blocked ({})",
+                        scroll_block_reason()
+                    ),
+                    400,
+                );
+            }
             return false;
         }
 
-        let delta = {
-            let mut acc = PENDING_WHEEL_DELTA.lock();
-            let d = *acc;
-            *acc = 0.0;
-            d
-        };
+        let mut applied = false;
+        for _ in 0..4 {
+            let delta = {
+                let mut acc = PENDING_WHEEL_DELTA.lock();
+                if acc.abs() < f64::EPSILON {
+                    break;
+                }
+                let step = acc.signum();
+                *acc -= step;
+                step
+            };
+            if apply_wheel_delta(ctx, delta) {
+                applied = true;
+            }
+        }
+        applied
+    }
+
+    fn apply_wheel_delta(ctx: &Ctx, delta: f64) -> bool {
         if delta.abs() < f64::EPSILON {
             return false;
         }
@@ -194,22 +279,29 @@ mod imp {
 
         if hits_full_frame_snap(prev, raw_next) {
             aim_full_frame(&mut vp);
-            let viewport = vp.viewport;
             drop(vp);
-            emit_viewport_now(&ctx.app, viewport);
+            emit_viewport_now(&ctx.app, ctx);
             return true;
         }
 
         let next = normalize_zoom(raw_next);
         if (next - prev).abs() <= f64::EPSILON {
+            if prev <= crate::geometry::ZOOM_MIN + 0.001 && delta < 0.0 {
+                alt_log_throttled("wheel ignored — already at min zoom (full desktop)", 600);
+            } else if prev >= crate::geometry::ZOOM_MAX - 0.001 && delta > 0.0 {
+                alt_log_throttled("wheel ignored — already at max zoom", 600);
+            } else {
+                alt_log_throttled(&format!("wheel ignored — zoom clamped at {prev:.2}"), 800);
+            }
             return false;
         }
 
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         vp.zoom_target = next;
-        let viewport = vp.viewport;
+        let (x, y, z) = (vp.viewport.x, vp.viewport.y, vp.viewport.zoom);
         drop(vp);
-        emit_viewport_now(&ctx.app, viewport);
+        alt_log(&format!("zoom target {prev:.2} → {next:.2} (viewport @ {x:.0},{y:.0} zoom {z:.2})"));
+        emit_viewport_now(&ctx.app, ctx);
         true
     }
 
@@ -252,8 +344,10 @@ mod imp {
         let _ = windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx(_kb_hook);
     }
 
-    fn emit_viewport_now(app: &AppHandle, viewport: crate::state::Viewport) {
-        emit_viewport_update(app, viewport);
+    fn emit_viewport_now(app: &AppHandle, ctx: &Ctx) {
+        let vp = ctx.viewport.lock();
+        let quality = ctx.state.lock().recording_settings.quality;
+        emit_viewport_sync(app, &vp, quality);
     }
 
     fn cursor_pos_for_monitor(
@@ -289,6 +383,7 @@ mod imp {
         };
 
         let Some((tx, ty)) = cursor_pos_for_monitor(origin_x, origin_y, width, height) else {
+            alt_log_throttled("cursor read failed — pan paused", 2000);
             return false;
         };
 
@@ -329,7 +424,7 @@ mod imp {
         (vp.viewport.zoom - vp.zoom_target).abs() > FULL_FRAME_SETTLE
     }
 
-    pub fn advance_viewport_follow(viewport: &SharedViewport, state: &SharedState) -> bool {
+    pub fn advance_viewport_follow(viewport: &SharedViewport, _state: &SharedState) -> bool {
         let now = Instant::now();
         let dt = {
             let mut last = LAST_FOLLOW.lock();
@@ -349,23 +444,9 @@ mod imp {
         let animating = zoom_animating(viewport);
         let blocked = scroll_input_blocked();
 
-        let (recording, arming) = {
-            let st = state.lock();
-            (st.recording, st.recording_armed)
-        };
-        let now_ms = now_ms();
-        let min_emit = if recording || arming { 8 } else { CURSOR_TICK_MS };
-        if moved
-            || animating
-            || blocked
-            || recording
-            || arming
-            || now_ms.saturating_sub(LAST_EMIT_MS.load(Ordering::Relaxed)) >= min_emit
-        {
-            LAST_EMIT_MS.store(now_ms, Ordering::Relaxed);
+        if moved || animating || blocked {
             if let Some(ctx) = CTX.get() {
-                let vp = ctx.viewport.lock().viewport;
-                emit_viewport_update(&ctx.app, vp);
+                emit_viewport_now(&ctx.app, ctx);
             }
         }
         moved || animating

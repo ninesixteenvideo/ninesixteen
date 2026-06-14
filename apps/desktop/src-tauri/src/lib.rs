@@ -183,6 +183,8 @@ fn fit_main_window_portrait(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    log::init();
+
     let handles = new_app_handles();
     let shared = handles.state.clone();
     let viewport = handles.viewport.clone();

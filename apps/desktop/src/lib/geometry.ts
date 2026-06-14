@@ -60,7 +60,12 @@ function letterboxDest(sw: number, sh: number, outW: number, outH: number): Rect
 }
 
 /** The crop rectangle (in source pixels) for a viewport over a source of given size. */
-export function cropRect(vp: Viewport, srcW: number, srcH: number): Rect {
+export function cropRect(
+  vp: Viewport,
+  srcW: number,
+  srcH: number,
+  outShortEdge = 1080,
+): Rect {
   const aspect = aspectOf(vp.orientation);
   const sw = srcW;
   const sh = srcH;
@@ -74,8 +79,7 @@ export function cropRect(vp: Viewport, srcW: number, srcH: number): Rect {
   }
 
   const t = smoothstep(ZOOM_MIN, 1, zoom);
-  const outW = 1080;
-  const outH = 1920;
+  const { w: outW, h: outH } = outputDims(vp.orientation, outShortEdge);
   const destFill = { x: 0, y: 0, w: outW, h: outH };
   const destLb = letterboxDest(sw, sh, outW, outH);
   const dest = {

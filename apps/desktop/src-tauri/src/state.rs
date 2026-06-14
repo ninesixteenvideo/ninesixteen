@@ -193,6 +193,16 @@ pub struct CaptureState {
     /// True during the 5s pre-record countdown (overlay visible, not yet capturing).
     pub recording_armed: bool,
     pub countdown_seconds: u8,
+    pub overlay_frame: Option<OverlayFrame>,
+}
+
+#[derive(Clone, Copy, Serialize, Debug)]
+pub struct OverlayFrame {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    pub zoom: f64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

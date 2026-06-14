@@ -1,9 +1,10 @@
 //! Live stream pipeline: GPU frame readback → FFmpeg HW H.264 → RTMP publish.
 
+use crate::ffmpeg_util::{find_ffmpeg, ffmpeg_command};
 use crate::rtmp_publish::{RtmpPublisher, RtmpTarget};
 use crate::state::SharedState;
 use std::io::Write;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
@@ -131,7 +132,7 @@ fn spawn_ffmpeg_encoder(width: u32, height: u32, fps: u32, bitrate_kbps: u32) ->
     let mut last_err = String::new();
 
     for enc in encoders {
-        let mut cmd = Command::new(&ffmpeg);
+        let mut cmd = ffmpeg_command(&ffmpeg);
         cmd.args([
             "-hide_banner",
             "-loglevel",
@@ -193,25 +194,6 @@ fn spawn_ffmpeg_encoder(width: u32, height: u32, fps: u32, bitrate_kbps: u32) ->
     Err(format!(
         "failed to start FFmpeg encoder ({last_err}). Install FFmpeg and ensure it is on PATH."
     ))
-}
-
-fn find_ffmpeg() -> Result<String, String> {
-    for name in ["ffmpeg", "ffmpeg.exe"] {
-        if Command::new(name)
-            .arg("-version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        {
-            return Ok(name.to_string());
-        }
-    }
-    Err(
-        "FFmpeg not found. Install FFmpeg (https://ffmpeg.org) and add it to your PATH to enable live streaming."
-            .into(),
-    )
 }
 
 fn run_pipeline(

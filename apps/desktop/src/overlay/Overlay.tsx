@@ -1,43 +1,32 @@
 import { useEffect, useRef } from "react";
 import { invoke, listen } from "../lib/bridge";
 import { cropRect, zoomLabel } from "../lib/geometry";
-import type { CaptureState, Viewport } from "../lib/types";
+import type { CaptureState, OverlayFrame, Viewport } from "../lib/types";
 
 /**
  * The on-desktop overlay. A transparent, click-through, always-on-top window
  * that draws the exact 9×16 region being recorded directly over the real
- * desktop. Driven live by cursor follow + Alt+scroll zoom via `viewport:update`
- * events. Excluded from the capture itself (SetWindowDisplayAffinity in Rust),
- * so the neon frame never appears in the recording.
+ * desktop. Crop rect comes from Rust (`overlay:frame`) so it always matches
+ * the recorder — including Alt+scroll zoom through letterbox transitions.
  */
 export function Overlay() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const monitor = useRef({ w: 1920, h: 1080 });
-  const target = useRef<Viewport>({
-    x: 960,
-    y: 540,
-    zoom: 1,
-    rotation: 0,
-    orientation: "portrait",
-  });
-  const anim = useRef<Viewport>({ ...target.current });
+  const shortEdge = useRef(1080);
+  const frame = useRef<OverlayFrame>({ x: 0, y: 0, w: 607, h: 1080, zoom: 1 });
   const recording = useRef(false);
   const arming = useRef(false);
   const countdown = useRef(0);
   const recordingStartedAt = useRef<number | null>(null);
 
-  // Initial state + live subscriptions.
   useEffect(() => {
     let unsubs: Array<() => void> = [];
-    let pollId = 0;
     (async () => {
       try {
         const st = await invoke<CaptureState>("get_state");
         if (st.monitor) monitor.current = { w: st.monitor.width, h: st.monitor.height };
-        if (st.viewport) {
-          target.current = { ...st.viewport, orientation: "portrait" };
-          anim.current = { ...st.viewport, orientation: "portrait" };
-        }
+        shortEdge.current = st.outputWidth <= 720 ? 720 : 1080;
+        if (st.overlayFrame) frame.current = st.overlayFrame;
         recording.current = st.recording;
         arming.current = st.recordingArmed ?? false;
         countdown.current = st.countdownSeconds ?? 0;
@@ -45,10 +34,24 @@ export function Overlay() {
         /* mock / not ready */
       }
       unsubs.push(
-        await listen("viewport:update", (p: Viewport) => {
-          target.current = { ...p, orientation: "portrait" };
-          anim.current = { ...target.current };
-        })
+        await listen("overlay:frame", (p: OverlayFrame) => {
+          frame.current = p;
+        }),
+      );
+      unsubs.push(
+        await listen("viewport:update", (vp: Viewport) => {
+          if (
+            typeof vp?.x !== "number" ||
+            typeof vp?.y !== "number" ||
+            typeof vp?.zoom !== "number"
+          ) {
+            return;
+          }
+          const m = monitor.current;
+          if (m.w <= 0 || m.h <= 0) return;
+          const crop = cropRect(vp, m.w, m.h, shortEdge.current);
+          frame.current = { x: crop.x, y: crop.y, w: crop.w, h: crop.h, zoom: vp.zoom };
+        }),
       );
       unsubs.push(
         await listen("recording:state", (p: { recording: boolean; arming?: boolean }) => {
@@ -62,7 +65,7 @@ export function Overlay() {
           } else {
             recordingStartedAt.current = null;
           }
-        })
+        }),
       );
       unsubs.push(
         await listen("recording:countdown", (p: { seconds: number }) => {
@@ -71,36 +74,18 @@ export function Overlay() {
           if (p.seconds === 0) {
             arming.current = false;
           }
-        })
+        }),
       );
-      pollId = window.setInterval(async () => {
-        try {
-          const st = await invoke<CaptureState>("get_state");
-          if (st.monitor) monitor.current = { w: st.monitor.width, h: st.monitor.height };
-          if (st.viewport) {
-            target.current = { ...st.viewport, orientation: "portrait" };
-            anim.current = { ...target.current };
-          }
-        } catch {
-          /* ignore poll errors */
-        }
-      }, 50);
     })();
-    return () => {
-      unsubs.forEach((u) => u());
-      if (pollId) window.clearInterval(pollId);
-    };
+    return () => unsubs.forEach((u) => u());
   }, []);
 
-  // Render loop.
   useEffect(() => {
     let raf = 0;
-    let lastFrame = performance.now();
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
 
-    const draw = (now: number) => {
-      lastFrame = now;
+    const draw = () => {
       const dpr = window.devicePixelRatio || 1;
       const cw = window.innerWidth;
       const ch = window.innerHeight;
@@ -111,31 +96,19 @@ export function Overlay() {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Map source (monitor physical px) -> canvas backing px.
       const scale = canvas.width / monitor.current.w;
+      const f = frame.current;
+      const rx = f.x * scale;
+      const ry = f.y * scale;
+      const rw = f.w * scale;
+      const rh = f.h * scale;
 
-      // Overlay must match the exact recorded region — no smoothing lag.
-      const a = anim.current;
-      const t = target.current;
-      a.x = t.x;
-      a.y = t.y;
-      a.zoom = t.zoom;
-      a.orientation = "portrait";
-
-      const r = cropRect(a, monitor.current.w, monitor.current.h);
-      const rx = r.x * scale;
-      const ry = r.y * scale;
-      const rw = r.w * scale;
-      const rh = r.h * scale;
-
-      // Dim everything, then punch a clear hole = the recorded region.
       ctx.fillStyle = "rgba(10,10,16,0.34)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.clearRect(rx, ry, rw, rh);
 
       const accent = "#8f5e55";
 
-      // Neon frame.
       ctx.lineWidth = 3 * dpr;
       ctx.strokeStyle = "#ffffff";
       ctx.shadowColor = accent;
@@ -146,7 +119,6 @@ export function Overlay() {
       ctx.strokeStyle = "rgba(10,10,16,0.9)";
       ctx.strokeRect(rx - 2 * dpr, ry - 2 * dpr, rw + 4 * dpr, rh + 4 * dpr);
 
-      // Thirds.
       ctx.strokeStyle = "rgba(255,255,255,0.22)";
       ctx.lineWidth = 1 * dpr;
       for (let i = 1; i < 3; i++) {
@@ -158,7 +130,6 @@ export function Overlay() {
         ctx.stroke();
       }
 
-      // Corner ticks.
       ctx.strokeStyle = accent;
       ctx.lineWidth = 4 * dpr;
       const L = 22 * dpr;
@@ -167,8 +138,7 @@ export function Overlay() {
       tick(ctx, rx, ry + rh, L, 1, -1);
       tick(ctx, rx + rw, ry + rh, L, -1, -1);
 
-      // Label chip.
-      const label = `9×16 · ${zoomLabel(a.zoom)}`;
+      const label = `9×16 · ${zoomLabel(f.zoom)}`;
       ctx.font = `${13 * dpr}px "IBM Plex Mono", monospace`;
       const padX = 8 * dpr;
       const tw = ctx.measureText(label).width;
@@ -201,15 +171,17 @@ export function Overlay() {
         ctx.fillText(fmt(secs), dotX + 9 * dpr, cy);
       }
 
-      // Pre-record countdown — centered in the viewport, scales with zoom/pan.
       const cd = countdown.current;
       if (cd > 0 && (arming.current || !recording.current)) {
         drawCountdown(ctx, String(cd), rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr);
       }
-
-      raf = requestAnimationFrame(draw);
     };
-    raf = requestAnimationFrame(draw);
+
+    const loop = () => {
+      draw();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
 

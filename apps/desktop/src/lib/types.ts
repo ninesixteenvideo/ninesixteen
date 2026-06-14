@@ -29,6 +29,14 @@ export interface StreamStats {
   error: string | null;
 }
 
+export interface OverlayFrame {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  zoom: number;
+}
+
 export interface CaptureState {
   monitor: MonitorInfo | null;
   viewport: Viewport;
@@ -44,6 +52,7 @@ export interface CaptureState {
   cameraConnected: boolean;
   recordingArmed: boolean;
   countdownSeconds: number;
+  overlayFrame?: OverlayFrame | null;
 }
 
 export interface RecordingInfo {
