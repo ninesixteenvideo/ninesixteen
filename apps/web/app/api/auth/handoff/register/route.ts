@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { jsonWithCors, optionsResponse, withCors } from "@/lib/cors";
 import { isAdminConfigured } from "@/lib/firebaseAdmin";
 import { registerDesktopAuthHandoff } from "@/lib/desktopAuthSession";

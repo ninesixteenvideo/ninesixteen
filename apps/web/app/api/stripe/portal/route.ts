@@ -11,7 +11,6 @@ export async function OPTIONS(req: Request) {
   return optionsResponse(req);
 }
 
-/** Open Stripe Customer Portal so the user can manage or cancel their subscription. */
 export async function POST(req: Request) {
   if (!isStripeConfigured) {
     if (isProduction()) {

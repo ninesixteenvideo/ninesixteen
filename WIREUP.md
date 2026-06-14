@@ -234,6 +234,16 @@ Enable the portal once in Stripe: **Settings → Billing → Customer portal** (
   `users/{uid}.plan` is `"pro"`.
 - **Google popup fails on desktop:** use the email/password option as a fallback, and
   ensure your domain is in Firebase Authorized domains.
+- **Desktop sign-in shows “Failed to fetch”:**
+  - **Google sign-in:** the desktop app calls `https://ninesixteen.video/api/auth/...`
+    from the Tauri WebView (`https://tauri.localhost`). The web API must allow that
+    origin (CORS) and have **Firebase Admin** env vars set on Vercel — otherwise the
+    handoff endpoints return 503.
+  - **Email/password sign-in:** talks directly to Firebase. If your Google Cloud **API
+    key** has HTTP referrer restrictions, add `https://tauri.localhost/*` (and
+    `http://localhost:1420/*` for dev). Restrictions that only list your website
+    domain will block the desktop app.
+  - Rebuild the desktop app after changing `apps/desktop/.env` (`pnpm desktop:build`).
 - **Video won't play in Preview:** recordings must live under `Videos/ninesixteen` —
   that's the path allowed by the Tauri asset-protocol scope in `tauri.conf.json`.
 - **Still in demo mode?** That means one or more env vars are blank — the apps fall
