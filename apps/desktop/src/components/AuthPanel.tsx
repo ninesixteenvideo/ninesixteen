@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { friendlyAuthError } from "../lib/authErrors";
 import { useAuth } from "../lib/auth";
 import { isDesktop } from "../lib/bridge";
 import { WEB_URL } from "../lib/firebase";
@@ -35,7 +36,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       await fn();
       onDone?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
+      setError(friendlyAuthError(e));
     } finally {
       setBusy(false);
     }
