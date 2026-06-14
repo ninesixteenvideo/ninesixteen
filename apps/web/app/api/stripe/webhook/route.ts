@@ -2,16 +2,14 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, isStripeConfigured, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
 import { setUserEntitlement } from "@/lib/firebaseAdmin";
-import { entitlementFromStripeSubscription } from "@/lib/stripeEntitlement";
 import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
 
 /**
- * Stripe webhook receiver — writes Pro entitlements to Firestore.
+ * Stripe webhook receiver — writes the lifetime Pro entitlement to Firestore.
  *
- * Active subscriptions stay Pro. Cancelled subscriptions keep Pro until
- * current_period_end (proEndsAt), then revert to trial on deletion.
+ * Pro is a one-time purchase: a completed checkout grants Pro permanently.
  */
 export async function POST(req: Request) {
   const blocked = productionConfigRequired(
@@ -46,36 +44,21 @@ export async function POST(req: Request) {
         const uid = session.client_reference_id ?? session.metadata?.uid;
         if (!uid) break;
 
+        // Only grant Pro on a fully paid one-time checkout.
+        if (session.payment_status !== "paid") break;
+
         const customerId =
           typeof session.customer === "string" ? session.customer : undefined;
-        const subId =
-          typeof session.subscription === "string" ? session.subscription : undefined;
+        const paymentIntentId =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : undefined;
 
-        if (subId) {
-          const sub = await stripe.subscriptions.retrieve(subId);
-          await setUserEntitlement(uid, {
-            ...entitlementFromStripeSubscription(sub),
-            stripeCustomerId: customerId,
-          });
-        } else {
-          await setUserEntitlement(uid, {
-            plan: "pro",
-            proEndsAt: null,
-            subscriptionCancelAtPeriodEnd: false,
-            stripeCustomerId: customerId,
-            subscriptionStatus: "active",
-          });
-        }
-        break;
-      }
-
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
-        const sub = event.data.object as Stripe.Subscription;
-        const uid = sub.metadata?.uid;
-        if (uid) {
-          await setUserEntitlement(uid, entitlementFromStripeSubscription(sub));
-        }
+        await setUserEntitlement(uid, {
+          plan: "pro",
+          stripeCustomerId: customerId,
+          stripePaymentIntentId: paymentIntentId,
+        });
         break;
       }
 

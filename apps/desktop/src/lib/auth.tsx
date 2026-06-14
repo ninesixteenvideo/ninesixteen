@@ -8,13 +8,7 @@ import React, {
   useState,
 } from "react";
 import type { User } from "firebase/auth";
-import {
-  formatProEndDate,
-  isProEntitlement,
-  parseEntitlement,
-  subscriptionCancelled,
-  type Plan,
-} from "@ninesixteen/brand";
+import { isProEntitlement, parseEntitlement, type Plan } from "@ninesixteen/brand";
 import {
   getDb,
   getFirebaseAuth,
@@ -41,8 +35,6 @@ export interface NsUser {
   email: string;
   displayName: string | null;
   plan: Plan;
-  proEndsAt: number | null;
-  subscriptionCancelAtPeriodEnd: boolean;
   demo: boolean;
 }
 
@@ -51,26 +43,17 @@ interface AuthState {
   loading: boolean;
   firebaseEnabled: boolean;
   isPro: boolean;
-  subscriptionCancelled: boolean;
-  proEndsAt: number | null;
-  formatProEndDate: (ms: number) => string;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
-  openCheckout: (interval: "monthly" | "yearly") => Promise<void>;
-  openBillingPortal: () => Promise<void>;
+  openCheckout: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
 
 const DEMO_KEY = "ns_desktop_demo_user";
-
-const emptyEntitlement = {
-  proEndsAt: null as number | null,
-  subscriptionCancelAtPeriodEnd: false,
-};
 
 function loadDemoUser(): NsUser | null {
   try {
@@ -97,7 +80,7 @@ async function syncEntitlementToRust(user: NsUser | null, getToken: () => Promis
   await invoke("apply_entitlement_cache", {
     uid: user.uid,
     pro,
-    proEndsAt: user.proEndsAt,
+    proEndsAt: null,
   });
 
   if (!isOnline()) return;
@@ -109,7 +92,7 @@ async function syncEntitlementToRust(user: NsUser | null, getToken: () => Promis
     await invoke("sync_entitlement", {
       idToken: token,
       uid: user.uid,
-      proEndsAt: user.proEndsAt,
+      proEndsAt: null,
     });
   } catch {
     /* offline or API unreachable — cached entitlement remains active */
@@ -131,17 +114,11 @@ function mapFirebaseUser(fbUser: User): NsUser {
     email: fbUser.email ?? "",
     displayName: fbUser.displayName,
     plan: "trial",
-    ...emptyEntitlement,
     demo: false,
   };
   const cached = loadPersistedEntitlement(fbUser.uid);
   if (!cached) return base;
-  return {
-    ...base,
-    plan: cached.plan,
-    proEndsAt: cached.proEndsAt,
-    subscriptionCancelAtPeriodEnd: cached.subscriptionCancelAtPeriodEnd,
-  };
+  return { ...base, plan: cached.plan };
 }
 
 function persistUserEntitlement(user: NsUser) {
@@ -149,8 +126,6 @@ function persistUserEntitlement(user: NsUser) {
   savePersistedEntitlement({
     uid: user.uid,
     plan: user.plan,
-    proEndsAt: user.proEndsAt,
-    subscriptionCancelAtPeriodEnd: user.subscriptionCancelAtPeriodEnd,
     updatedAt: Date.now(),
   });
 }
@@ -170,12 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const ent = parseEntitlement(snap.data());
       setUser((prev) => {
         if (!prev || prev.uid !== uid) return prev;
-        const next = {
-          ...prev,
-          plan: ent.plan,
-          proEndsAt: ent.proEndsAt,
-          subscriptionCancelAtPeriodEnd: ent.subscriptionCancelAtPeriodEnd,
-        };
+        const next = { ...prev, plan: ent.plan };
         persistUserEntitlement(next);
         return next;
       });
@@ -239,7 +209,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       displayName: email.split("@")[0],
       plan: "trial",
-      ...emptyEntitlement,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -265,7 +234,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         displayName: displayName || email.split("@")[0],
         plan: "trial",
-        ...emptyEntitlement,
         demo: true,
       };
       saveDemoUser(demoUser);
@@ -293,7 +261,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: "you@gmail.com",
       displayName: "Google Tester",
       plan: "trial",
-      ...emptyEntitlement,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -316,16 +283,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const openCheckout = useCallback(
-    async (interval: "monthly" | "yearly") => {
-      const url = new URL("/checkout", WEB_URL);
-      url.searchParams.set("interval", interval);
-      if (user?.uid) url.searchParams.set("uid", user.uid);
-      if (user?.email) url.searchParams.set("email", user.email);
-      await openExternal(url.toString());
-    },
-    [user]
-  );
+  const openCheckout = useCallback(async () => {
+    const url = new URL("/checkout", WEB_URL);
+    if (user?.uid) url.searchParams.set("uid", user.uid);
+    if (user?.email) url.searchParams.set("email", user.email);
+    await openExternal(url.toString());
+  }, [user]);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
     const auth = getFirebaseAuth();
@@ -341,36 +304,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void syncEntitlementToRust(user, getIdToken);
   }, [user, getIdToken]);
 
-  const openBillingPortal = useCallback(async () => {
-    const auth = getFirebaseAuth();
-    if (!auth?.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
-    const res = await fetch(`${WEB_URL}/api/stripe/portal`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = (await res.json()) as { url?: string };
-    if (data.url) await openExternal(data.url);
-  }, []);
-
   const value = useMemo<AuthState>(
     () => ({
       user,
       loading,
       firebaseEnabled: isFirebaseConfigured,
       isPro: user ? isProEntitlement(user) : false,
-      subscriptionCancelled: user ? subscriptionCancelled(user) : false,
-      proEndsAt: user?.proEndsAt ?? null,
-      formatProEndDate,
       signIn,
       signUp,
       signInWithGoogle,
       signOut,
       openCheckout,
-      openBillingPortal,
       getIdToken,
     }),
-    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout, openBillingPortal, getIdToken]
+    [user, loading, signIn, signUp, signInWithGoogle, signOut, openCheckout, getIdToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -5,8 +5,6 @@ const STORAGE_KEY = "ns_entitlement_v1";
 export type PersistedEntitlement = {
   uid: string;
   plan: Plan;
-  proEndsAt: number | null;
-  subscriptionCancelAtPeriodEnd: boolean;
   updatedAt: number;
 };
 

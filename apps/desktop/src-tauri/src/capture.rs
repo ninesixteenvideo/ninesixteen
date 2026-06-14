@@ -1138,7 +1138,11 @@ mod imp {
         crate::save_progress::report(65, "encrypting");
         let stored = match crate::crypto::encrypt_file_with_progress(&path, &ns_path, |pct| {
             let overall = 65u8.saturating_add((pct as u16 * 34 / 100) as u8);
-            crate::save_progress::report(overall.min(99), "encrypting");
+            let mapped = overall.min(99);
+            // Throttle encrypt ticks to whole percent steps the UI can follow.
+            if pct >= 100 || pct == 0 || pct % 4 == 0 {
+                crate::save_progress::report(mapped, "encrypting");
+            }
         }) {
             Ok(()) => {
                 let _ = std::fs::remove_file(&path);

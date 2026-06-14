@@ -19,11 +19,15 @@ const SAVE_PHASE_LABELS: Record<string, string> = {
 };
 
 const QUALITY_PRESETS = [
-  { quality: 1080 as const, fps: 30, label: "1080p · 30fps", recommended: true },
-  { quality: 1080 as const, fps: 60, label: "1080p · 60fps", recommended: false },
-  { quality: 720 as const, fps: 30, label: "720p · 30fps", recommended: false },
-  { quality: 720 as const, fps: 60, label: "720p · 60fps", recommended: false },
+  { quality: 1080 as const, fps: 30, label: "1080p · 30fps (Recommended)" },
+  { quality: 1080 as const, fps: 60, label: "1080p · 60fps" },
+  { quality: 720 as const, fps: 30, label: "720p · 30fps" },
+  { quality: 720 as const, fps: 60, label: "720p · 60fps" },
 ];
+
+function qualityPresetValue(quality: number, fps: number) {
+  return `${quality}-${fps}`;
+}
 
 export function Studio() {
   const {
@@ -38,8 +42,6 @@ export function Studio() {
     startRecording,
     cancelRecordingCountdown,
     stopRecording,
-    overlayVisible,
-    setOverlayVisible,
     audioSettings,
     audioDevices,
     audioLevels,
@@ -100,37 +102,29 @@ export function Studio() {
       </section>
 
       {!sessionActive && (
-        <section className="panel quality-card">
-          <div className="card-head">
-            <h3>Quality</h3>
-            <span className="status-chip ok">Before you record</span>
-          </div>
-          <p className="muted" style={{ marginBottom: 12 }}>
-            Higher frame rates use more disk space and take longer to save.{" "}
-            <b>1080p · 30fps</b> is the recommended balance.
-          </p>
-          <div className="quality-grid">
-            {QUALITY_PRESETS.map((preset) => {
-              const active =
-                recordingSettings.quality === preset.quality &&
-                recordingSettings.fps === preset.fps;
-              return (
-                <button
-                  key={`${preset.quality}-${preset.fps}`}
-                  type="button"
-                  className={`quality-preset ${active ? "active" : ""}`}
-                  onClick={() =>
-                    setRecordingSettings({ quality: preset.quality, fps: preset.fps })
-                  }
-                >
-                  <span className="quality-preset-label">{preset.label}</span>
-                  {preset.recommended && (
-                    <span className="quality-preset-badge">Recommended</span>
-                  )}
-                </button>
+        <section className="panel quality-row">
+          <span className="label">Quality</span>
+          <select
+            className="quality-select"
+            value={qualityPresetValue(recordingSettings.quality, recordingSettings.fps)}
+            onChange={(e) => {
+              const preset = QUALITY_PRESETS.find(
+                (p) => qualityPresetValue(p.quality, p.fps) === e.target.value
               );
-            })}
-          </div>
+              if (preset) {
+                setRecordingSettings({ quality: preset.quality, fps: preset.fps });
+              }
+            }}
+          >
+            {QUALITY_PRESETS.map((preset) => (
+              <option
+                key={qualityPresetValue(preset.quality, preset.fps)}
+                value={qualityPresetValue(preset.quality, preset.fps)}
+              >
+                {preset.label}
+              </option>
+            ))}
+          </select>
         </section>
       )}
 
@@ -254,35 +248,6 @@ export function Studio() {
           </button>
         )}
       </div>
-
-      <section className="panel frame-card">
-        <div className="frame-legend">
-          <span className="frame-keys">
-            <span className="kbd">Alt</span>
-            <span className="frame-plus">+</span>
-            <span className="kbd">scroll</span>
-            <span className="frame-plus">·</span>
-            <span className="kbd">Alt</span>
-            <span className="frame-plus">+</span>
-            <span className="kbd">V</span>
-          </span>
-          <span className="muted">
-            {arming
-              ? "Position your shot before the countdown ends."
-              : sessionActive
-                ? "Frame stays visible while recording."
-                : "Zoom in / out — Alt+V toggles the frame."}
-          </span>
-        </div>
-        {!sessionActive && (
-          <button
-            className={`btn sm ${overlayVisible ? "ghost" : "blue"}`}
-            onClick={() => setOverlayVisible(!overlayVisible)}
-          >
-            {overlayVisible ? "Hide frame" : "Show frame"}
-          </button>
-        )}
-      </section>
     </div>
   );
 }

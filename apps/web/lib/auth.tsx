@@ -16,13 +16,7 @@ import {
   isFirebaseConfigured,
 } from "./firebase";
 import { syncUserProfile } from "./userSync";
-import {
-  formatProEndDate,
-  isProEntitlement,
-  parseEntitlement,
-  subscriptionCancelled,
-  type Plan,
-} from "@ninesixteen/brand";
+import { isProEntitlement, parseEntitlement, type Plan } from "@ninesixteen/brand";
 
 export type { Plan };
 
@@ -31,8 +25,6 @@ export type NsUser = {
   email: string;
   displayName: string | null;
   plan: Plan;
-  proEndsAt: number | null;
-  subscriptionCancelAtPeriodEnd: boolean;
   /** True when running without real Firebase (local testing). */
   demo: boolean;
 };
@@ -42,10 +34,6 @@ type AuthState = {
   loading: boolean;
   firebaseEnabled: boolean;
   isPro: boolean;
-  subscriptionCancelled: boolean;
-  proEndsAt: number | null;
-  formatProEndDate: (ms: number) => string;
-  openBillingPortal: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -89,14 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     planUnsub.current = onSnapshot(doc(db, "users", uid), (snap) => {
       const ent = parseEntitlement(snap.data());
       setUser((prev) =>
-        prev && prev.uid === uid
-          ? {
-              ...prev,
-              plan: ent.plan,
-              proEndsAt: ent.proEndsAt,
-              subscriptionCancelAtPeriodEnd: ent.subscriptionCancelAtPeriodEnd,
-            }
-          : prev
+        prev && prev.uid === uid ? { ...prev, plan: ent.plan } : prev
       );
     });
   }, []);
@@ -115,8 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               email: fbUser.email ?? "",
               displayName: fbUser.displayName,
               plan: "trial",
-              proEndsAt: null,
-              subscriptionCancelAtPeriodEnd: false,
               demo: false,
             });
             void syncUserProfile(fbUser);
@@ -161,8 +140,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       displayName: email.split("@")[0],
       plan: "trial",
-      proEndsAt: null,
-      subscriptionCancelAtPeriodEnd: false,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -188,8 +165,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         displayName: displayName || email.split("@")[0],
         plan: "trial",
-        proEndsAt: null,
-        subscriptionCancelAtPeriodEnd: false,
         demo: true,
       };
       saveDemoUser(demoUser);
@@ -214,8 +189,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: "you@gmail.com",
       displayName: "Google Tester",
       plan: "trial",
-      proEndsAt: null,
-      subscriptionCancelAtPeriodEnd: false,
       demo: true,
     };
     saveDemoUser(demoUser);
@@ -238,28 +211,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setPlan = useCallback((plan: Plan) => {
     setUser((prev) => {
       if (!prev) return prev;
-      const next = {
-        ...prev,
-        plan,
-        proEndsAt: plan === "pro" ? prev.proEndsAt : null,
-        subscriptionCancelAtPeriodEnd:
-          plan === "pro" ? prev.subscriptionCancelAtPeriodEnd : false,
-      };
+      const next = { ...prev, plan };
       if (prev.demo) saveDemoUser(next);
       return next;
     });
-  }, []);
-
-  const openBillingPortal = useCallback(async () => {
-    const auth = getFirebaseAuth();
-    if (!auth?.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
-    const res = await fetch("/api/stripe/portal", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = (await res.json()) as { url?: string; mock?: boolean };
-    if (data.url) window.location.href = data.url;
   }, []);
 
   const value = useMemo<AuthState>(
@@ -268,17 +223,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loading,
       firebaseEnabled: isFirebaseConfigured,
       isPro: user ? isProEntitlement(user) : false,
-      subscriptionCancelled: user ? subscriptionCancelled(user) : false,
-      proEndsAt: user?.proEndsAt ?? null,
-      formatProEndDate,
-      openBillingPortal,
       signIn,
       signUp,
       signInWithGoogle,
       signOut,
       setPlan,
     }),
-    [user, loading, signIn, signUp, signInWithGoogle, signOut, setPlan, openBillingPortal]
+    [user, loading, signIn, signUp, signInWithGoogle, signOut, setPlan]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

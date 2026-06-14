@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 static REPORTER: OnceLock<Mutex<Option<Arc<dyn Fn(u8, &'static str) + Send + Sync>>>> = OnceLock::new();
 static TIMING: OnceLock<Mutex<Option<SaveTiming>>> = OnceLock::new();
 static HEARTBEAT_STOP: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
+/// UI progress never moves backward within a save session.
+static LAST_EMITTED_PERCENT: OnceLock<Mutex<u8>> = OnceLock::new();
 
 struct SaveTiming {
     started: Instant,
@@ -28,6 +30,9 @@ pub fn set_reporter(reporter: Option<Arc<dyn Fn(u8, &'static str) + Send + Sync>
 }
 
 pub fn begin_timing() {
+    *LAST_EMITTED_PERCENT
+        .get_or_init(|| Mutex::new(0))
+        .lock() = 0;
     let now = Instant::now();
     *TIMING.get_or_init(|| Mutex::new(None)).lock() = Some(SaveTiming {
         started: now,
@@ -41,6 +46,9 @@ pub fn begin_timing() {
 
 pub fn end_timing() {
     stop_heartbeat();
+    *LAST_EMITTED_PERCENT
+        .get_or_init(|| Mutex::new(0))
+        .lock() = 0;
     let Some(mut timing) = TIMING.get().and_then(|slot| slot.lock().take()) else {
         return;
     };
@@ -66,6 +74,7 @@ fn milestone_label(percent: u8, phase: &'static str) -> Option<&'static str> {
         ("finalizing", 20) => Some("frames drained"),
         ("finalizing", 22) => Some("ffmpeg flush"),
         ("finalizing", 38) => Some("ffmpeg encode"),
+        ("finalizing", 45) => Some("recorder finishing"),
         ("timing", 42) => Some("timing stretch"),
         ("timing", 48) => Some("timing stretch done"),
         ("finalizing", 52) => Some("recorder close"),
@@ -106,11 +115,25 @@ fn log_milestone(percent: u8, phase: &'static str) {
     timing.last_mark = Instant::now();
 }
 
+/// Emit to the UI reporter — percent only ever increases during a save session.
+fn emit_to_ui(percent: u8, phase: &'static str) {
+    let pct = percent.min(100);
+    let slot = LAST_EMITTED_PERCENT.get_or_init(|| Mutex::new(0));
+    let mut last = slot.lock();
+    if pct < *last {
+        return;
+    }
+    *last = pct;
+    drop(last);
+
+    if let Some(reporter) = REPORTER.get().and_then(|r| r.lock().clone()) {
+        reporter(pct, phase);
+    }
+}
+
 pub fn report(percent: u8, phase: &'static str) {
     log_milestone(percent, phase);
-    if let Some(reporter) = REPORTER.get().and_then(|slot| slot.lock().clone()) {
-        reporter(percent.min(100), phase);
-    }
+    emit_to_ui(percent, phase);
 }
 
 /// Smooth progress while a long-running step blocks (e.g. recorder worker join).
@@ -134,7 +157,8 @@ pub fn start_heartbeat(from: u8, to: u8, est_secs: f64) -> HeartbeatGuard {
                 let elapsed = started.elapsed().as_secs_f64();
                 let t = (elapsed / est).clamp(0.0, 0.95);
                 let pct = from + ((to - from) as f64 * t).round() as u8;
-                report(pct.min(to.saturating_sub(1)), "finalizing");
+                // Heartbeat uses emit only — avoids log spam and respects monotonic guard.
+                emit_to_ui(pct.min(to.saturating_sub(1)), "finalizing");
             }
         })
         .ok();

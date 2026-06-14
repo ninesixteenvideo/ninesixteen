@@ -1,11 +1,12 @@
 # Wire-up guide
 
-Everything below takes ninesixteen from **demo mode** (works today, accounts/billing
-are faked locally) to **live mode** (real Google/email auth, real Stripe billing,
-and a Pro entitlement shared between the web app and the desktop app).
+Everything below takes ninesixteen from **demo mode** (works today, accounts/payments
+are faked locally) to **live mode** (real Google/email auth, real Stripe one-time
+checkout, and a Pro entitlement shared between the web app and the desktop app).
 
 > **The one idea to understand:** there is a single source of truth for who is Pro —
-> the Firestore document `users/{uid}.plan` (`"trial"` = free, `"pro"` = paying).
+> the Firestore document `users/{uid}.plan` (`"trial"` = free, `"pro"` = bought it).
+> Pro is a one-time purchase ($49), so once it's `"pro"` it stays.
 > The Firebase **uid is the same** on web and desktop, so a purchase made in the
 > browser unlocks **Export** in the desktop app in real time. Sign-in creates the
 > user doc; the Stripe webhook upgrades it to `"pro"`.
@@ -92,21 +93,18 @@ Firestore for every signed-in user — not only paying customers.
 
 ---
 
-## 2. Stripe (billing — $12/mo, $39/yr)
+## 2. Stripe (one-time purchase — $49)
 
 1. Stripe Dashboard → **Developers → API keys** → copy the **Secret key**
    (`sk_test_...` while testing).
-2. **Product catalog → Add product** (e.g. "ninesixteen Pro"). Add **two recurring
-   prices** to it:
-   - **$12 / month** → copy its price id → `STRIPE_PRICE_ID_MONTHLY` (`price_...`)
-   - **$39 / year** → copy its price id → `STRIPE_PRICE_ID_YEARLY` (`price_...`)
+2. **Product catalog → Add product** (e.g. "ninesixteen Pro"). Add **one one-off
+   (non-recurring) price**:
+   - **$49 USD · one time** → copy its price id → `STRIPE_PRICE_ID` (`price_...`)
 3. **Webhook** (the part that flips users to Pro):
    - **Developers → Webhooks → Add endpoint.**
    - URL: `https://YOUR_WEB_DOMAIN/api/stripe/webhook`
    - Events to send:
      - `checkout.session.completed`
-     - `customer.subscription.updated`
-     - `customer.subscription.deleted`
    - After creating it, copy the **Signing secret** → `STRIPE_WEBHOOK_SECRET`
      (`whsec_...`).
    - **Local testing:** install the Stripe CLI and run
@@ -135,8 +133,7 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 
 # Stripe (from step 2)
 STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PRICE_ID_MONTHLY=price_...
-STRIPE_PRICE_ID_YEARLY=price_...
+STRIPE_PRICE_ID=price_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
 # Public URL of this web app (used by desktop to open checkout)
@@ -161,7 +158,7 @@ VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
-# Where the paywall sends people to subscribe
+# Where the paywall sends people to buy Pro
 VITE_WEB_URL=http://localhost:3000   # in prod: https://ninesixteen.video
 ```
 
@@ -177,32 +174,24 @@ it just reads the entitlement from Firestore and opens the web checkout in the b
 2. **Desktop:** click the account pill (top-right) → **Continue with Google** (or email).
 3. Record something in Studio, then open **Preview** and hit **Export** → the
    **paywall** appears (you're on Free).
-4. Click **Subscribe in browser** → the web pricing page opens. Sign in with the **same
-   Google account**, pick monthly/yearly, complete checkout with a
+4. Click **Buy Pro in browser** → the web checkout opens. Sign in with the **same
+   Google account**, complete the one-time checkout with a
    [Stripe test card](https://docs.stripe.com/testing) (`4242 4242 4242 4242`, any
    future expiry/CVC).
-5. Stripe fires the webhook → Firestore `users/{uid}.plan` becomes `"pro"`.
+5. Stripe fires the `checkout.session.completed` webhook → Firestore
+   `users/{uid}.plan` becomes `"pro"` (a lifetime grant — no expiry).
 6. **Back in the desktop app, Export unlocks automatically** (no restart) — the save
    dialog opens and copies the MP4 wherever you choose.
 
-If you cancel in the **Stripe Customer Portal** (Dashboard → **Manage / cancel**, or
-Account → **Manage subscription** in the desktop app):
-
-- The webhook sets `plan: "pro"` **and** `proEndsAt` to the end of the current billing
-  period (monthly or annual — taken from Stripe’s `current_period_end`).
-- `subscriptionCancelAtPeriodEnd: true` is stored so the UI can show:
-  *“Subscription cancelled — Pro access until [date].”*
-- Pro stays unlocked until that date; when the period ends, the subscription is deleted
-  and the plan returns to `"trial"`.
-
-Enable the portal once in Stripe: **Settings → Billing → Customer portal** (turn it on).
+Pro is a **one-time purchase**: once `plan: "pro"` is written it stays. There is no
+subscription, renewal, cancellation, or customer portal to manage.
 
 ---
 
 ## 6. Going to production (checklist)
 
-- [ ] Switch Stripe to **live mode**: live secret key, recreate the two prices, create a
-      live webhook endpoint, use the live `whsec_...`.
+- [ ] Switch Stripe to **live mode**: live secret key, recreate the one-time $49 price,
+      create a live webhook endpoint, use the live `whsec_...`.
 - [ ] Set `NEXT_PUBLIC_APP_URL` / `VITE_WEB_URL` to your real domain.
 - [ ] Add your production domain to Firebase **Authorized domains**.
 - [ ] Deploy the web app (e.g. Vercel) with all env vars set in the host's dashboard.
@@ -220,7 +209,7 @@ Enable the portal once in Stripe: **Settings → Billing → Customer portal** (
 | `NEXT_PUBLIC_FIREBASE_*` / `VITE_FIREBASE_*` | Firebase console → Web app config | Web + Desktop (auth, read plan) |
 | `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | Firebase service-account JSON | Web webhook (writes plan) |
 | `STRIPE_SECRET_KEY` | Stripe → API keys | Web checkout + webhook |
-| `STRIPE_PRICE_ID_MONTHLY` / `STRIPE_PRICE_ID_YEARLY` | Stripe → Product prices | Web checkout |
+| `STRIPE_PRICE_ID` | Stripe → one-time ($49) product price | Web checkout |
 | `STRIPE_WEBHOOK_SECRET` | Stripe → Webhook endpoint (or `stripe listen`) | Web webhook |
 | `NEXT_PUBLIC_APP_URL` / `VITE_WEB_URL` | Your web app's URL | Desktop → opens checkout |
 
@@ -229,7 +218,7 @@ Enable the portal once in Stripe: **Settings → Billing → Customer portal** (
 - **Plan never flips to Pro:** the webhook isn't reaching your server or `whsec_` is
   wrong. Check Stripe → Webhooks → recent deliveries, and that Admin creds are set
   (otherwise the webhook runs in mock mode and skips the Firestore write).
-- **Desktop Export stays locked after subscribing:** make sure you signed into the
+- **Desktop Export stays locked after buying:** make sure you signed into the
   desktop and the web checkout with the **same** account; confirm the Firestore doc
   `users/{uid}.plan` is `"pro"`.
 - **Google popup fails on desktop:** use the email/password option as a fallback, and

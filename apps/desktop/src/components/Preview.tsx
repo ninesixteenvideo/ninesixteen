@@ -331,7 +331,7 @@ function SelectedRecordingCard({
               className="card-action export"
               onClick={onExport}
               disabled={busy}
-              title={isPro ? "Export recording" : "Subscribe to export"}
+              title={isPro ? "Export recording" : "Buy Pro to export"}
             >
               Export{!isPro ? " 🔒" : ""}
             </button>
@@ -367,23 +367,21 @@ function SelectedRecordingCard({
 
         {mode === "delete" && (
           <div className="card-action-slide card-action-confirm" key="delete">
-            <p className="card-action-question">Are you sure?</p>
-            <div className="card-action-row">
-              <button
-                className="card-action cancel"
-                onClick={onCancelDelete}
-                disabled={busy}
-              >
-                No
-              </button>
-              <button
-                className="card-action confirm"
-                onClick={onConfirmDelete}
-                disabled={busy}
-              >
-                Yes
-              </button>
-            </div>
+            <span className="card-action-question">Are you sure?</span>
+            <button
+              className="card-action cancel"
+              onClick={onCancelDelete}
+              disabled={busy}
+            >
+              No
+            </button>
+            <button
+              className="card-action confirm"
+              onClick={onConfirmDelete}
+              disabled={busy}
+            >
+              Yes
+            </button>
           </div>
         )}
       </div>

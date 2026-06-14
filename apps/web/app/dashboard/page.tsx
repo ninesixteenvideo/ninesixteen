@@ -6,18 +6,7 @@ import { Suspense, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 
 function DashboardInner() {
-  const {
-    user,
-    loading,
-    signOut,
-    setPlan,
-    firebaseEnabled,
-    isPro,
-    subscriptionCancelled,
-    proEndsAt,
-    formatProEndDate,
-    openBillingPortal,
-  } = useAuth();
+  const { user, loading, signOut, setPlan, firebaseEnabled, isPro } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
 
@@ -64,17 +53,10 @@ function DashboardInner() {
 
       {params.get("upgraded") && (
         <div className="ns-card mt-6 bg-mint/40 p-4 font-body text-sm">
-          🎉 You’re on <b>Pro</b>{" "}
+          🎉 You own <b>Pro</b> — exports are unlocked for good.{" "}
           {params.get("upgraded") === "mock" && user.demo && (
             <span className="font-mono text-xs text-inksoft">(mock checkout — Stripe not live yet)</span>
           )}
-        </div>
-      )}
-
-      {subscriptionCancelled && proEndsAt && (
-        <div className="ns-card mt-6 border-2 border-ink bg-yellow/30 p-4 font-body text-sm">
-          Subscription cancelled — Pro access continues until{" "}
-          <b>{formatProEndDate(proEndsAt)}</b>.
         </div>
       )}
 
@@ -88,28 +70,32 @@ function DashboardInner() {
             className="rounded-full border-2 border-ink px-4 py-1.5 font-display"
             style={{ background: isPro ? "var(--color-pink)" : "var(--color-blue)" }}
           >
-            {isPro ? "Pro" : "$0"}
+            {isPro ? "Lifetime" : "$0"}
           </span>
         </div>
 
+        {isPro && (
+          <p className="mt-3 font-body text-sm text-inksoft">
+            Thanks for buying Pro — your one-time purchase unlocks MP4 export forever.
+          </p>
+        )}
+
         <div className="mt-5 flex flex-wrap gap-3">
-          {isPro ? (
-            <button
-              onClick={() => {
-                if (user.demo) setPlan("trial");
-                else void openBillingPortal();
-              }}
-              className="rounded-full border-2 border-ink bg-surface px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
-            >
-              Manage / cancel
-            </button>
-          ) : (
+          {!isPro && (
             <Link
               href="/pricing"
               className="rounded-full border-2 border-ink bg-pink px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
             >
-              Upgrade to Pro
+              Buy Pro · $49
             </Link>
+          )}
+          {isPro && user.demo && (
+            <button
+              onClick={() => setPlan("trial")}
+              className="rounded-full border-2 border-ink bg-surface px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5"
+            >
+              Reset (demo)
+            </button>
           )}
           <Link
             href="/download"
@@ -123,12 +109,12 @@ function DashboardInner() {
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <InfoCard title="Recordings" body="Captures live in ~/Videos/ninesixteen as encrypted .ns files. Browse and preview them in the desktop app." />
         <InfoCard
-          title="Billing"
+          title="Purchase"
           body={
-            subscriptionCancelled && proEndsAt
-              ? `Subscription cancelled. Pro ends on ${formatProEndDate(proEndsAt)}.`
+            isPro
+              ? "Pro is a one-time purchase — unlocked on this account for good. Receipts are emailed by Stripe."
               : firebaseEnabled
-                ? "Subscription managed via Stripe."
+                ? "One-time $49 purchase via Stripe unlocks Pro export forever."
                 : "Stripe & Firebase are in placeholder mode for testing."
           }
         />

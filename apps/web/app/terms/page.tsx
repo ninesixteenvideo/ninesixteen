@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Use"
-      summary="These terms govern your use of the ninesixteen.video website, Windows desktop app, subscriptions, and related services."
+      summary="These terms govern your use of the ninesixteen.video website, Windows desktop app, one-time Pro purchase, and related services."
       sections={TERMS_SECTIONS}
       sibling={{ href: "/privacy", label: "Privacy Policy" }}
     />

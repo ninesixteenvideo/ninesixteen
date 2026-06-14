@@ -134,8 +134,8 @@ export default function HomePage() {
         <div className="ns-card ns-cta-panel flex flex-col items-center gap-6 px-6 py-14 text-center md:px-12 md:py-16">
           <Wordmark size={48} showSuffix />
           <p className="max-w-lg font-body text-lg text-inksoft">
-            Download free on Windows. Record and preview forever. Upgrade when you need to
-            export MP4 files from the app.
+            Download free on Windows. Record and preview forever. Buy Pro once ($49) when
+            you need to export MP4 files from the app.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/download" className="ns-cta ns-cta--accent">

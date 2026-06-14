@@ -136,7 +136,13 @@ export const useStore = create<Store>((set, get) => ({
       })
     );
     listen("recording:save-progress", (p: { percent: number; phase: string }) =>
-      set({ saveProgress: p.percent, savePhase: p.phase })
+      set((state) => {
+        const next = Math.max(state.saveProgress, p.percent);
+        return {
+          saveProgress: next,
+          savePhase: p.percent >= state.saveProgress ? p.phase : state.savePhase,
+        };
+      })
     );
     listen("camera:tick", (p: { connected: boolean }) =>
       set({ cameraConnected: p.connected })

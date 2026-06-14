@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useStore } from "./state/store";
 import { useAuth } from "./lib/auth";
@@ -6,6 +6,7 @@ import { Studio } from "./components/Studio";
 import { Preview } from "./components/Preview";
 import { Settings } from "./components/Settings";
 import { AccountMenu } from "./components/AccountMenu";
+import { HotkeysModal } from "./components/HotkeysModal";
 import { isDesktop } from "./lib/bridge";
 
 const BASE_TABS = [
@@ -17,6 +18,7 @@ const BASE_TABS = [
 export function App() {
   const { ready, tab, setTab, init, recording } = useStore();
   const { isPro } = useAuth();
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
 
   const tabs = BASE_TABS.map((t) =>
     t.id === "preview" ? { ...t, label: isPro ? "Library" : "Preview" } : t
@@ -40,6 +42,15 @@ export function App() {
               {label}
             </button>
           ))}
+          {isDesktop && (
+            <button
+              type="button"
+              className="tab tab-hotkeys"
+              onClick={() => setHotkeysOpen(true)}
+            >
+              Hotkeys
+            </button>
+          )}
         </nav>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!isDesktop && (
@@ -63,6 +74,8 @@ export function App() {
           {tab === "studio" ? <Studio /> : tab === "preview" ? <Preview /> : <Settings />}
         </div>
       )}
+
+      {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} />}
     </div>
   );
 }

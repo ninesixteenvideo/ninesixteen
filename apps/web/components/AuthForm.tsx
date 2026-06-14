@@ -25,19 +25,8 @@ function AuthFormInner({
   const isSignUp = mode === "sign-up";
 
   function afterAuth() {
-    const plan = searchParams.get("plan");
     const next = searchParams.get("next");
-    const interval = searchParams.get("interval");
-
-    if (plan === "monthly" || plan === "yearly") {
-      router.push(`/checkout?interval=${plan}`);
-      return;
-    }
     if (next?.startsWith("/")) {
-      if (next === "/checkout" && (interval === "monthly" || interval === "yearly")) {
-        router.push(`/checkout?interval=${interval}`);
-        return;
-      }
       router.push(next);
       return;
     }
@@ -86,7 +75,7 @@ function AuthFormInner({
         <p className="mt-1 font-body text-sm text-inksoft">
           {isSignUp
             ? "Create an account to sync Pro across desktop and web."
-            : "Sign in to manage billing and export entitlements."}
+            : "Sign in to manage your account and export entitlements."}
         </p>
 
         {!firebaseEnabled && (

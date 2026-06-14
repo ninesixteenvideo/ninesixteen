@@ -39,7 +39,7 @@ export default function DownloadPage() {
         </h1>
         <p className="mx-auto mt-4 max-w-lg font-body text-lg text-inksoft">
           One installer. Record, preview, and export — no command line, no
-          drivers, no account. Subscribe to Pro only when you need MP4 export.
+          drivers, no account. Buy Pro once ($49) only when you need MP4 export.
         </p>
       </div>
 

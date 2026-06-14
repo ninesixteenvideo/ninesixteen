@@ -29,13 +29,13 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "summary",
     title: "3. Summary",
     paragraphs: [
-      `The Service is local-first: your screen recordings stay on your device unless you choose to export them. We collect account and subscription information to operate sign-in and Pro billing, and we use short-lived server sessions to complete browser-based sign-in and Google Drive authorization for the desktop app.`,
+      `The Service is local-first: your screen recordings stay on your device unless you choose to export them. We collect account and purchase information to operate sign-in and the one-time Pro purchase, and we use short-lived server sessions to complete browser-based sign-in and Google Drive authorization for the desktop app.`,
       `We do not sell personal information. We do not use your recordings for advertising or model training.`,
     ],
     bullets: [
       "Recordings: stored locally on your computer; not uploaded to our servers by default.",
-      "Account data: email, name, and subscription status stored in Firebase/Firestore when you create an account.",
-      "Payments: processed by Stripe; we receive billing status and customer identifiers, not full card numbers.",
+      "Account data: email, name, and plan status stored in Firebase/Firestore when you create an account.",
+      "Payments: processed by Stripe; we receive purchase status and customer identifiers, not full card numbers.",
       "Google Drive export: optional; you authorize Google directly; we temporarily relay an access token to your desktop app to complete export.",
     ],
   },
@@ -49,14 +49,14 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     title: "4a. Account and profile information",
     paragraphs: [
       `When you create an account (via email/password or Google sign-in through Firebase Authentication), we collect information such as your email address, display name, Firebase user ID, and authentication metadata needed to secure your account.`,
-      `When you sign in, our servers create or update a profile document in Google Cloud Firestore (for example, \`users/{uid}\`) with your email, display name, plan tier ("trial" for free or "pro" for paid), and subscription-related fields updated by our Stripe webhook (such as Stripe customer ID, subscription status, and Pro end date if applicable).`,
+      `When you sign in, our servers create or update a profile document in Google Cloud Firestore (for example, \`users/{uid}\`) with your email, display name, plan tier ("trial" for free or "pro" for paid), and purchase-related fields updated by our Stripe webhook (such as Stripe customer ID and payment identifier).`,
     ],
   },
   {
     id: "billing",
     title: "4b. Payment information",
     paragraphs: [
-      `If you subscribe to Pro, checkout is handled by Stripe. Stripe collects payment method details directly. We receive information such as billing status, subscription identifiers, customer ID, and limited billing metadata from Stripe so we can unlock Pro features.`,
+      `If you buy Pro, checkout is handled by Stripe. Stripe collects payment method details directly. We receive information such as payment status, payment identifier, customer ID, and limited billing metadata from Stripe so we can unlock Pro features.`,
       `We do not store full payment card numbers on our servers.`,
     ],
   },
@@ -100,7 +100,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       `Where the GDPR or UK GDPR applies, we process personal information on the following bases:`,
     ],
     bullets: [
-      "Contract: to provide the Service, manage your account, and fulfil subscriptions.",
+      "Contract: to provide the Service, manage your account, and fulfil purchases.",
       "Legitimate interests: to secure the Service, prevent fraud and abuse, improve features, and communicate about the Service in a proportionate way that respects your rights.",
       "Consent: where you choose Google sign-in, Google Drive export, or optional communications that require consent under local law. You may withdraw consent where processing is consent-based, without affecting the lawfulness of prior processing.",
       "Legal obligation: where we must retain or disclose information to comply with law.",
@@ -113,9 +113,9 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     bullets: [
       "Provide, maintain, and improve the Service, including recording, preview, and export features.",
       "Create and manage accounts and authenticate you on web and desktop.",
-      "Process subscriptions, unlock Pro features, and manage billing through Stripe.",
+      "Process the one-time Pro purchase, unlock Pro features, and handle payment through Stripe.",
       "Complete browser-to-desktop authorization flows for sign-in and Google Drive export.",
-      "Respond to support requests and send service-related messages (for example, security notices or subscription confirmations).",
+      "Respond to support requests and send service-related messages (for example, security notices or purchase confirmations).",
       "Monitor security, prevent fraud and abuse, and enforce our Terms of Use.",
       "Comply with legal obligations and establish, exercise, or defend legal claims.",
     ],
@@ -124,7 +124,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "marketing",
     title: "7. Marketing and communications",
     paragraphs: [
-      `We may send transactional messages necessary to provide the Service (for example, account verification, billing receipts via Stripe, or responses to support requests).`,
+      `We may send transactional messages necessary to provide the Service (for example, account verification, purchase receipts via Stripe, or responses to support requests).`,
       `We do not send third-party advertising based on your recordings or account activity. If we ever send optional marketing email, we will do so only where permitted by law (including obtaining consent where required under Australia's Spam Act 2003 and similar laws) and you will be able to opt out.`,
     ],
   },
@@ -157,7 +157,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       `We keep personal information only as long as reasonably necessary for the purposes described in this policy:`,
     ],
     bullets: [
-      "Account and subscription records: while your account is active and for a reasonable period afterward for billing, tax, dispute, and legal compliance purposes (typically up to seven years for financial records where required).",
+      "Account and purchase records: while your account is active and for a reasonable period afterward for billing, tax, dispute, and legal compliance purposes (typically up to seven years for financial records where required).",
       "Authentication and Drive handoff sessions: deleted after use or within about ten minutes.",
       "Support emails: as long as needed to resolve your request and maintain a reasonable support history.",
       "Local recordings and exports: remain on your device until you delete them; we do not control retention on your computer or in your Google Drive.",
@@ -167,7 +167,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "security",
     title: "11. Security",
     paragraphs: [
-      `We use administrative, technical, and organisational measures designed to protect personal information, including encrypted transport (HTTPS), Firebase security rules that restrict direct client writes to entitlement data, and server-only updates for subscription state.`,
+      `We use administrative, technical, and organisational measures designed to protect personal information, including encrypted transport (HTTPS), Firebase security rules that restrict direct client writes to entitlement data, and server-only updates for purchase state.`,
       `Free-tier recordings use at-rest encryption on your device intended to reduce casual copying; this is not unbreakable DRM. Pro export decrypts files you choose to save.`,
       `No method of transmission or storage is completely secure. You are responsible for securing your device, account credentials, and exported files.`,
     ],
@@ -186,7 +186,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     bullets: [
       "Google Firebase / Firestore (authentication, user profiles, short-lived auth sessions) — may process data in the US and other regions.",
       "Google OAuth / Google Drive API (optional sign-in and Drive export) — when you choose those features.",
-      "Stripe (subscription checkout, billing portal, payment processing) — may process data in the US and other regions.",
+      "Stripe (one-time checkout and payment processing) — may process data in the US and other regions.",
       "Vercel (website hosting and edge delivery) — may process technical logs globally.",
     ],
   },

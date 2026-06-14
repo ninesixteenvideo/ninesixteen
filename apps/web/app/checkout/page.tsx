@@ -2,22 +2,14 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { EmbeddedCheckoutForm } from "@/components/EmbeddedCheckoutForm";
 import { useAuth } from "@/lib/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
-import type { BillingInterval } from "@/lib/stripe";
-
-const PLAN_LABELS: Record<BillingInterval, string> = {
-  monthly: "Pro · $12 / month",
-  yearly: "Pro · $39 / year",
-};
 
 function CheckoutInner() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const params = useSearchParams();
-  const interval: BillingInterval = params.get("interval") === "yearly" ? "yearly" : "monthly";
 
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +18,9 @@ function CheckoutInner() {
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      router.replace(`/sign-in?next=/checkout&interval=${interval}`);
+      router.replace("/sign-in?next=/checkout");
     }
-  }, [loading, user, router, interval]);
+  }, [loading, user, router]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -43,7 +35,7 @@ function CheckoutInner() {
         const auth = getFirebaseAuth();
         if (!auth?.currentUser?.emailVerified) {
           if (!cancelled) {
-            setError("Verify your email address before subscribing. Check your inbox for the Firebase verification link.");
+            setError("Verify your email address before purchasing. Check your inbox for the Firebase verification link.");
           }
           return;
         }
@@ -61,10 +53,7 @@ function CheckoutInner() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            email: user.email,
-            interval,
-          }),
+          body: JSON.stringify({ email: user.email }),
         });
         const data = await res.json();
         if (cancelled) return;
@@ -88,7 +77,7 @@ function CheckoutInner() {
     return () => {
       cancelled = true;
     };
-  }, [loading, user, interval]);
+  }, [loading, user]);
 
   if (loading || !user) {
     return (
@@ -103,8 +92,10 @@ function CheckoutInner() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <span className="ns-chip">Checkout</span>
-          <h1 className="mt-3 font-display text-3xl tracking-tight">Subscribe to Pro</h1>
-          <p className="mt-1 font-body text-sm text-inksoft">{PLAN_LABELS[interval]}</p>
+          <h1 className="mt-3 font-display text-3xl tracking-tight">Buy Pro</h1>
+          <p className="mt-1 font-body text-sm text-inksoft">
+            Pro · $49 USD · one-time purchase
+          </p>
         </div>
         <Link href="/pricing" className="font-mono text-xs text-bluedeep hover:underline">
           ← Back to pricing

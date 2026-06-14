@@ -38,7 +38,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "service",
     title: "4. Description of the Service",
     paragraphs: [
-      `${SERVICE_NAME} is a vertical desktop capture tool for Windows. The Service lets you frame a 9×16 region of your screen, record video (and optional audio), preview recordings inside the app, and—when subscribed to Pro—export decrypted MP4 files locally or to Google Drive.`,
+      `${SERVICE_NAME} is a vertical desktop capture tool for Windows. The Service lets you frame a 9×16 region of your screen, record video (and optional audio), preview recordings inside the app, and—once you have purchased Pro—export decrypted MP4 files locally or to Google Drive.`,
       `We may update, change, or discontinue features at any time. We do not guarantee uninterrupted or error-free operation. Where the Service is supplied to Australian consumers, our obligations under the Australian Consumer Law (ACL) are not limited by this section.`,
     ],
   },
@@ -46,19 +46,18 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "accounts",
     title: "5. Accounts and authentication",
     paragraphs: [
-      `You may use parts of the desktop app without an account. Creating an account lets you sync Pro entitlements between the web app and desktop app, manage billing, and sign in across devices.`,
+      `You may use parts of the desktop app without an account. Creating an account lets you sync your Pro entitlement between the web app and desktop app and sign in across devices.`,
       `You are responsible for maintaining the confidentiality of your credentials and for all activity under your account. Notify us promptly at ${LEGAL_CONTACT_EMAIL} if you suspect unauthorized access.`,
       `You agree to provide accurate account information and to keep it up to date.`,
     ],
   },
   {
-    id: "subscriptions",
-    title: "6. Subscriptions, billing, and refunds",
+    id: "purchase",
+    title: "6. Purchase, payment, and refunds",
     paragraphs: [
-      `Pro is a paid subscription that unlocks export features and related Pro benefits described on our pricing page. Current list prices are shown in US dollars ($12 per month or $39 per year) unless we state otherwise at checkout. Prices may change; we will give reasonable notice before new prices apply to an existing subscription.`,
-      `Payments are processed by Stripe. By subscribing, you also agree to Stripe's terms and privacy practices. We do not store full payment card numbers on our servers. Applicable taxes (including GST for Australian customers, where required) may be calculated and collected by Stripe at checkout.`,
-      `Subscriptions renew automatically until cancelled. You can cancel through the Stripe customer portal linked from your account dashboard. If you cancel, you generally retain Pro access until the end of the current billing period, after which your account reverts to the free tier unless stated otherwise at checkout.`,
-      `Except where required by law (including the ACL and other mandatory consumer protection laws), fees already paid for a billing period that has started are non-refundable. If you believe you are entitled to a refund under applicable law, contact ${LEGAL_CONTACT_EMAIL} with your account email and reason for the request.`,
+      `Pro is a one-time purchase that unlocks export features and related Pro benefits described on our pricing page. The current list price is US $49 unless we state otherwise at checkout. A purchase grants a lifetime license to the Pro features for your account — there is no recurring subscription or renewal. Prices may change for future purchases; a change does not affect a license you have already bought.`,
+      `Payments are processed by Stripe. By purchasing, you also agree to Stripe's terms and privacy practices. We do not store full payment card numbers on our servers. Applicable taxes (including GST for Australian customers, where required) may be calculated and collected by Stripe at checkout.`,
+      `Except where required by law (including the ACL and other mandatory consumer protection laws), fees already paid are non-refundable. If you believe you are entitled to a refund under applicable law, contact ${LEGAL_CONTACT_EMAIL} with your account email and reason for the request.`,
       `Chargebacks or payment disputes made without first contacting us may result in suspension of Pro access while the dispute is investigated.`,
     ],
   },
@@ -66,8 +65,8 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "free-pro",
     title: "7. Free tier and Pro features",
     paragraphs: [
-      `The free tier lets you record and preview encrypted recordings stored locally on your device. Exporting decrypted MP4 files requires an active Pro subscription unless we explicitly state otherwise in the app.`,
-      `Pro features, pricing, and limits may change. Material reductions to Pro features will not apply retroactively to a paid period you have already purchased without reasonable notice.`,
+      `The free tier lets you record and preview encrypted recordings stored locally on your device. Exporting decrypted MP4 files requires a one-time Pro purchase unless we explicitly state otherwise in the app.`,
+      `Pro features and limits may change. Material reductions to Pro features will not apply retroactively to a license you have already purchased without reasonable notice.`,
     ],
     bullets: [
       "Free: local recording, in-app preview, and core capture settings.",
@@ -98,7 +97,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     bullets: [
       "Use the Service for unlawful, fraudulent, harassing, or abusive purposes.",
       "Record or distribute content in violation of intellectual property, privacy, publicity, or other rights.",
-      "Attempt to reverse engineer, decompile, or circumvent subscription, export, or encryption mechanisms except where such restriction is prohibited by law.",
+      "Attempt to reverse engineer, decompile, or circumvent licensing, export, or encryption mechanisms except where such restriction is prohibited by law.",
       "Interfere with or disrupt the Service, servers, or networks, or probe systems without authorization.",
       "Resell, sublicense, or provide the Service to third parties as a hosted service without our written permission.",
       "Use automated means to scrape the website or abuse authentication, checkout, or API endpoints.",
@@ -159,7 +158,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     title: "17. Suspension and termination",
     paragraphs: [
       `We may suspend or terminate your access to the Service if we reasonably believe you violated these Terms, pose a security risk, or if we discontinue the Service. Where reasonable, we will give you notice before termination except for serious breaches or legal requirements.`,
-      `You may stop using the Service at any time. Uninstalling the desktop app does not automatically cancel a Pro subscription—you must cancel billing through Stripe.`,
+      `You may stop using the Service at any time. Because Pro is a one-time purchase, there is no subscription to cancel; uninstalling the desktop app does not affect your purchased license, which remains tied to your account.`,
       `Sections that by their nature should survive termination (including payment obligations accrued, ownership, disclaimers, limitations of liability, and indemnification) will survive, subject to mandatory law.`,
     ],
   },
@@ -168,7 +167,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     title: "18. Changes to these Terms",
     paragraphs: [
       `We may update these Terms from time to time. We will post the revised Terms on ${SITE_URL}/terms and update the effective date. For material changes, we will provide reasonable notice through the Service or by email if we have your address.`,
-      `Continued use after changes become effective constitutes acceptance of the revised Terms where permitted by law. If you do not agree, stop using the Service and cancel any subscription before the changes take effect.`,
+      `Continued use after changes become effective constitutes acceptance of the revised Terms where permitted by law. If you do not agree, stop using the Service before the changes take effect.`,
     ],
   },
   {

@@ -18,7 +18,7 @@ fn verify_request(id_token: &str) -> Result<reqwest::blocking::Response, String>
         .get(&url)
         .bearer_auth(token)
         .send()
-        .map_err(|e| format!("Could not verify subscription: {e}"))
+        .map_err(|e| format!("Could not verify your Pro license: {e}"))
 }
 
 fn apply_cached_to_memory(uid: &str, pro: bool, pro_ends_at_ms: Option<i64>) {
@@ -89,10 +89,10 @@ pub fn check_entitlement(id_token: &str) -> Result<bool, String> {
         }
     }
 
-    Err("Could not verify subscription — check your connection and try again".to_string())
+    Err("Could not verify your Pro license — check your connection and try again".to_string())
 }
 
-/// Verify the caller has an active Pro subscription via the web API (offline cache fallback).
+/// Verify the caller owns Pro via the web API (offline cache fallback).
 pub fn verify_pro_export(id_token: &str) -> Result<(), String> {
     if crate::state::global_entitlement().lock().is_pro() {
         return Ok(());
@@ -100,7 +100,7 @@ pub fn verify_pro_export(id_token: &str) -> Result<(), String> {
 
     match check_entitlement(id_token)? {
         true => Ok(()),
-        false => Err("Pro subscription required to export".to_string()),
+        false => Err("Pro is required to export. Buy Pro to unlock export.".to_string()),
     }
 }
 

@@ -150,12 +150,14 @@ impl FileRecorder {
             .ok_or_else(|| "recorder worker missing".to_string())?;
         drop(rec);
         save_progress::report(12, "finalizing");
-        let _heartbeat = save_progress::start_heartbeat(12, 22, 60.0);
+        let _heartbeat = save_progress::start_heartbeat(12, 21, 60.0);
         let (frames, duration) = match worker.join() {
             Ok(Ok(v)) => v,
             Ok(Err(e)) => return Err(e),
             Err(_) => return Err("recorder thread panicked".into()),
         };
+        // Worker may already have reported up to ~38; bridge before post-join steps.
+        save_progress::report(45, "finalizing");
         save_progress::report(52, "finalizing");
         #[cfg(windows)]
         if let Some(audio) = audio {
@@ -490,9 +492,9 @@ fn run(
         write_arc_frame(&mut stdin, &arc, width, height)?;
         last_arc = Some(arc);
         written += 1;
-        if target_frames > 0 && written % 250 == 0 {
-            let pct = 12 + ((written.min(target_frames) as f64 / target_frames as f64) * 9.0) as u8;
-            save_progress::report(pct.min(21), "finalizing");
+        if target_frames > 0 && written % 500 == 0 {
+            let pct = 12 + ((written.min(target_frames) as f64 / target_frames as f64) * 8.0) as u8;
+            save_progress::report(pct.min(20), "finalizing");
         }
     }
 
