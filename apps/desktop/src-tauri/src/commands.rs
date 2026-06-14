@@ -4,10 +4,17 @@ use crate::state::{
     InputSettings, MonitorInfo, Orientation, OverlayFrame, RecordingInfo, RecordingSettings,
     SharedState, StreamSettings, Viewport, ViewportState,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::time::Duration;
 use parking_lot::Mutex;
+use crate::state::SharedViewport;
 use crate::{audio, capture, monitors, recordings, screenshot};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+/// v1 ships recording-only; the DirectShow virtual camera is deferred to v1.1.
+/// Set to `true` (and re-add the CamStatus UI + installer registration) to re-enable.
+const VIRTUAL_CAMERA_ENABLED: bool = false;
 
 static LAST_OVERLAY_FRAME: OnceLock<Mutex<Option<OverlayFrame>>> = OnceLock::new();
 
@@ -73,12 +80,67 @@ fn overlay_force_visible(st: &AppState) -> bool {
     st.recording || st.streaming || st.recording_armed
 }
 
+/// True while the on-desktop frame overlay needs live viewport updates.
+fn capture_framing_active(st: &AppState) -> bool {
+    overlay_force_visible(st) || st.overlay_visible
+}
+
+/// Broadcast recording lifecycle to every webview (main + overlay). Must run on
+/// the main thread — the overlay timer depends on `recording:state` arriving here.
+fn emit_recording_state(app: &AppHandle, payload: serde_json::Value) {
+    let _ = app.emit("recording:state", payload.clone());
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.emit("recording:state", payload);
+    }
+}
+
+fn defer_recording_state(app: &AppHandle, payload: serde_json::Value) {
+    let app_main = app.clone();
+    let _ = app.run_on_main_thread(move || emit_recording_state(&app_main, payload));
+}
+
+fn finish_recording_ui(app: &AppHandle, state: &SharedState, result: Result<Option<RecordingInfo>, String>) {
+    let app_main = app.clone();
+    let state = state.clone();
+    let _ = app.run_on_main_thread(move || match result {
+        Ok(info) => {
+            emit_recording_state(
+                &app_main,
+                serde_json::json!({ "recording": false, "finalizing": false }),
+            );
+            let _ = app_main.emit("recording:finished", info);
+            apply_overlay_visibility(&app_main, &state.lock());
+        }
+        Err(msg) => {
+            crate::log::capture_log(&format!("Recording failed: {msg}"));
+            let _ = app_main.emit("app:log", &msg);
+            emit_recording_state(
+                &app_main,
+                serde_json::json!({ "recording": false, "finalizing": false }),
+            );
+            let _ = app_main.emit("recording:finished", Option::<RecordingInfo>::None);
+            apply_overlay_visibility(&app_main, &state.lock());
+        }
+    });
+}
+
 pub fn apply_overlay_visibility(app: &AppHandle, st: &AppState) {
     if overlay_force_visible(st) || st.overlay_visible {
         ensure_overlay(app);
     } else if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.hide();
     }
+}
+
+/// Apply overlay visibility from a background/worker thread. WebView window ops
+/// (show/hide/move/resize) MUST run on the main thread on Windows — calling them
+/// from a spawned thread blocks on the main loop and deadlocks (AppHangB1 766f).
+fn defer_overlay_visibility(app: &AppHandle, state: &SharedState) {
+    let app_main = app.clone();
+    let state = state.clone();
+    let _ = app.run_on_main_thread(move || {
+        apply_overlay_visibility(&app_main, &state.lock());
+    });
 }
 
 /// Monitor-space crop rectangle for the on-desktop overlay (matches the recorder exactly).
@@ -89,33 +151,72 @@ pub fn emit_viewport_update(app: &AppHandle, viewport: Viewport) {
     }
 }
 
+/// Push the latest crop rect to the overlay webview only. Must run on the main thread.
+fn emit_overlay_frame(app: &AppHandle, viewport_state: &ViewportState, quality: u32) {
+    let Some(frame) = overlay_frame(viewport_state, quality) else {
+        return;
+    };
+    *LAST_OVERLAY_FRAME
+        .get_or_init(|| Mutex::new(None))
+        .lock() = Some(frame);
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.emit("overlay:frame", frame);
+    }
+}
+
 pub fn emit_viewport_sync(
     app: &AppHandle,
     viewport_state: &ViewportState,
     quality: u32,
+    framing_active: bool,
 ) {
-    let viewport = viewport_state.viewport;
-    let frame = overlay_frame(viewport_state, quality);
-    emit_viewport_update(app, viewport);
-    if let Some(frame) = frame {
-        let slot = LAST_OVERLAY_FRAME.get_or_init(|| Mutex::new(None));
-        let mut last = slot.lock();
-        let changed = last
-            .as_ref()
-            .map_or(true, |prev| overlay_frame_changed(prev, &frame));
-        if changed {
-            *last = Some(frame);
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                let _ = overlay.emit("overlay:frame", frame);
-            }
-        }
+    if framing_active {
+        // Main window is minimized during capture — skip global viewport:update so
+        // React doesn't re-render at 60 Hz and starve the overlay webview / main loop.
+        emit_overlay_frame(app, viewport_state, quality);
+    } else {
+        emit_viewport_update(app, viewport_state.viewport);
+        emit_overlay_frame(app, viewport_state, quality);
     }
 }
 
 pub fn emit_viewport_from_handles(app: &AppHandle, handles: &AppHandles) {
+    // LOCK ORDER: state before viewport, and never hold both at once. The reverse
+    // order here (viewport then state) collides with merged_capture_state's
+    // state→viewport order on a worker thread → AB-BA deadlock (AppHangB1).
+    let (quality, framing) = {
+        let st = handles.state.lock();
+        (st.recording_settings.quality, capture_framing_active(&st))
+    };
     let vp = handles.viewport.lock();
-    let quality = handles.state.lock().recording_settings.quality;
-    emit_viewport_sync(app, &vp, quality);
+    emit_viewport_sync(app, &vp, quality, framing);
+}
+
+/// Main-thread overlay pump: cursor follow only updates shared viewport state;
+/// this loop pushes `overlay:frame` at ~60 Hz without touching webviews off-thread.
+pub fn start_overlay_refresh_loop(app: AppHandle, state: SharedState, viewport: SharedViewport) {
+    std::thread::Builder::new()
+        .name("overlay-refresh".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(16));
+            let needed = {
+                let st = state.lock();
+                capture_framing_active(&st)
+            };
+            if !needed {
+                continue;
+            }
+            let app_main = app.clone();
+            let state = state.clone();
+            let viewport = viewport.clone();
+            let _ = app.run_on_main_thread(move || {
+                // LOCK ORDER: state before viewport (see emit_viewport_from_handles).
+                let quality = state.lock().recording_settings.quality;
+                let vp = viewport.lock();
+                emit_overlay_frame(&app_main, &vp, quality);
+            });
+        })
+        .ok();
 }
 
 #[tauri::command]
@@ -155,9 +256,11 @@ pub fn nudge_viewport(
     dx: f64,
     dy: f64,
 ) -> CaptureState {
-    let mut vp = handles.viewport.lock();
-    vp.viewport.x += dx;
-    vp.viewport.y += dy;
+    {
+        let mut vp = handles.viewport.lock();
+        vp.viewport.x += dx;
+        vp.viewport.y += dy;
+    }
     merged_capture_state(handles.inner())
 }
 
@@ -178,9 +281,6 @@ pub fn set_zoom(
     cs
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-
 fn emit_countdown(app: &AppHandle, seconds: u8) {
     if seconds > 0 {
         crate::log::capture_log(&format!("Countdown: {seconds}s"));
@@ -192,6 +292,11 @@ fn emit_countdown(app: &AppHandle, seconds: u8) {
     }
 }
 
+fn defer_countdown(app: &AppHandle, seconds: u8) {
+    let app_main = app.clone();
+    let _ = app.run_on_main_thread(move || emit_countdown(&app_main, seconds));
+}
+
 const RECORD_COUNTDOWN_SECS: u8 = 5;
 
 fn run_recording_countdown(app: AppHandle, state: SharedState) {
@@ -200,31 +305,29 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
             let mut st = state.lock();
             if !st.recording_armed {
                 st.countdown_seconds = 0;
-                emit_countdown(&app, 0);
-                let _ = app.emit(
-                    "recording:state",
+                drop(st);
+                defer_countdown(&app, 0);
+                defer_recording_state(
+                    &app,
                     serde_json::json!({ "recording": false, "arming": false }),
                 );
-                apply_overlay_visibility(&app, &st);
+                defer_overlay_visibility(&app, &state);
                 return;
             }
             st.countdown_seconds = remaining;
         }
-        emit_countdown(&app, remaining);
+        defer_countdown(&app, remaining);
         std::thread::sleep(Duration::from_secs(1));
     }
 
-    {
-        let st = state.lock();
-        if !st.recording_armed {
-            emit_countdown(&app, 0);
-            let _ = app.emit(
-                "recording:state",
-                serde_json::json!({ "recording": false, "arming": false }),
-            );
-            apply_overlay_visibility(&app, &st);
-            return;
-        }
+    if !state.lock().recording_armed {
+        defer_countdown(&app, 0);
+        defer_recording_state(
+            &app,
+            serde_json::json!({ "recording": false, "arming": false }),
+        );
+        defer_overlay_visibility(&app, &state);
+        return;
     }
 
     crate::log::capture_log("Countdown finished — starting recording");
@@ -232,13 +335,12 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
         Ok(()) => {
             {
                 let mut st = state.lock();
-                st.recording = true;
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
             }
-            emit_countdown(&app, 0);
-            let _ = app.emit(
-                "recording:state",
+            defer_countdown(&app, 0);
+            defer_recording_state(
+                &app,
                 serde_json::json!({ "recording": true, "arming": false }),
             );
         }
@@ -249,11 +351,11 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
             }
-            emit_countdown(&app, 0);
-            apply_overlay_visibility(&app, &state.lock());
+            defer_countdown(&app, 0);
+            defer_overlay_visibility(&app, &state);
             let _ = app.emit("app:log", e.to_string());
-            let _ = app.emit(
-                "recording:state",
+            defer_recording_state(
+                &app,
                 serde_json::json!({ "recording": false, "arming": false }),
             );
         }
@@ -289,20 +391,26 @@ pub fn start_recording(
     }
 
     crate::log::capture_log("Record countdown armed (5s)");
-    let _ = app.emit(
-        "recording:state",
+    emit_recording_state(
+        &app,
         serde_json::json!({ "recording": false, "arming": true }),
     );
 
     let shared: SharedState = handles.inner().state.clone();
     capture::ensure_capture_session(shared.clone());
+
+    // Window operations (show overlay, minimize main) MUST run on the main thread on
+    // Windows — doing them from a worker/background thread can deadlock the WebView.
+    let app_win = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        ensure_overlay(&app_win);
+        minimize_main_window(&app_win);
+    });
+
     let app_bg = app.clone();
     std::thread::Builder::new()
         .name("record-countdown".into())
         .spawn(move || {
-            // Overlay + minimize can block the WebView on Windows — keep off the invoke thread.
-            ensure_overlay(&app_bg);
-            minimize_main_window(&app_bg);
             run_recording_countdown(app_bg, shared);
         })
         .map_err(|e| format!("spawn countdown thread: {e}"))?;
@@ -326,8 +434,8 @@ pub fn cancel_recording_countdown(
     emit_countdown(&app, 0);
     apply_overlay_visibility(&app, &handles.state.lock());
     capture::ensure_capture_session(handles.inner().state.clone());
-    let _ = app.emit(
-        "recording:state",
+    emit_recording_state(
+        &app,
         serde_json::json!({ "recording": false, "arming": false }),
     );
     Ok(merged_capture_state(handles.inner()))
@@ -345,34 +453,18 @@ pub fn stop_recording(
         }
     }
     // Update UI immediately — finalize (FFmpeg join) can take a moment on long clips.
-    let _ = app.emit(
-        "recording:state",
+    emit_recording_state(
+        &app,
         serde_json::json!({ "recording": false, "finalizing": true }),
     );
     let shared: SharedState = handles.inner().state.clone();
     let app_bg = app.clone();
     std::thread::Builder::new()
         .name("stop-recording".into())
-        .spawn(move || match capture::stop_recording(shared.clone(), Some(app_bg.clone())) {
-            Ok(info) => {
-                let _ = app_bg.emit(
-                    "recording:state",
-                    serde_json::json!({ "recording": false, "finalizing": false }),
-                );
-                let _ = app_bg.emit("recording:finished", info);
-                apply_overlay_visibility(&app_bg, &shared.lock());
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                crate::log::capture_log(&format!("Recording failed: {msg}"));
-                let _ = app_bg.emit("app:log", &msg);
-                let _ = app_bg.emit(
-                    "recording:state",
-                    serde_json::json!({ "recording": false, "finalizing": false }),
-                );
-                let _ = app_bg.emit("recording:finished", Option::<RecordingInfo>::None);
-                apply_overlay_visibility(&app_bg, &shared.lock());
-            }
+        .spawn(move || {
+            let result = capture::stop_recording(shared.clone(), Some(app_bg.clone()))
+                .map_err(|e| e.to_string());
+            finish_recording_ui(&app_bg, &shared, result);
         })
         .map_err(|e| format!("spawn stop-recording thread: {e}"))?;
     Ok(())
@@ -442,54 +534,66 @@ pub fn notify_app_ready(_app: AppHandle, _handles: State<AppHandles>) -> Result<
     if STARTED.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
-    crate::log::capture_log("UI ready — virtual camera registers after a short delay");
+    crate::log::capture_log("UI ready");
     Ok(())
 }
 
-/// Background registration of the softcam device (no screen capture).
-#[tauri::command]
-pub fn defer_virtual_camera_register(app: AppHandle, handles: State<AppHandles>) -> Result<(), String> {
-    static STARTED: AtomicBool = AtomicBool::new(false);
-    if STARTED.swap(true, Ordering::SeqCst) {
-        return Ok(());
-    }
-
-    let cam_app = app.clone();
-    let cam_state = handles.inner().state.clone();
-    std::thread::Builder::new()
-        .name("virtual-camera-deferred".into())
-        .spawn(move || {
-            std::thread::sleep(Duration::from_secs(12));
-            match capture::register_virtual_camera(cam_state.clone()) {
-                Ok(()) => {
-                    let dims = cam_state.lock().current_dims;
-                    crate::log::capture_log(&format!(
-                        "Virtual camera registered — pick \"ninesixteen.video\" in any app ({}×{}). Screen capture starts when an app opens the camera or you record.",
-                        dims.0, dims.1
-                    ));
-                    let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": true }));
-                }
-                Err(e) => {
-                    crate::log::capture_log(&format!("Virtual camera unavailable: {e}"));
-                    let _ = cam_app.emit("app:log", format!("Virtual camera unavailable: {e}"));
-                    let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": false }));
-                }
-            }
-        })
-        .map_err(|e| format!("spawn virtual camera: {e}"))?;
-
-    Ok(())
-}
+static CAM_STARTING: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn start_camera(
     app: AppHandle,
     handles: State<AppHandles>,
 ) -> Result<CaptureState, String> {
+    // v1 ships recording-only. The virtual camera is deferred to v1.1 — flip this
+    // flag (and re-add the CamStatus UI + installer registration) to re-enable.
+    if !VIRTUAL_CAMERA_ENABLED {
+        let _ = app.emit("camera:state", serde_json::json!({ "enabled": false }));
+        return Ok(merged_capture_state(handles.inner()));
+    }
+    if handles.state.lock().camera_enabled {
+        return Ok(merged_capture_state(handles.inner()));
+    }
+    if CAM_STARTING.swap(true, Ordering::SeqCst) {
+        return Ok(merged_capture_state(handles.inner()));
+    }
+
+    let app_bg = app.clone();
     let shared: SharedState = handles.inner().state.clone();
-    capture::start_camera(shared).map_err(|e| e.to_string())?;
-    ensure_overlay(&app);
-    let _ = app.emit("camera:state", serde_json::json!({ "enabled": true }));
+    std::thread::Builder::new()
+        .name("virtual-camera-start".into())
+        .spawn(move || {
+            struct Guard;
+            impl Drop for Guard {
+                fn drop(&mut self) {
+                    CAM_STARTING.store(false, Ordering::SeqCst);
+                }
+            }
+            let _guard = Guard;
+
+            crate::log::capture_log("Registering virtual camera…");
+            match capture::register_virtual_camera(shared.clone()) {
+                Ok(()) => {
+                    let dims = shared.lock().current_dims;
+                    crate::log::capture_log(&format!(
+                        "Virtual camera ready — pick \"ninesixteen.video\" in any app ({}×{}). Screen capture starts when an app opens the camera or you record.",
+                        dims.0, dims.1
+                    ));
+                    capture::ensure_capture_session(shared);
+                    let _ = app_bg.emit("camera:state", serde_json::json!({ "enabled": true }));
+                }
+                Err(e) => {
+                    crate::log::capture_log(&format!("Virtual camera unavailable: {e}"));
+                    let _ = app_bg.emit("app:log", format!("Virtual camera unavailable: {e}"));
+                    let _ = app_bg.emit("camera:state", serde_json::json!({ "enabled": false }));
+                }
+            }
+        })
+        .map_err(|e| {
+            CAM_STARTING.store(false, Ordering::SeqCst);
+            format!("spawn virtual camera: {e}")
+        })?;
+
     Ok(merged_capture_state(handles.inner()))
 }
 
@@ -699,27 +803,6 @@ pub fn get_audio_levels() -> AudioLevels {
 }
 
 pub fn ensure_overlay(app: &AppHandle) {
-    if app.get_webview_window("overlay").is_none() {
-        crate::log::capture_log("Creating overlay window");
-        if let Err(e) = WebviewWindowBuilder::new(
-            app,
-            "overlay",
-            WebviewUrl::App("overlay.html".into()),
-        )
-        .transparent(true)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .focused(false)
-        .shadow(false)
-        .visible(false)
-        .build()
-        {
-            crate::log::capture_log(&format!("Overlay window unavailable: {e}"));
-            return;
-        }
-    }
     let Some(win) = app.get_webview_window("overlay") else {
         return;
     };

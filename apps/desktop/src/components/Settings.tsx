@@ -47,51 +47,15 @@ export function Settings() {
       </section>
 
       <section className="panel">
-        <h3>Recording &amp; camera</h3>
+        <h3>Recording</h3>
         <p className="muted" style={{ marginBottom: 12 }}>
           Recordings save as encrypted files you can preview in the app. Pro unlocks MP4 export.
-          A virtual camera named <b>ninesixteen.video</b> also starts with the app — any
-          application that lists camera devices can use your live 9×16 frame. Keep this app
-          running while you use it elsewhere.
-        </p>
-        <p className="muted" style={{ marginBottom: 12, fontSize: "0.85rem" }}>
-          <b>First-time setup (Windows):</b> run <code>scripts/register-softcam.bat</code> as
-          Administrator once so other apps can see the device. If a camera picker was already
-          open, close and reopen it.
         </p>
         <div className="row" style={{ marginBottom: 12 }}>
           <span className="label">Source display</span>
           <span className="muted">
             {monitor?.name ?? monitors[0]?.name ?? "—"} ({monitor?.width}×{monitor?.height})
           </span>
-        </div>
-        <div className="row" style={{ marginBottom: 12 }}>
-          <span className="label">Resolution</span>
-          <div className="seg">
-            {([720, 1080] as const).map((q) => (
-              <button
-                key={q}
-                className={recordingSettings.quality === q ? "on" : ""}
-                onClick={() => setRecordingSettings({ quality: q })}
-              >
-                {`${q}p`}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="row" style={{ marginBottom: 12 }}>
-          <span className="label">Frame rate</span>
-          <div className="seg">
-            {([30, 60] as const).map((f) => (
-              <button
-                key={f}
-                className={recordingSettings.fps === f ? "on" : ""}
-                onClick={() => setRecordingSettings({ fps: f })}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="row">
           <span className="label">Capture cursor</span>

@@ -86,6 +86,7 @@ mod imp {
     static WGC_FRAMES_WINDOW: AtomicU64 = AtomicU64::new(0);
     static REC_CAPTURE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
     static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
+    static FIRST_REC_FRAME_LOGGED: AtomicBool = AtomicBool::new(false);
 
     struct PacedOutput {
         stop: Arc<AtomicBool>,
@@ -211,10 +212,19 @@ mod imp {
         while !stop.load(Ordering::Relaxed) {
             let (recording, streaming, feed_cam, fps_setting) = {
                 let st = state.lock();
+                // NOTE: compute feed_cam from the guard we already hold. Calling
+                // should_feed_virtual_camera(&state) here would re-lock `state` on
+                // the same thread — parking_lot is non-reentrant, so that self-
+                // deadlocks while holding `state`, freezing the whole app (the
+                // AppHangB1 766f hang at recording start).
+                let feed_cam = st.camera_enabled
+                    && !st.recording
+                    && !st.recording_armed
+                    && crate::camera::camera_connected();
                 (
                     st.recording,
                     st.streaming,
-                    should_feed_virtual_camera(&state),
+                    feed_cam,
                     st.recording_settings.fps.max(1),
                 )
             };
@@ -571,17 +581,17 @@ mod imp {
                 drop(bridge);
 
                 if recording {
-                    let vp = shared_viewport().lock().viewport;
                     let mut bridge = gpu_bridge().lock();
-                    if viewport_changed_on_bridge(&bridge, &vp) {
-                        if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
-                            if streaming {
-                                if let Some(stream) = stream_sink().lock().as_ref() {
-                                    stream.push_frame(bgra.clone());
-                                }
+                    if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
+                        if streaming {
+                            if let Some(stream) = stream_sink().lock().as_ref() {
+                                stream.push_frame(bgra.clone());
                             }
-                            publish_capture_frame(Arc::new(bgra));
-                            REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                        }
+                        publish_capture_frame(Arc::new(bgra));
+                        REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                        if !FIRST_REC_FRAME_LOGGED.swap(true, Ordering::Relaxed) {
+                            capture_log("First recording frame published to encoder");
                         }
                     }
                 } else if streaming || feed_cam {
@@ -726,6 +736,7 @@ mod imp {
         let bitrate_kbps = (record_bitrate / 1000).max(500);
 
         if let Some(ref path) = record_path {
+            FIRST_REC_FRAME_LOGGED.store(false, Ordering::Relaxed);
             open_recorder(path, out_w, out_h, fps, bitrate_kbps, state.clone())?;
             capture_log(&format!(
                 "Recording to {} ({}x{} @ {}fps)",
@@ -907,6 +918,7 @@ mod imp {
             let mut st = state.lock();
             st.current_path = Some(path.clone());
             st.current_dims = (out_w, out_h);
+            st.recording = true;
         }
 
         if capture_already_running() {
@@ -915,11 +927,11 @@ mod imp {
 
         if let Err(e) = begin_capture(state.clone(), Some(path), None) {
             let mut st = state.lock();
+            st.recording = false;
             st.current_path = None;
             return Err(e);
         }
 
-        state.lock().recording = true;
         Ok(())
     }
 
@@ -1185,15 +1197,42 @@ mod imp {
             REC_CAPTURE_RENDERS_WINDOW.swap(0, Ordering::Relaxed),
         )
     }
+
+    /// Snapshot which capture-pipeline locks are currently held (watchdog aid).
+    /// `try_lock` here only briefly contends; it never blocks.
+    pub fn debug_lock_report() -> String {
+        let tag = |held: bool| if held { "HELD" } else { "free" };
+        let gpu = gpu_bridge().try_lock().is_none();
+        let ctrl = control_slot().try_lock().is_none();
+        let rec = recorder_slot().try_lock().is_none();
+        let paced = paced_output_slot().try_lock().is_none();
+        let stream = stream_sink().try_lock().is_none();
+        let cam = camera::camera_sink().try_lock().is_none();
+        format!(
+            "gpu_bridge={} control={} recorder={} paced={} stream={} camera_sink={}",
+            tag(gpu),
+            tag(ctrl),
+            tag(rec),
+            tag(paced),
+            tag(stream),
+            tag(cam)
+        )
+    }
 }
 
 #[cfg(windows)]
 pub use imp::{
-    attach_camera, attach_recording, attach_stream, dispatch_recording_outputs, ensure_capture_session,
-    is_capture_running, poll_camera_connected, recording_pipeline_window_stats, register_virtual_camera,
-    render_output_frame, start_both, start_camera, start_recording, start_streaming, stop_camera,
-    stop_recording, stop_streaming, sync_output_dimensions, viewport_changed_since_last_render,
+    attach_camera, attach_recording, attach_stream, debug_lock_report, dispatch_recording_outputs,
+    ensure_capture_session, is_capture_running, poll_camera_connected, recording_pipeline_window_stats,
+    register_virtual_camera, render_output_frame, start_both, start_camera, start_recording,
+    start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
+    viewport_changed_since_last_render,
 };
+
+#[cfg(not(windows))]
+pub fn debug_lock_report() -> String {
+    String::from("n/a")
+}
 
 #[cfg(windows)]
 pub fn render_recording_frame(state: &SharedState) -> Option<Vec<u8>> {

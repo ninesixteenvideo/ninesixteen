@@ -397,6 +397,52 @@ input[type="range"] {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/* Quality presets (Studio) */
+.quality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.quality-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  border: 2px solid var(--ns-ink);
+  border-radius: var(--ns-radius-md);
+  background: var(--ns-surface);
+  padding: 11px 13px;
+  box-shadow: 2px 2px 0 var(--ns-ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.12s ease;
+}
+.quality-preset:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ns-ink);
+}
+.quality-preset.active {
+  background: var(--ns-blue);
+  color: #fff;
+}
+.quality-preset-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.quality-preset-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--ns-yellow);
+  color: var(--ns-ink);
+}
+.quality-preset.active .quality-preset-badge {
+  background: rgba(255, 255, 255, 0.92);
+}
+
 .src-card {
   display: flex;
   align-items: center;
@@ -815,6 +861,17 @@ input[type="range"] {
   font-weight: 700;
   padding: 4px 11px;
   transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+button.cam-pill {
+  cursor: pointer;
+  appearance: none;
+}
+button.cam-pill:disabled {
+  cursor: default;
+}
+button.cam-pill.off:not(:disabled):hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--ns-ink);
 }
 .cam-wrap:hover .cam-pill,
 .cam-wrap:focus-within .cam-pill {

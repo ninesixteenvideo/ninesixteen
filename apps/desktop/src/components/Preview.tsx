@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, mediaSrc } from "../lib/bridge";
@@ -91,8 +92,18 @@ export function Preview() {
         showToast("Sign in required to export");
         return;
       }
-      const dest = await invoke<string>("export_recording_local", {
+      const defaultName = rec.filename.replace(/\.ns$/i, ".mp4");
+      const dest = await save({
+        defaultPath: defaultName,
+        filters: [{ name: "MP4 video", extensions: ["mp4"] }],
+        title: "Save recording as",
+      });
+      if (!dest) {
+        return;
+      }
+      await invoke("export_recording", {
         id: rec.id,
+        dest,
         idToken,
       });
       showToast(`Saved to ${dest}`);
@@ -342,8 +353,8 @@ function SelectedRecordingCard({
               className="card-action local icon-only"
               onClick={onExportLocal}
               disabled={busy}
-              title="Save to Documents/Videos"
-              aria-label="Save locally to Documents/Videos"
+              title="Choose save location"
+              aria-label="Save locally — choose file location"
             >
               {exporting === "local" ? (
                 <span className="card-action-spinner" aria-hidden="true" />

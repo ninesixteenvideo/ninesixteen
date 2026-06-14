@@ -64,7 +64,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "desktop",
     title: "4c. Desktop app usage",
     paragraphs: [
-      `The desktop app captures screen content, optional microphone and/or system audio, cursor position, and settings you choose (resolution up to 1080p, frame rate, zoom sensitivity, and similar options) to perform recording and virtual camera features.`,
+      `The desktop app captures screen content, optional microphone and/or system audio, cursor position, and settings you choose (resolution up to 1080p, frame rate, zoom sensitivity, and similar options) to perform recording features.`,
       `This capture data is processed on your device. Recordings are written to local storage on your computer in an encrypted format for the free tier. We do not receive your raw recordings unless you explicitly use a feature that sends data elsewhere (such as Google Drive export).`,
       `The desktop app may store sign-in session tokens, Google Drive access tokens (when you connect Drive), and preferences locally on your device.`,
     ],
@@ -111,7 +111,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     title: "6. How we use information",
     paragraphs: [`We use personal information to:`],
     bullets: [
-      "Provide, maintain, and improve the Service, including recording, preview, export, and virtual camera features.",
+      "Provide, maintain, and improve the Service, including recording, preview, and export features.",
       "Create and manage accounts and authenticate you on web and desktop.",
       "Process subscriptions, unlock Pro features, and manage billing through Stripe.",
       "Complete browser-to-desktop authorization flows for sign-in and Google Drive export.",

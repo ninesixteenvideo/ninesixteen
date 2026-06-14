@@ -30,6 +30,7 @@ mod save_progress;
 mod state;
 #[cfg(desktop)]
 mod tray;
+mod watchdog;
 
 use state::new_app_handles;
 use tauri::{Emitter, LogicalSize, Manager};
@@ -213,8 +214,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["Alt+KeyR", "Alt+KeyV"])
-                .expect("valid global shortcut definitions")
                 .with_handler(|app, shortcut, event| hotkeys::handle(app, shortcut, event))
                 .build(),
         )
@@ -249,7 +248,9 @@ pub fn run() {
                 }
                 if let Some(path) = bundled {
                     ffmpeg_util::set_bundled_ffmpeg(path);
-                    // Encoder probe spawns several FFmpeg processes — defer until first record.
+                    // Warm the encoder on a background thread so the first recording
+                    // starts instantly instead of probing 4 encoders mid-countdown.
+                    file_record::warmup_encoder();
                 } else {
                     log::capture_log(
                         "FFmpeg not bundled — run: node scripts/fetch-ffmpeg.mjs",
@@ -266,8 +267,27 @@ pub fn run() {
                 }
             }
 
+            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+            for (mods, code, label) in [
+                (Modifiers::ALT, Code::KeyR, "Alt+R (record)"),
+                (Modifiers::ALT, Code::KeyV, "Alt+V (frame)"),
+            ] {
+                let shortcut = Shortcut::new(Some(mods), code);
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    log::capture_log(&format!(
+                        "Global shortcut {label} unavailable (another instance running?): {e}"
+                    ));
+                }
+            }
+
             rawinput::start(app.handle().clone(), viewport.clone(), shared.clone());
             rawinput::start_cursor_follow(app.handle().clone(), viewport.clone(), shared.clone());
+            commands::start_overlay_refresh_loop(
+                app.handle().clone(),
+                shared.clone(),
+                viewport.clone(),
+            );
+            watchdog::start(app.handle().clone(), shared.clone(), viewport.clone());
 
             let app_handle = app.handle().clone();
             let st = shared.clone();
@@ -378,7 +398,6 @@ pub fn run() {
             commands::clear_entitlement,
             commands::open_recordings_folder,
             commands::notify_app_ready,
-            commands::defer_virtual_camera_register,
             commands::set_input_settings,
             commands::set_recording_settings,
             commands::list_audio_devices,

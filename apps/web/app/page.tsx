@@ -23,9 +23,7 @@ export default function HomePage() {
             <Wordmark size={20} /> captures a crisp{" "}
             <b className="font-semibold text-ink">9×16</b> frame from your screen. Press
             Record, take five seconds to position and zoom, then save an encrypted
-            recording you can preview in the app. It also appears as its own camera
-            device — choose <b className="font-semibold text-ink">ninesixteen.video</b>{" "}
-            anywhere you pick a video source.
+            recording you can preview in the app — and export to MP4 with Pro.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
@@ -189,9 +187,9 @@ const FEATURES = [
     desc: "Tauri on Windows Graphics Capture — low overhead, no bloated Electron shell.",
   },
   {
-    icon: "📷",
-    title: "Virtual camera device",
-    desc: "ninesixteen.video shows up as its own camera in other applications — your live 9×16 frame, no re-export needed.",
+    icon: "📤",
+    title: "Export to MP4",
+    desc: "Unlock Pro to export decrypted MP4 files straight to your computer or Google Drive.",
   },
   {
     icon: "💾",

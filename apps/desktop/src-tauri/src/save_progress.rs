@@ -5,11 +5,13 @@
 
 use crate::log::capture_log;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 static REPORTER: OnceLock<Mutex<Option<Arc<dyn Fn(u8, &'static str) + Send + Sync>>>> = OnceLock::new();
 static TIMING: OnceLock<Mutex<Option<SaveTiming>>> = OnceLock::new();
+static HEARTBEAT_STOP: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
 
 struct SaveTiming {
     started: Instant,
@@ -38,6 +40,7 @@ pub fn begin_timing() {
 }
 
 pub fn end_timing() {
+    stop_heartbeat();
     let Some(mut timing) = TIMING.get().and_then(|slot| slot.lock().take()) else {
         return;
     };
@@ -59,6 +62,8 @@ fn milestone_label(percent: u8, phase: &'static str) -> Option<&'static str> {
     match (phase, percent) {
         (_, 8) if phase == "starting" => Some("preparing"),
         ("finalizing", 12) => Some("worker join"),
+        ("finalizing", 16) => Some("draining frames"),
+        ("finalizing", 20) => Some("frames drained"),
         ("finalizing", 22) => Some("ffmpeg flush"),
         ("finalizing", 38) => Some("ffmpeg encode"),
         ("timing", 42) => Some("timing stretch"),
@@ -105,5 +110,49 @@ pub fn report(percent: u8, phase: &'static str) {
     log_milestone(percent, phase);
     if let Some(reporter) = REPORTER.get().and_then(|slot| slot.lock().clone()) {
         reporter(percent.min(100), phase);
+    }
+}
+
+/// Smooth progress while a long-running step blocks (e.g. recorder worker join).
+/// Returns a guard that stops the heartbeat when dropped.
+pub fn start_heartbeat(from: u8, to: u8, est_secs: f64) -> HeartbeatGuard {
+    stop_heartbeat();
+    let stop = Arc::new(AtomicBool::new(false));
+    *HEARTBEAT_STOP.get_or_init(|| Mutex::new(None)).lock() = Some(stop.clone());
+    let from = from.min(to);
+    let to = to.max(from);
+    let est = est_secs.max(1.0);
+    std::thread::Builder::new()
+        .name("save-progress-heartbeat".into())
+        .spawn(move || {
+            let started = Instant::now();
+            while !stop.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(400));
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
+                let elapsed = started.elapsed().as_secs_f64();
+                let t = (elapsed / est).clamp(0.0, 0.95);
+                let pct = from + ((to - from) as f64 * t).round() as u8;
+                report(pct.min(to.saturating_sub(1)), "finalizing");
+            }
+        })
+        .ok();
+    HeartbeatGuard
+}
+
+pub struct HeartbeatGuard;
+
+impl Drop for HeartbeatGuard {
+    fn drop(&mut self) {
+        stop_heartbeat();
+    }
+}
+
+fn stop_heartbeat() {
+    if let Some(slot) = HEARTBEAT_STOP.get() {
+        if let Some(stop) = slot.lock().take() {
+            stop.store(true, Ordering::Release);
+        }
     }
 }

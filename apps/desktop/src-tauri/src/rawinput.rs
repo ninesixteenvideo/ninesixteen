@@ -3,7 +3,6 @@ use crate::state::{SharedState, SharedViewport};
 #[cfg(windows)]
 mod imp {
     use super::*;
-    use crate::commands::emit_viewport_sync;
     use crate::geometry::{clamp, normalize_zoom, smooth_toward, ZOOM_SNAP_EPS};
     use crate::log::capture_log;
     use crate::state::ViewportState;
@@ -37,9 +36,13 @@ mod imp {
     /// Wheel deltas queued by the hook; drained on the follow thread only.
     static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
     static LAST_ALT_DEBUG_MS: AtomicU64 = AtomicU64::new(0);
+    /// Cached so the mouse hook never locks the viewport mutex (that starved pan follow).
+    static ZOOM_AT_MIN: AtomicBool = AtomicBool::new(false);
+    static VIEWPORT_DIRTY: AtomicBool = AtomicBool::new(false);
 
     const CURSOR_TICK_MS: u64 = 8;
     const PAN_SMOOTH_HZ: f64 = 11.0;
+    const PAN_SMOOTH_HZ_ALT: f64 = 22.0;
     const ZOOM_SMOOTH_HZ: f64 = 3.8;
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
@@ -67,6 +70,21 @@ mod imp {
         } else {
             "none"
         }
+    }
+
+    fn sync_zoom_at_min(zoom_target: f64) {
+        ZOOM_AT_MIN.store(
+            zoom_target <= crate::geometry::ZOOM_MIN + 0.001,
+            Ordering::Release,
+        );
+    }
+
+    fn mark_viewport_dirty() {
+        VIEWPORT_DIRTY.store(true, Ordering::Release);
+    }
+
+    pub fn take_viewport_dirty() -> bool {
+        VIEWPORT_DIRTY.swap(false, Ordering::AcqRel)
     }
 
     fn now_ms() -> u64 {
@@ -202,16 +220,12 @@ mod imp {
                 if delta.abs() > f64::EPSILON {
                     // Drop scroll-in attempts when already at zoom min (avoids queued-but-ignored buildup).
                     if delta < 0.0 {
-                        if let Some(ctx) = CTX.get() {
-                            let at_min = ctx.viewport.lock().zoom_target
-                                <= crate::geometry::ZOOM_MIN + 0.001;
-                            if at_min {
-                                alt_log_throttled(
-                                    "wheel dropped — already at min zoom (full desktop)",
-                                    600,
-                                );
-                                return LRESULT(1);
-                            }
+                        if ZOOM_AT_MIN.load(Ordering::Acquire) {
+                            alt_log_throttled(
+                                "wheel dropped — already at min zoom (full desktop)",
+                                600,
+                            );
+                            return LRESULT(1);
                         }
                     }
                     let queued = {
@@ -273,14 +287,27 @@ mod imp {
 
         let mut vp = ctx.viewport.lock();
 
+        // Keep zoom anchored to the live cursor — prevents drift while Alt+scroll is held.
+        if let Some(m) = vp.monitor.as_ref() {
+            if let Some((tx, ty)) = cursor_pos_for_monitor(
+                m.origin_x,
+                m.origin_y,
+                m.width as f64,
+                m.height as f64,
+            ) {
+                vp.viewport.x = tx;
+                vp.viewport.y = ty;
+            }
+        }
+
         let factor = 1.0 + delta * WHEEL_ZOOM_STEP * vp.zoom_sensitivity;
         let prev = vp.zoom_target;
         let raw_next = prev * factor;
 
         if hits_full_frame_snap(prev, raw_next) {
             aim_full_frame(&mut vp);
-            drop(vp);
-            emit_viewport_now(&ctx.app, ctx);
+            sync_zoom_at_min(vp.zoom_target);
+            mark_viewport_dirty();
             return true;
         }
 
@@ -298,19 +325,20 @@ mod imp {
 
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         vp.zoom_target = next;
+        sync_zoom_at_min(next);
         let (x, y, z) = (vp.viewport.x, vp.viewport.y, vp.viewport.zoom);
-        drop(vp);
         alt_log(&format!("zoom target {prev:.2} → {next:.2} (viewport @ {x:.0},{y:.0} zoom {z:.2})"));
-        emit_viewport_now(&ctx.app, ctx);
+        mark_viewport_dirty();
         true
     }
 
     pub fn start(app: AppHandle, viewport: SharedViewport, state: SharedState) {
         let _ = CTX.set(Ctx {
-            viewport,
+            viewport: viewport.clone(),
             state,
             app,
         });
+        sync_zoom_at_min(viewport.lock().zoom_target);
         std::thread::spawn(|| unsafe {
             run_message_loop();
         });
@@ -344,12 +372,8 @@ mod imp {
         let _ = windows::Win32::UI::WindowsAndMessaging::UnhookWindowsHookEx(_kb_hook);
     }
 
-    fn emit_viewport_now(app: &AppHandle, ctx: &Ctx) {
-        let vp = ctx.viewport.lock();
-        let quality = ctx.state.lock().recording_settings.quality;
-        emit_viewport_sync(app, &vp, quality);
-    }
-
+    /// Cursor follow only updates shared viewport state; overlay refresh runs on
+    /// the main thread via `commands::start_overlay_refresh_loop`.
     fn cursor_pos_for_monitor(
         origin_x: i32,
         origin_y: i32,
@@ -359,11 +383,19 @@ mod imp {
         use windows::Win32::Foundation::POINT;
         use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
-        let mut pt = POINT::default();
-        unsafe { GetCursorPos(&mut pt).ok()? };
-        let x = pt.x as f64 - origin_x as f64;
-        let y = pt.y as f64 - origin_y as f64;
-        Some((clamp(x, 0.0, width), clamp(y, 0.0, height)))
+        for attempt in 0..3 {
+            let mut pt = POINT::default();
+            let ok = unsafe { GetCursorPos(&mut pt).is_ok() };
+            if ok {
+                let x = pt.x as f64 - origin_x as f64;
+                let y = pt.y as f64 - origin_y as f64;
+                return Some((clamp(x, 0.0, width), clamp(y, 0.0, height)));
+            }
+            if attempt + 1 < 3 {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        None
     }
 
     fn advance_viewport(viewport: &SharedViewport, dt_secs: f64) -> bool {
@@ -391,9 +423,11 @@ mod imp {
         let oy = vp.viewport.y;
         let oz = vp.viewport.zoom;
 
+        let pan_hz = if alt_held() { PAN_SMOOTH_HZ_ALT } else { PAN_SMOOTH_HZ };
         // Pan always runs — Alt must never interrupt cursor follow.
-        vp.viewport.x = smooth_toward(vp.viewport.x, tx, PAN_SMOOTH_HZ, dt_secs);
-        vp.viewport.y = smooth_toward(vp.viewport.y, ty, PAN_SMOOTH_HZ, dt_secs);
+        vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
+        vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
+        sync_zoom_at_min(vp.zoom_target);
 
         if hold {
             vp.zoom_target = 1.0;
@@ -413,7 +447,11 @@ mod imp {
 
         let pan = (vp.viewport.x - ox).abs() + (vp.viewport.y - oy).abs();
         let zoom = (vp.viewport.zoom - oz).abs();
-        pan > 0.05 || zoom > 0.0005
+        let moved = pan > 0.05 || zoom > 0.0005;
+        if moved {
+            mark_viewport_dirty();
+        }
+        moved
     }
 
     fn zoom_animating(viewport: &SharedViewport) -> bool {
@@ -442,13 +480,6 @@ mod imp {
 
         let moved = advance_viewport(viewport, dt);
         let animating = zoom_animating(viewport);
-        let blocked = scroll_input_blocked();
-
-        if moved || animating || blocked {
-            if let Some(ctx) = CTX.get() {
-                emit_viewport_now(&ctx.app, ctx);
-            }
-        }
         moved || animating
     }
 
@@ -462,6 +493,11 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{start, start_cursor_follow};
+
+#[cfg(not(windows))]
+pub fn take_viewport_dirty() -> bool {
+    false
+}
 
 #[cfg(not(windows))]
 pub fn start(_app: tauri::AppHandle, _viewport: SharedViewport, _state: SharedState) {}

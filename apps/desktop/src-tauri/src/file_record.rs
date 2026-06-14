@@ -150,6 +150,7 @@ impl FileRecorder {
             .ok_or_else(|| "recorder worker missing".to_string())?;
         drop(rec);
         save_progress::report(12, "finalizing");
+        let _heartbeat = save_progress::start_heartbeat(12, 22, 60.0);
         let (frames, duration) = match worker.join() {
             Ok(Ok(v)) => v,
             Ok(Err(e)) => return Err(e),
@@ -473,6 +474,12 @@ fn run(
     }
 
     let _ = slot_thread.join();
+    save_progress::report(16, "finalizing");
+
+    let target_frames = stop_session_secs
+        .map(|secs| (secs * fps_f).floor() as u64)
+        .unwrap_or(written.max(1));
+
     while let Ok(arc) = frame_rx.recv() {
         if last_arc
             .as_ref()
@@ -483,7 +490,13 @@ fn run(
         write_arc_frame(&mut stdin, &arc, width, height)?;
         last_arc = Some(arc);
         written += 1;
+        if target_frames > 0 && written % 250 == 0 {
+            let pct = 12 + ((written.min(target_frames) as f64 / target_frames as f64) * 9.0) as u8;
+            save_progress::report(pct.min(21), "finalizing");
+        }
     }
+
+    save_progress::report(20, "finalizing");
 
     gpu_feed.stop();
     let gpu_samples = gpu_renders.load(Ordering::Relaxed);

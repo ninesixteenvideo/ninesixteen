@@ -26,7 +26,6 @@ const INCLUDED = [
   "9×16 vertical framing with cursor + Alt-scroll zoom",
   "Encrypted local recordings with in-app preview",
   "System & microphone audio with level meters",
-  "Virtual camera device — ninesixteen.video in any app that lists cameras",
   "FFmpeg bundled — nothing extra to install",
 ];
 

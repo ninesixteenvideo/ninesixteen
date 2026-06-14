@@ -109,7 +109,7 @@ impl Default for RecordingSettings {
     fn default() -> Self {
         Self {
             orientation: Orientation::Portrait,
-            fps: 60,
+            fps: 30,
             quality: 1080,
             capture_cursor: true,
         }

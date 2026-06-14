@@ -17,7 +17,6 @@ const TICKER = [
   "cursor framing",
   "Alt + scroll zoom",
   "encrypted local recordings",
-  "virtual camera device",
   "preview in-app",
   "export MP4 with Pro",
 ];

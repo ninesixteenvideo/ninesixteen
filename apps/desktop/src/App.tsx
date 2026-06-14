@@ -6,7 +6,6 @@ import { Studio } from "./components/Studio";
 import { Preview } from "./components/Preview";
 import { Settings } from "./components/Settings";
 import { AccountMenu } from "./components/AccountMenu";
-import { CamStatus } from "./components/CamStatus";
 import { isDesktop } from "./lib/bridge";
 
 const BASE_TABS = [
@@ -49,7 +48,7 @@ export function App() {
             </span>
           )}
           {recording && <span className="pill rec-dot">REC</span>}
-          {isDesktop && ready && <CamStatus />}
+          {/* Virtual camera (CamStatus) deferred to v1.1 — recording-only for v1. */}
           <AccountMenu />
         </div>
       </header>

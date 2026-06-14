@@ -18,7 +18,7 @@ import {
   initializeAuth,
   type Auth,
 } from "firebase/auth";
-import { enableIndexedDbPersistence, getFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore, type Firestore } from "firebase/firestore";
 
 const env = import.meta.env;
 
@@ -41,7 +41,6 @@ export const WEB_URL: string = env.VITE_WEB_URL || "https://ninesixteen.video";
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
-let persistenceEnabled = false;
 
 function ensureApp(): FirebaseApp | null {
   if (!isFirebaseConfigured) return null;
@@ -69,12 +68,18 @@ export function getDb(): Firestore | null {
   const a = ensureApp();
   if (!a) return null;
   if (!db) {
-    db = getFirestore(a);
-    if (!persistenceEnabled) {
-      persistenceEnabled = true;
-      void enableIndexedDbPersistence(db).catch(() => {
-        /* private mode or multi-tab — online-only fallback */
+    // Force long-polling: inside the Tauri/WebView2 webview, Firestore's default
+    // WebChannel streaming transport (and its auto-detect probe) can wedge the
+    // UI thread and trigger Windows "AppHangB1". Long-polling is the supported
+    // transport for embedded/restricted webviews. IndexedDB persistence is
+    // intentionally NOT enabled here — we keep our own entitlement cache, and
+    // IndexedDB inside the webview is another hang vector at startup.
+    try {
+      db = initializeFirestore(a, {
+        experimentalForceLongPolling: true,
       });
+    } catch {
+      db = getFirestore(a);
     }
   }
   return db;

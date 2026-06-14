@@ -20,6 +20,20 @@
         "maximizable": false,
         "fullscreen": false,
         "backgroundColor": "#F4F3EF"
+      },
+      {
+        "label": "overlay",
+        "url": "overlay.html",
+        "width": 1280,
+        "height": 720,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "focus": false,
+        "shadow": false,
+        "visible": false
       }
     ],
     "security": {

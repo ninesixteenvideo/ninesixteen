@@ -21,6 +21,7 @@ struct SoftcamApi {
 
 impl SoftcamApi {
     fn load() -> Result<Self, String> {
+        com_init();
         let path = locate_dll()?;
         register_directshow_filter(&path);
         unsafe {
@@ -48,7 +49,41 @@ impl SoftcamApi {
     }
 }
 
+/// Stable per-user install path for softcam.dll, e.g.
+/// `%LOCALAPPDATA%\ninesixteen.video\softcam.dll`. Loading and DirectShow
+/// registration both use this path so the DLL another app has open is never the
+/// one a rebuild overwrites in the target/ tree (the source of `os error 32`).
+fn stable_dll_path() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("ninesixteen.video").join("softcam.dll"))
+}
+
+/// Best-effort: ensure the stable copy exists and matches `src`. Failures are
+/// ignored (e.g. the file is currently loaded) — callers fall back to `src`.
+fn mirror_to_stable(src: &Path) -> Option<PathBuf> {
+    let stable = stable_dll_path()?;
+    let fresh = std::fs::metadata(&stable)
+        .ok()
+        .zip(std::fs::metadata(src).ok())
+        .map(|(a, b)| a.len() == b.len())
+        .unwrap_or(false);
+    if !fresh {
+        if let Some(dir) = stable.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::copy(src, &stable);
+    }
+    stable.exists().then_some(stable)
+}
+
 fn locate_dll() -> Result<PathBuf, String> {
+    // Prefer the stable per-user copy so we never load (and lock) the build-tree
+    // copy that rebuilds overwrite.
+    if let Some(stable) = stable_dll_path() {
+        if stable.exists() {
+            return Ok(stable);
+        }
+    }
+
     let mut candidates = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -68,6 +103,11 @@ fn locate_dll() -> Result<PathBuf, String> {
 
     for p in candidates {
         if p.exists() {
+            // Provision the stable copy for next launch (and for DirectShow), but
+            // load it this run too so the app never holds the build-tree file open.
+            if let Some(stable) = mirror_to_stable(&p) {
+                return Ok(stable);
+            }
             return Ok(p);
         }
     }
@@ -78,46 +118,27 @@ fn locate_dll() -> Result<PathBuf, String> {
     )
 }
 
-/// softcam must be registered with DirectShow once so other apps can enumerate the device.
-fn register_directshow_filter(path: &Path) {
+/// One-time note only — never call DllRegisterServer at runtime (can freeze the app / DirectShow).
+fn register_directshow_filter(_path: &Path) {
     use std::sync::OnceLock;
-    static ATTEMPTED: OnceLock<()> = OnceLock::new();
-    ATTEMPTED.get_or_init(|| {
-        const E_ACCESSDENIED: i32 = 0x80070005u32 as i32;
-        unsafe {
-            let lib = match Library::new(path) {
-                Ok(lib) => lib,
-                Err(e) => {
-                    crate::log::capture_log(&format!("DirectShow registration skipped (load failed: {e})"));
-                    return;
-                }
-            };
-            type DllRegisterServer = unsafe extern "system" fn() -> i32;
-            let register: libloading::Symbol<DllRegisterServer> = match lib.get(b"DllRegisterServer") {
-                Ok(sym) => sym,
-                Err(e) => {
-                    crate::log::capture_log(&format!("DirectShow registration skipped ({e})"));
-                    return;
-                }
-            };
-            let hr = register();
-            if hr >= 0 {
-                crate::log::capture_log(&format!(
-                    "Registered virtual camera filter ({})",
-                    path.display()
-                ));
-            } else if hr == E_ACCESSDENIED {
-                crate::log::capture_log(
-                    "DirectShow registration skipped (admin required; OK if you already ran scripts/register-softcam.bat).",
-                );
-            } else {
-                crate::log::capture_log(&format!(
-                    "DirectShow registration failed ({hr:#010x}). Run scripts/register-softcam.bat as Administrator once."
-                ));
-            }
-        }
+    static LOGGED: OnceLock<()> = OnceLock::new();
+    LOGGED.get_or_init(|| {
+        crate::log::capture_log(
+            "Virtual camera uses DirectShow — if ninesixteen.video is missing from camera lists, run scripts/register-softcam.bat as Administrator once.",
+        );
     });
 }
+
+#[cfg(windows)]
+fn com_init() {
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+}
+
+#[cfg(not(windows))]
+fn com_init() {}
 
 static API: OnceLock<Result<SoftcamApi, String>> = OnceLock::new();
 
@@ -140,6 +161,7 @@ unsafe impl Sync for VirtualCamera {}
 
 impl VirtualCamera {
     pub fn open(width: u32, height: u32, fps: u32) -> Result<Self, String> {
+        com_init();
         let w = align4(width)?;
         let h = align4(height)?;
         let api = api()?;

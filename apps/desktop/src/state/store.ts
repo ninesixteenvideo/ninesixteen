@@ -98,7 +98,7 @@ export const useStore = create<Store>((set, get) => ({
   inputSettings: { zoomSensitivity: 1 },
   recordingSettings: {
     orientation: "portrait",
-    fps: 60,
+    fps: 30,
     quality: 1080,
     captureCursor: true,
   },
@@ -182,8 +182,6 @@ export const useStore = create<Store>((set, get) => ({
       overlayVisible: state.overlayVisible ?? false,
       audioSettings,
     });
-
-    void invoke("defer_virtual_camera_register").catch(() => {});
 
     void invoke<AudioDeviceInfo[]>("list_audio_devices")
       .then((audioDevices) => set({ audioDevices }))

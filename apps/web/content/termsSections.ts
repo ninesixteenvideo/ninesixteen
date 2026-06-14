@@ -39,7 +39,6 @@ export const TERMS_SECTIONS: LegalSection[] = [
     title: "4. Description of the Service",
     paragraphs: [
       `${SERVICE_NAME} is a vertical desktop capture tool for Windows. The Service lets you frame a 9×16 region of your screen, record video (and optional audio), preview recordings inside the app, and—when subscribed to Pro—export decrypted MP4 files locally or to Google Drive.`,
-      `The desktop app also exposes a virtual camera device named "${SERVICE_NAME}" that other applications may use as a video source while the app is running.`,
       `We may update, change, or discontinue features at any time. We do not guarantee uninterrupted or error-free operation. Where the Service is supplied to Australian consumers, our obligations under the Australian Consumer Law (ACL) are not limited by this section.`,
     ],
   },
@@ -71,7 +70,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
       `Pro features, pricing, and limits may change. Material reductions to Pro features will not apply retroactively to a paid period you have already purchased without reasonable notice.`,
     ],
     bullets: [
-      "Free: local recording, in-app preview, virtual camera (while the app is running), and core capture settings.",
+      "Free: local recording, in-app preview, and core capture settings.",
       "Pro: MP4 export to your computer (for example, Documents/Videos) and optional export to your Google Drive, plus other Pro benefits we describe in the product.",
     ],
   },
@@ -93,16 +92,8 @@ export const TERMS_SECTIONS: LegalSection[] = [
     ],
   },
   {
-    id: "virtual-camera",
-    title: "10. Virtual camera",
-    paragraphs: [
-      `The virtual camera feature makes your live framed output available to other applications. You are responsible for how you use that output and for complying with the policies of any platform or app that receives it.`,
-      `Some applications cache camera lists; you may need to restart them after installing or registering the virtual camera driver. Administrator setup steps described in the app may be required on Windows.`,
-    ],
-  },
-  {
     id: "acceptable-use",
-    title: "11. Acceptable use",
+    title: "10. Acceptable use",
     paragraphs: [`You agree not to misuse the Service. Without limiting other restrictions, you may not:`],
     bullets: [
       "Use the Service for unlawful, fraudulent, harassing, or abusive purposes.",
@@ -115,7 +106,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "ip",
-    title: "12. Intellectual property",
+    title: "11. Intellectual property",
     paragraphs: [
       `The Service, including software, branding, documentation, and website content (excluding your recordings), is owned by us or our licensors and is protected by intellectual property laws.`,
       `Subject to these Terms, we grant you a limited, non-exclusive, non-transferable, revocable license to install and use the desktop app and access the website for your personal or internal business purposes.`,
@@ -124,14 +115,14 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "feedback",
-    title: "13. Feedback",
+    title: "12. Feedback",
     paragraphs: [
       `If you send suggestions, ideas, or feedback, you grant us a perpetual, irrevocable, worldwide, royalty-free license to use them without obligation to you, to the extent permitted by law. Do not send confidential or proprietary information you expect to be kept secret unless we agree in writing.`,
     ],
   },
   {
     id: "acl",
-    title: "14. Australian Consumer Law",
+    title: "13. Australian Consumer Law",
     paragraphs: [
       `If you acquire the Service as a consumer under the ACL (generally for personal or household use), our goods and services come with guarantees that cannot be excluded under the ACL.`,
       `For a major failure with the Service, you may be entitled to a remedy such as cancellation and a refund. For a non-major failure, you may be entitled to have the failure remedied within a reasonable time; if we do not do so, you may be entitled to a refund or other remedy under the ACL.`,
@@ -140,16 +131,16 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "disclaimers",
-    title: "15. Disclaimers",
+    title: "14. Disclaimers",
     paragraphs: [
       `To the extent permitted by law, the Service is provided "as is" and "as available" without warranties of any kind, whether express, implied, or statutory, including implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement.`,
-      `We do not warrant that recordings will be error-free, that exports will meet any particular quality standard on every device, that the virtual camera will be compatible with every application, or that the Service will be uninterrupted or secure.`,
+      `We do not warrant that recordings will be error-free, that exports will meet any particular quality standard on every device, or that the Service will be uninterrupted or secure.`,
       `The disclaimers in this section do not apply to consumers where prohibited by the ACL or other mandatory law.`,
     ],
   },
   {
     id: "liability",
-    title: "16. Limitation of liability",
+    title: "15. Limitation of liability",
     paragraphs: [
       `To the maximum extent permitted by law, we and our suppliers will not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits, data, goodwill, or business opportunity, arising from or related to the Service.`,
       `To the maximum extent permitted by law, our total liability for any claim arising out of or relating to the Service or these Terms will not exceed the greater of (a) the amount you paid us for the Service in the twelve (12) months before the event giving rise to the claim, or (b) USD $50.`,
@@ -158,14 +149,14 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "indemnity",
-    title: "17. Indemnification",
+    title: "16. Indemnification",
     paragraphs: [
       `To the extent permitted by law and except where prohibited for consumers under mandatory law, you will defend, indemnify, and hold harmless ${OPERATOR_NAME} and its operators, affiliates, and suppliers from any claims, damages, losses, and expenses (including reasonable legal fees) arising from your use of the Service, your recordings or exports, your violation of these Terms, or your violation of any law or third-party right.`,
     ],
   },
   {
     id: "termination",
-    title: "18. Suspension and termination",
+    title: "17. Suspension and termination",
     paragraphs: [
       `We may suspend or terminate your access to the Service if we reasonably believe you violated these Terms, pose a security risk, or if we discontinue the Service. Where reasonable, we will give you notice before termination except for serious breaches or legal requirements.`,
       `You may stop using the Service at any time. Uninstalling the desktop app does not automatically cancel a Pro subscription—you must cancel billing through Stripe.`,
@@ -174,7 +165,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "changes",
-    title: "19. Changes to these Terms",
+    title: "18. Changes to these Terms",
     paragraphs: [
       `We may update these Terms from time to time. We will post the revised Terms on ${SITE_URL}/terms and update the effective date. For material changes, we will provide reasonable notice through the Service or by email if we have your address.`,
       `Continued use after changes become effective constitutes acceptance of the revised Terms where permitted by law. If you do not agree, stop using the Service and cancel any subscription before the changes take effect.`,
@@ -182,7 +173,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "law",
-    title: "20. Governing law and disputes",
+    title: "19. Governing law and disputes",
     paragraphs: [
       `${SERVICE_NAME} is operated from ${OPERATOR_LOCATION}. These Terms are governed by the laws of Western Australia and the Commonwealth of Australia, without regard to conflict-of-law rules that would apply another jurisdiction's laws.`,
       `If you access the Service from outside Australia, you are responsible for complying with local laws that apply to you. Nothing in these Terms replaces or limits rights and remedies that cannot be excluded under mandatory consumer protection or other non-waivable laws in your country or state of residence.`,
@@ -192,7 +183,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
   },
   {
     id: "contact",
-    title: "21. Contact",
+    title: "20. Contact",
     paragraphs: [`Questions about these Terms: ${LEGAL_CONTACT_EMAIL}.`],
   },
 ];
