@@ -37,8 +37,12 @@ export async function signInViaDesktopBrowser(): Promise<void> {
   await openExternal(url.toString());
 
   const deadline = Date.now() + 5 * 60 * 1000;
+  let polls = 0;
   while (Date.now() < deadline) {
-    await sleep(2000);
+    // First poll sooner so a fast browser sign-in feels instant.
+    await sleep(polls === 0 ? 800 : 2000);
+    polls += 1;
+
     let res: Response;
     try {
       const poll = new URL(`${WEB_URL}/api/auth/desktop/session`);
@@ -49,11 +53,20 @@ export async function signInViaDesktopBrowser(): Promise<void> {
       continue;
     }
 
-    const data = (await res.json()) as {
+    if (res.status === 429) {
+      await sleep(3000);
+      continue;
+    }
+
+    const data = (await res.json().catch(() => ({}))) as {
       status?: string;
       customToken?: string;
       error?: string;
     };
+
+    if (data.error && data.status !== "pending") {
+      throw new Error(data.error);
+    }
 
     if (data.status === "ready" && data.customToken) {
       const { signInWithCustomToken } = await import("firebase/auth");

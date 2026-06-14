@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { AuthForm } from "@/components/AuthForm";
@@ -10,6 +10,7 @@ function DesktopAuthInner() {
   const params = useSearchParams();
   const code = params.get("code")?.trim() ?? "";
   const { user, loading } = useAuth();
+  const linkedCodeRef = useRef<string | null>(null);
   const [status, setStatus] = useState<"waiting" | "linking" | "done" | "error">(
     code ? "waiting" : "error"
   );
@@ -18,7 +19,9 @@ function DesktopAuthInner() {
   );
 
   useEffect(() => {
-    if (!code || loading || !user) return;
+    if (!code || loading || !user?.uid) return;
+    if (linkedCodeRef.current === code) return;
+    linkedCodeRef.current = code;
 
     let cancelled = false;
     (async () => {
@@ -44,6 +47,7 @@ function DesktopAuthInner() {
           setMessage("You're signed in. Return to the ninesixteen desktop app.");
         }
       } catch (e) {
+        linkedCodeRef.current = null;
         if (!cancelled) {
           setStatus("error");
           setMessage(e instanceof Error ? e.message : "Something went wrong.");
@@ -54,7 +58,7 @@ function DesktopAuthInner() {
     return () => {
       cancelled = true;
     };
-  }, [code, user, loading]);
+  }, [code, user?.uid, loading]);
 
   return (
     <div className="mx-auto max-w-md px-5 py-16 text-center">

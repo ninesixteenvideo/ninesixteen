@@ -7,7 +7,7 @@ use crate::state::{
 use std::sync::OnceLock;
 use parking_lot::Mutex;
 use crate::{audio, capture, monitors, recordings, screenshot};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 static LAST_OVERLAY_FRAME: OnceLock<Mutex<Option<OverlayFrame>>> = OnceLock::new();
 
@@ -178,6 +178,7 @@ pub fn set_zoom(
     cs
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 fn emit_countdown(app: &AppHandle, seconds: u8) {
@@ -287,8 +288,6 @@ pub fn start_recording(
         vp.viewport.orientation = Orientation::Portrait;
     }
 
-    ensure_overlay(&app);
-    minimize_main_window(&app);
     crate::log::capture_log("Record countdown armed (5s)");
     let _ = app.emit(
         "recording:state",
@@ -296,10 +295,16 @@ pub fn start_recording(
     );
 
     let shared: SharedState = handles.inner().state.clone();
+    capture::ensure_capture_session(shared.clone());
     let app_bg = app.clone();
     std::thread::Builder::new()
         .name("record-countdown".into())
-        .spawn(move || run_recording_countdown(app_bg, shared))
+        .spawn(move || {
+            // Overlay + minimize can block the WebView on Windows — keep off the invoke thread.
+            ensure_overlay(&app_bg);
+            minimize_main_window(&app_bg);
+            run_recording_countdown(app_bg, shared);
+        })
         .map_err(|e| format!("spawn countdown thread: {e}"))?;
 
     Ok(merged_capture_state(handles.inner()))
@@ -320,6 +325,7 @@ pub fn cancel_recording_countdown(
     }
     emit_countdown(&app, 0);
     apply_overlay_visibility(&app, &handles.state.lock());
+    capture::ensure_capture_session(handles.inner().state.clone());
     let _ = app.emit(
         "recording:state",
         serde_json::json!({ "recording": false, "arming": false }),
@@ -428,6 +434,51 @@ pub fn start_both(
     let _ = app.emit("recording:state", serde_json::json!({ "recording": true }));
     let _ = app.emit("streaming:state", serde_json::json!({ "streaming": true }));
     Ok(merged_capture_state(handles.inner()))
+}
+
+#[tauri::command]
+pub fn notify_app_ready(_app: AppHandle, _handles: State<AppHandles>) -> Result<(), String> {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    crate::log::capture_log("UI ready — virtual camera registers after a short delay");
+    Ok(())
+}
+
+/// Background registration of the softcam device (no screen capture).
+#[tauri::command]
+pub fn defer_virtual_camera_register(app: AppHandle, handles: State<AppHandles>) -> Result<(), String> {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    let cam_app = app.clone();
+    let cam_state = handles.inner().state.clone();
+    std::thread::Builder::new()
+        .name("virtual-camera-deferred".into())
+        .spawn(move || {
+            std::thread::sleep(Duration::from_secs(12));
+            match capture::register_virtual_camera(cam_state.clone()) {
+                Ok(()) => {
+                    let dims = cam_state.lock().current_dims;
+                    crate::log::capture_log(&format!(
+                        "Virtual camera registered — pick \"ninesixteen.video\" in any app ({}×{}). Screen capture starts when an app opens the camera or you record.",
+                        dims.0, dims.1
+                    ));
+                    let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": true }));
+                }
+                Err(e) => {
+                    crate::log::capture_log(&format!("Virtual camera unavailable: {e}"));
+                    let _ = cam_app.emit("app:log", format!("Virtual camera unavailable: {e}"));
+                    let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": false }));
+                }
+            }
+        })
+        .map_err(|e| format!("spawn virtual camera: {e}"))?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -648,6 +699,27 @@ pub fn get_audio_levels() -> AudioLevels {
 }
 
 pub fn ensure_overlay(app: &AppHandle) {
+    if app.get_webview_window("overlay").is_none() {
+        crate::log::capture_log("Creating overlay window");
+        if let Err(e) = WebviewWindowBuilder::new(
+            app,
+            "overlay",
+            WebviewUrl::App("overlay.html".into()),
+        )
+        .transparent(true)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .resizable(false)
+        .focused(false)
+        .shadow(false)
+        .visible(false)
+        .build()
+        {
+            crate::log::capture_log(&format!("Overlay window unavailable: {e}"));
+            return;
+        }
+    }
     let Some(win) = app.get_webview_window("overlay") else {
         return;
     };

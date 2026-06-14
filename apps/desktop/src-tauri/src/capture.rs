@@ -46,7 +46,7 @@ mod imp {
     use crate::state::Viewport;
     use crate::stream::{StreamConfig, StreamPipeline};
     use parking_lot::Mutex;
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
     use std::sync::{Arc, OnceLock};
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
@@ -156,12 +156,12 @@ mod imp {
 
     /// Keep the GPU scaler + virtual camera aligned with recording settings while capture runs.
     pub fn sync_output_dimensions(state: SharedState) -> Result<(), CaptureError> {
-        let (out_w, out_h, fps) = {
-            let st = state.lock();
+        let (out_w, out_h, fps, camera_on) = {
+            let mut st = state.lock();
             let (w, h) = output_dims(viewport_orientation(), st.recording_settings.quality);
-            (w, h, st.recording_settings.fps.max(1))
+            st.current_dims = (w, h);
+            (w, h, st.recording_settings.fps.max(1), st.camera_enabled)
         };
-        state.lock().current_dims = (out_w, out_h);
 
         {
             let mut bridge = gpu_bridge().lock();
@@ -173,7 +173,7 @@ mod imp {
             }
         }
 
-        if state.lock().camera_enabled {
+        if camera_on {
             camera::stop_camera();
             camera::start_camera(out_w, out_h, fps).map_err(CaptureError::Other)?;
         }
@@ -209,16 +209,16 @@ mod imp {
         let mut last_bgra: Option<Vec<u8>> = None;
 
         while !stop.load(Ordering::Relaxed) {
-            let (recording, streaming, camera, fps_setting) = {
+            let (recording, streaming, feed_cam, fps_setting) = {
                 let st = state.lock();
                 (
                     st.recording,
                     st.streaming,
-                    st.camera_enabled,
+                    should_feed_virtual_camera(&state),
                     st.recording_settings.fps.max(1),
                 )
             };
-            if !recording && !streaming && !camera {
+            if !recording && !streaming && !feed_cam {
                 std::thread::sleep(Duration::from_millis(10));
                 next_tick = Instant::now();
                 last_bgra = None;
@@ -239,7 +239,7 @@ mod imp {
             }
 
             // Camera/stream preview renders on the WGC thread (same D3D context as ingest).
-            if streaming || camera {
+            if streaming || feed_cam {
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             }
@@ -257,7 +257,7 @@ mod imp {
                 },
             };
             last_bgra = Some(bgra.clone());
-            dispatch_preview_outputs(bgra, streaming, camera);
+            dispatch_preview_outputs(bgra, streaming, &state);
             LAST_CAPTURE_FRAME_MS.store(now_ms(), Ordering::Relaxed);
 
             next_tick += period;
@@ -351,16 +351,37 @@ mod imp {
         viewport_changed_on_bridge(&bridge, &vp)
     }
 
-    fn preview_render_interval_ms(streaming: bool, fps: u32) -> u64 {
+    fn preview_render_interval_ms(streaming: bool, camera_connected: bool, fps: u32) -> u64 {
         if streaming {
             1000 / fps.max(1) as u64
+        } else if !camera_connected {
+            500
         } else {
-            1000 / 30
+            1000 / 24
         }
     }
 
-    fn dispatch_preview_outputs(bgra: Vec<u8>, streaming: bool, camera: bool) {
-        if camera {
+    fn should_feed_virtual_camera(state: &SharedState) -> bool {
+        let st = state.lock();
+        st.camera_enabled
+            && !st.recording
+            && !st.recording_armed
+            && crate::camera::camera_connected()
+    }
+
+    fn wgc_should_run(state: &SharedState) -> bool {
+        let st = state.lock();
+        if st.recording || st.streaming {
+            return true;
+        }
+        if st.recording_armed {
+            return false;
+        }
+        st.camera_enabled && crate::camera::camera_connected()
+    }
+
+    fn dispatch_preview_outputs(bgra: Vec<u8>, streaming: bool, state: &SharedState) {
+        if should_feed_virtual_camera(state) {
             if let Some(cam) = camera_sink().lock().as_mut() {
                 cam.send_bgra(&bgra);
             }
@@ -373,11 +394,8 @@ mod imp {
     }
 
     pub fn dispatch_recording_outputs(bgra: Vec<u8>, state: &SharedState) {
-        let (streaming, camera) = {
-            let st = state.lock();
-            (st.streaming, st.camera_enabled)
-        };
-        dispatch_preview_outputs(bgra, streaming, camera);
+        let streaming = state.lock().streaming;
+        dispatch_preview_outputs(bgra, streaming, state);
     }
 
     fn log_gpu_scale_warn(msg: &str) {
@@ -499,11 +517,7 @@ mod imp {
             frame: &mut Frame,
             capture_control: InternalCaptureControl,
         ) -> Result<(), Self::Error> {
-            let active = {
-                let st = self.state.lock();
-                st.recording || st.streaming || st.camera_enabled
-            };
-            if !active {
+            if !wgc_should_run(&self.state) {
                 capture_control.stop();
                 return Ok(());
             }
@@ -518,6 +532,21 @@ mod imp {
             bridge.src_w = src_w;
             bridge.src_h = src_h;
             bridge.ready = true;
+
+            let (recording, streaming, feed_cam) = {
+                let st = self.state.lock();
+                let feed_cam = st.camera_enabled
+                    && !st.recording
+                    && !st.recording_armed
+                    && crate::camera::camera_connected();
+                (st.recording, st.streaming, feed_cam)
+            };
+
+            // Camera registered but nothing consuming the feed — skip GPU ingest entirely.
+            if !recording && !streaming && !feed_cam {
+                drop(bridge);
+                return Ok(());
+            }
 
             if let Err(e) = bridge
                 .scaler
@@ -536,18 +565,14 @@ mod imp {
                 bridge.last_wgc_ms.store(now_ms(), Ordering::Relaxed);
                 WGC_FRAMES_WINDOW.fetch_add(1, Ordering::Relaxed);
 
-                let (recording, streaming, camera, fps) = {
-                    let st = self.state.lock();
-                    (
-                        st.recording,
-                        st.streaming,
-                        st.camera_enabled,
-                        st.recording_settings.fps.max(1),
-                    )
-                };
+                let fps = self.state.lock().recording_settings.fps.max(1);
+
+                // Release the GPU bridge before render/recorder work that also locks state.
+                drop(bridge);
 
                 if recording {
                     let vp = shared_viewport().lock().viewport;
+                    let mut bridge = gpu_bridge().lock();
                     if viewport_changed_on_bridge(&bridge, &vp) {
                         if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
                             if streaming {
@@ -559,14 +584,16 @@ mod imp {
                             REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
                         }
                     }
-                } else if streaming || camera {
-                    let interval = preview_render_interval_ms(streaming, fps);
+                } else if streaming || feed_cam {
+                    let cam_live = feed_cam;
+                    let interval = preview_render_interval_ms(streaming, cam_live, fps);
                     let now = now_ms();
                     let last = LAST_PREVIEW_RENDER_MS.load(Ordering::Relaxed);
                     if now.saturating_sub(last) >= interval {
                         LAST_PREVIEW_RENDER_MS.store(now, Ordering::Relaxed);
+                        let mut bridge = gpu_bridge().lock();
                         if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
-                            dispatch_preview_outputs(bgra, streaming, camera);
+                            dispatch_preview_outputs(bgra, streaming, &self.state);
                         }
                     }
                 }
@@ -668,6 +695,7 @@ mod imp {
             st.current_path = Some(path);
             st.current_dims = (out_w, out_h);
         }
+        refresh_capture_session(state.clone())?;
         capture_log("Arming file recorder");
         Ok(())
     }
@@ -677,6 +705,7 @@ mod imp {
         record_path: Option<PathBuf>,
         stream: Option<StreamPipeline>,
     ) -> Result<(), CaptureError> {
+        let has_stream = stream.is_some();
         *stream_sink().lock() = stream;
         let settings_snapshot = {
             let st = state.lock();
@@ -686,6 +715,13 @@ mod imp {
         let viewport = shared_viewport().lock().viewport;
         let (out_w, out_h) = output_dims(viewport.orientation, settings_snapshot.quality);
         let fps = settings_snapshot.fps.max(1);
+        let recording_active = state.lock().recording;
+        let wgc_fps = if record_path.is_some() || has_stream || recording_active {
+            fps
+        } else {
+            // Camera-only idle: lower WGC rate until recording — saves GPU + WebView breathing room.
+            fps.min(20).max(10)
+        };
         let record_bitrate = broadcast_bitrate(out_w, out_h, fps);
         let bitrate_kbps = (record_bitrate / 1000).max(500);
 
@@ -707,7 +743,7 @@ mod imp {
         };
         let monitor = Monitor::primary().map_err(|e| CaptureError::Other(format!("no primary monitor: {e:?}")))?;
 
-        let min_interval = std::time::Duration::from_nanos(1_000_000_000 / fps.max(1) as u64);
+        let min_interval = std::time::Duration::from_nanos(1_000_000_000 / wgc_fps as u64);
         let flags = Flags {
             state: state.clone(),
             out_w,
@@ -751,9 +787,10 @@ mod imp {
         begin_capture(state, None, None)
     }
 
-    pub fn start_camera(state: SharedState) -> Result<(), CaptureError> {
-        if capture_already_running() {
-            return attach_camera(state);
+    pub fn register_virtual_camera(state: SharedState) -> Result<(), CaptureError> {
+        if camera_sink().lock().is_some() {
+            state.lock().camera_enabled = true;
+            return Ok(());
         }
 
         let settings = {
@@ -772,37 +809,64 @@ mod imp {
             st.camera_connected = false;
             st.current_dims = (out_w, out_h);
         }
+        Ok(())
+    }
 
-        if let Err(e) = begin_capture(state.clone(), None, None) {
-            camera::stop_camera();
-            state.lock().camera_enabled = false;
-            return Err(e);
+    static CAM_CONNECTED_STREAK: AtomicU8 = AtomicU8::new(0);
+
+    /// Start/stop WGC based on demand — recording, streaming, or a connected virtual camera client.
+    pub fn ensure_capture_session(state: SharedState) {
+        let (recording, streaming, armed, camera_on, connected) = {
+            let mut st = state.lock();
+            if st.camera_enabled {
+                st.camera_connected = crate::camera::camera_connected();
+            }
+            (
+                st.recording,
+                st.streaming,
+                st.recording_armed,
+                st.camera_enabled,
+                st.camera_connected,
+            )
+        };
+
+        let need = if recording || streaming {
+            CAM_CONNECTED_STREAK.store(0, Ordering::Relaxed);
+            true
+        } else if armed {
+            CAM_CONNECTED_STREAK.store(0, Ordering::Relaxed);
+            false
+        } else if camera_on && connected {
+            // Debounce: ignore brief is_connected blips when softcam first registers
+            // (e.g. OBS auto-reconnecting while the WebView is still starting).
+            CAM_CONNECTED_STREAK.fetch_add(1, Ordering::Relaxed) + 1 >= 2
+        } else {
+            CAM_CONNECTED_STREAK.store(0, Ordering::Relaxed);
+            false
+        };
+
+        if need {
+            if !capture_already_running() {
+                capture_log("Starting screen capture");
+                if let Err(e) = begin_capture(state.clone(), None, None) {
+                    capture_log(&format!("Capture start failed: {e}"));
+                }
+            }
+        } else if capture_already_running() && !recording && !streaming {
+            capture_log("Stopping idle screen capture");
+            stop_capture();
         }
+    }
+
+    pub fn start_camera(state: SharedState) -> Result<(), CaptureError> {
+        register_virtual_camera(state.clone())?;
+        ensure_capture_session(state);
         Ok(())
     }
 
     pub fn attach_camera(state: SharedState) -> Result<(), CaptureError> {
-        if !capture_already_running() {
-            return start_camera(state);
-        }
-        {
-            let st = state.lock();
-            if st.camera_enabled {
-                return Ok(());
-            }
-        }
-        let settings = {
-            let st = state.lock();
-            st.recording_settings
-        };
-        let viewport = shared_viewport().lock().viewport;
-        let (out_w, out_h) = output_dims(viewport.orientation, settings.quality);
-        camera::start_camera(out_w, out_h, settings.fps.max(1)).map_err(CaptureError::Other)?;
-        {
-            let mut st = state.lock();
-            st.camera_enabled = true;
-            st.camera_connected = false;
-        }
+        register_virtual_camera(state.clone())?;
+        ensure_capture_session(state);
         Ok(())
     }
 
@@ -824,6 +888,7 @@ mod imp {
 
     pub fn start_recording(state: SharedState) -> Result<(), CaptureError> {
         crate::ffmpeg_util::require_ffmpeg().map_err(CaptureError::Other)?;
+        crate::file_record::warmup_encoder();
 
         if capture_already_running() {
             return attach_recording(state);
@@ -1086,6 +1151,7 @@ mod imp {
             orientation,
         };
         crate::recordings::save_metadata(&info);
+        ensure_capture_session(state.clone());
         Ok(Some(info))
     }
 
@@ -1104,7 +1170,8 @@ mod imp {
     }
 
     pub fn poll_camera_connected() -> bool {
-        camera_connected()
+        let connected = camera_connected();
+        connected
     }
 
     pub fn is_capture_running() -> bool {
@@ -1122,10 +1189,10 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{
-    attach_camera, attach_recording, attach_stream, dispatch_recording_outputs, is_capture_running,
-    poll_camera_connected, recording_pipeline_window_stats, render_output_frame,
-    start_both, start_camera, start_recording, start_streaming, stop_camera, stop_recording,
-    stop_streaming, sync_output_dimensions, viewport_changed_since_last_render,
+    attach_camera, attach_recording, attach_stream, dispatch_recording_outputs, ensure_capture_session,
+    is_capture_running, poll_camera_connected, recording_pipeline_window_stats, register_virtual_camera,
+    render_output_frame, start_both, start_camera, start_recording, start_streaming, stop_camera,
+    stop_recording, stop_streaming, sync_output_dimensions, viewport_changed_since_last_render,
 };
 
 #[cfg(windows)]

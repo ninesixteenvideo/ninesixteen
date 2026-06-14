@@ -109,32 +109,7 @@ export const useStore = create<Store>((set, get) => ({
   audioLevels: { system: 0, mic: 0 },
 
   init: async () => {
-    const monitors = await invoke<MonitorInfo[]>("list_monitors");
-    const state = await invoke<CaptureState>("get_state");
-    const audioSettings = await invoke<AudioSettings>("get_audio_settings");
-    const audioDevices = await invoke<AudioDeviceInfo[]>("list_audio_devices");
-
-    set({
-      monitors,
-      monitor: state.monitor ?? monitors[0] ?? null,
-      viewport: { ...state.viewport, orientation: "portrait" },
-      recording: state.recording,
-      arming: state.recordingArmed ?? false,
-      countdownSeconds: state.countdownSeconds ?? 0,
-      cameraEnabled: state.cameraEnabled ?? false,
-      cameraConnected: state.cameraConnected ?? false,
-      elapsed: state.elapsed,
-      overlayVisible: state.overlayVisible ?? false,
-      audioSettings,
-      audioDevices,
-      ready: true,
-    });
-
-    if (audioSettings.source !== "none") {
-      await invoke("start_audio_monitor").catch(() => {});
-    }
-
-    await get().refreshRecordings();
+    void invoke("notify_app_ready").catch(() => {});
 
     listen("viewport:update", (p: Viewport) =>
       set({ viewport: { ...p, orientation: "portrait" } })
@@ -172,6 +147,7 @@ export const useStore = create<Store>((set, get) => ({
     listen("app:log", (msg: string) => set({ error: msg }));
     listen("audio:levels", (p: AudioLevels) => set({ audioLevels: p }));
     listen("audio:settings", (p: AudioSettings) => set({ audioSettings: p }));
+
     listen("hotkey:toggle-recording", () => {
       const s = get();
       if (s.finalizing) return;
@@ -184,6 +160,40 @@ export const useStore = create<Store>((set, get) => ({
       if (s.recording || s.arming || s.finalizing) return;
       void s.setOverlayVisible(!s.overlayVisible);
     });
+
+    set({ ready: true });
+
+    const [monitors, state, audioSettings] = await Promise.all([
+      invoke<MonitorInfo[]>("list_monitors"),
+      invoke<CaptureState>("get_state"),
+      invoke<AudioSettings>("get_audio_settings"),
+    ]);
+
+    set({
+      monitors,
+      monitor: state.monitor ?? monitors[0] ?? null,
+      viewport: { ...state.viewport, orientation: "portrait" },
+      recording: state.recording,
+      arming: state.recordingArmed ?? false,
+      countdownSeconds: state.countdownSeconds ?? 0,
+      cameraEnabled: state.cameraEnabled ?? false,
+      cameraConnected: state.cameraConnected ?? false,
+      elapsed: state.elapsed,
+      overlayVisible: state.overlayVisible ?? false,
+      audioSettings,
+    });
+
+    void invoke("defer_virtual_camera_register").catch(() => {});
+
+    void invoke<AudioDeviceInfo[]>("list_audio_devices")
+      .then((audioDevices) => set({ audioDevices }))
+      .catch(() => {});
+
+    if (audioSettings.source !== "none") {
+      await invoke("start_audio_monitor").catch(() => {});
+    }
+
+    void get().refreshRecordings();
   },
 
   setTab: (tab) => set({ tab }),

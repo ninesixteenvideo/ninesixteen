@@ -19,6 +19,7 @@ export function Preview() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [cardMode, setCardMode] = useState<CardMode>("default");
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const driveExportRef = useRef<string | null>(null);
 
@@ -32,6 +33,7 @@ export function Preview() {
 
   useEffect(() => {
     setCardMode("default");
+    setPlaybackError(null);
   }, [selectedId]);
 
   useEffect(() => {
@@ -44,17 +46,18 @@ export function Preview() {
   }, [cardMode]);
 
   useEffect(() => {
+    if (!selectedId) return;
     let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        recordings.map(async (r) => [r.id, await mediaSrc(r.id)] as const)
-      );
-      if (!cancelled) setSrcMap(Object.fromEntries(entries));
+    void (async () => {
+      const src = await mediaSrc(selectedId);
+      if (!cancelled) {
+        setSrcMap((prev) => (prev[selectedId] === src ? prev : { ...prev, [selectedId]: src }));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [recordings]);
+  }, [selectedId]);
 
   const selected = useMemo(
     () => recordings.find((r) => r.id === selectedId) ?? null,
@@ -203,16 +206,12 @@ export function Preview() {
                 className="preview-thumb"
                 style={{ aspectRatio: r.orientation === "portrait" ? "9 / 16" : "16 / 9" }}
               >
-                {srcMap[r.id] ? (
-                  <video src={srcMap[r.id]} muted preload="metadata" />
-                ) : (
-                  <span className="muted">{r.orientation === "portrait" ? "9×16" : "16×9"}</span>
-                )}
+                <span className="muted">{r.orientation === "portrait" ? "9×16" : "16×9"}</span>
               </span>
               <span className="preview-item-meta">
                 <b>{r.filename}</b>
                 <span className="muted">
-                  {fmtDur(r.duration)} · {(r.size_bytes / 1e6).toFixed(1)} MB
+                  {fmtDur(r.duration)} · {fmtMb(r.size_bytes)}
                 </span>
               </span>
             </button>
@@ -231,6 +230,11 @@ export function Preview() {
                   src={srcMap[selected.id]}
                   controls
                   autoPlay
+                  onError={() =>
+                    setPlaybackError(
+                      "Could not load this recording. Rebuild the app if playback recently broke — the release CSP must allow https://nsmedia.localhost."
+                    )
+                  }
                   style={{
                     aspectRatio: selected.orientation === "portrait" ? "9 / 16" : "16 / 9",
                   }}
@@ -240,12 +244,14 @@ export function Preview() {
               )}
             </div>
 
+            {playbackError && <p className="auth-error">{playbackError}</p>}
+
             <div className="preview-meta-bar">
               <div className="preview-meta-info">
                 <b>{selected.filename}</b>
                 <div className="muted">
                   {selected.width}×{selected.height} · {fmtDur(selected.duration)} ·{" "}
-                  {(selected.size_bytes / 1e6).toFixed(1)} MB ·{" "}
+                  {fmtMb(selected.size_bytes)} ·{" "}
                   {new Date(selected.created_at).toLocaleString()}
                 </div>
                 {!isPro && (
@@ -424,6 +430,11 @@ function LocalFolderGlyph() {
       <path fill="#FFEB3B" d="M5 10h14v8H5z" opacity="0.45" />
     </svg>
   );
+}
+
+function fmtMb(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "— MB";
+  return `${(bytes / 1e6).toFixed(1)} MB`;
 }
 
 function fmtDur(s: number) {

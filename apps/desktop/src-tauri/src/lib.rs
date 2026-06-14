@@ -221,9 +221,13 @@ pub fn run() {
         .register_uri_scheme_protocol("nsmedia", |_app, request| nsmedia_response(request))
         .manage(handles)
         .setup(move |app| {
-            // Encrypt any leftover plaintext recordings before anything reads them.
-            recordings::migrate_plaintext();
             crate::entitlement::hydrate_from_disk();
+
+            // Never block the WebView on filesystem migration — can encrypt many files.
+            std::thread::Builder::new()
+                .name("startup-migrate".into())
+                .spawn(|| recordings::migrate_plaintext())
+                .ok();
 
             #[cfg(windows)]
             {
@@ -245,7 +249,7 @@ pub fn run() {
                 }
                 if let Some(path) = bundled {
                     ffmpeg_util::set_bundled_ffmpeg(path);
-                    file_record::warmup_encoder();
+                    // Encoder probe spawns several FFmpeg processes — defer until first record.
                 } else {
                     log::capture_log(
                         "FFmpeg not bundled — run: node scripts/fetch-ffmpeg.mjs",
@@ -265,17 +269,14 @@ pub fn run() {
             rawinput::start(app.handle().clone(), viewport.clone(), shared.clone());
             rawinput::start_cursor_follow(app.handle().clone(), viewport.clone(), shared.clone());
 
-            let overlay_handle = app.handle().clone();
-            let overlay_state = shared.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(350));
-                commands::apply_overlay_visibility(&overlay_handle, &overlay_state.lock());
-            });
-
             let app_handle = app.handle().clone();
             let st = shared.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_millis(250));
+                let camera_on = st.lock().camera_enabled;
+                if camera_on {
+                    capture::ensure_capture_session(st.clone());
+                }
                 let (recording, streaming, camera_enabled, elapsed, stream_elapsed, size, stream_stats, camera_connected) = {
                     let mut s = st.lock();
                     let elapsed = s
@@ -295,9 +296,6 @@ pub fn run() {
                         .unwrap_or(0);
                     if s.streaming {
                         s.stream_stats.connected = true;
-                    }
-                    if s.camera_enabled {
-                        s.camera_connected = capture::poll_camera_connected();
                     }
                     (
                         s.recording,
@@ -345,34 +343,8 @@ pub fn run() {
                 }
             });
 
-            // Virtual camera is always on — pick "ninesixteen.video" in any app.
-            let cam_app = app.handle().clone();
-            let cam_state = shared.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(900));
-                match capture::start_camera(cam_state.clone()) {
-                    Ok(()) => {
-                        let dims = cam_state.lock().current_dims;
-                        log::capture_log(&format!(
-                            "Virtual camera ready — pick \"ninesixteen.video\" in any app that lists cameras ({}×{})",
-                            dims.0, dims.1
-                        ));
-                        let _ = cam_app.emit("camera:state", serde_json::json!({ "enabled": true }));
-                        commands::apply_overlay_visibility(&cam_app, &cam_state.lock());
-                    }
-                    Err(e) => {
-                        log::capture_log(&format!("Virtual camera unavailable: {e}"));
-                        let _ = cam_app.emit(
-                            "app:log",
-                            format!("Virtual camera unavailable: {e}"),
-                        );
-                        let _ = cam_app.emit(
-                            "camera:state",
-                            serde_json::json!({ "enabled": false }),
-                        );
-                    }
-                }
-            });
+            // Virtual camera starts only after the UI is interactive (see notify_app_ready).
+            // Auto-starting WGC + 1080p GPU readback at launch starved the WebView in release builds.
 
             Ok(())
         })
@@ -405,6 +377,8 @@ pub fn run() {
             commands::apply_entitlement_cache,
             commands::clear_entitlement,
             commands::open_recordings_folder,
+            commands::notify_app_ready,
+            commands::defer_virtual_camera_register,
             commands::set_input_settings,
             commands::set_recording_settings,
             commands::list_audio_devices,

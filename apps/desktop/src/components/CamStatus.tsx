@@ -5,8 +5,8 @@ export function CamStatus() {
 
   const status = !cameraEnabled
     ? {
-        label: "Unavailable",
-        hint: "Virtual camera did not start. Check ~/Videos/ninesixteen/ninesixteen.log — if registration failed, run scripts/register-softcam.bat as Administrator once, then restart.",
+        label: "Starting…",
+        hint: "Virtual camera registers shortly after launch. If this stays unavailable, check ~/Videos/ninesixteen/ninesixteen.log — run scripts/register-softcam.bat as Administrator once if DirectShow registration failed.",
         tone: "off" as const,
       }
     : cameraConnected
@@ -19,7 +19,7 @@ export function CamStatus() {
         }
       : {
           label: "Ready",
-          hint: "Pick ninesixteen.video in any app that lists camera devices. Keep this app running. First time on this PC? Run scripts/register-softcam.bat as Administrator once.",
+          hint: "Pick ninesixteen.video in OBS, Zoom, or any camera app. Capture starts automatically when that app opens the camera. First time on this PC? Run scripts/register-softcam.bat as Administrator once.",
           tone: "ready" as const,
         };
 

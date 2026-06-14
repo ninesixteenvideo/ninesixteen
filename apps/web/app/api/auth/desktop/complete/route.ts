@@ -23,7 +23,23 @@ export async function POST(req: Request) {
   }
 
   const ip = clientIp(req);
-  if (!rateLimit(`desktop-complete:${ip}`, 30, 60_000)) {
+  let body: { code?: string } = {};
+  try {
+    body = (await req.json()) as { code?: string };
+  } catch {
+    return NextResponse.json({ error: "Missing code" }, { status: 400 });
+  }
+
+  const code = (body.code ?? "").trim();
+  if (!UUID_RE.test(code)) {
+    return NextResponse.json({ error: "Invalid code" }, { status: 400 });
+  }
+
+  // Per-handoff code limit — duplicate browser retries should not burn the IP bucket.
+  if (!rateLimit(`desktop-complete:${code}`, 8, 60_000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+  if (!rateLimit(`desktop-complete:${ip}`, 60, 60_000)) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
@@ -35,18 +51,6 @@ export async function POST(req: Request) {
   const decoded = await verifyUserIdToken(header.slice("Bearer ".length));
   if (!decoded) {
     return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-  }
-
-  let code = "";
-  try {
-    const body = (await req.json()) as { code?: string };
-    code = (body.code ?? "").trim();
-  } catch {
-    return NextResponse.json({ error: "Missing code" }, { status: 400 });
-  }
-
-  if (!UUID_RE.test(code)) {
-    return NextResponse.json({ error: "Invalid code" }, { status: 400 });
   }
 
   await upsertUserProfileOnSignIn(decoded.uid, {

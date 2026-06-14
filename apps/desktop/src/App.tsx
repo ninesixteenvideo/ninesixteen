@@ -57,7 +57,7 @@ export function App() {
       {!ready ? (
         <div className="empty">
           <Wordmark size={32} showSuffix />
-          <p className="muted">Warming up the capture engine…</p>
+          <p className="muted">Loading…</p>
         </div>
       ) : (
         <div className="tab-view" key={tab}>

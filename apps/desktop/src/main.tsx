@@ -13,12 +13,14 @@ if (import.meta.env.PROD && !isFirebaseConfigured) {
   );
 }
 
-bootstrapFirebaseAuth().then(() => {
-  ReactDOM.createRoot(document.getElementById("root")!).render(
-    <React.StrictMode>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </React.StrictMode>
-  );
-});
+const root = ReactDOM.createRoot(document.getElementById("root")!);
+const app = (
+  <AuthProvider>
+    <App />
+  </AuthProvider>
+);
+
+// Paint the UI immediately — never block first render on Firebase network I/O.
+root.render(import.meta.env.DEV ? <React.StrictMode>{app}</React.StrictMode> : app);
+
+void bootstrapFirebaseAuth();

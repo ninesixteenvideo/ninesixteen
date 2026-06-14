@@ -36,11 +36,14 @@ export async function markDesktopAuthReady(
   const snap = await ref.get();
   if (!snap.exists) return false;
   const data = snap.data();
-  if (!data?.secretHash || data.status !== "pending") return false;
+  if (!data?.secretHash) return false;
   if (typeof data.expiresAt === "number" && data.expiresAt < Date.now()) {
     await ref.delete();
     return false;
   }
+  // Idempotent — React / Firestore can trigger duplicate complete calls.
+  if (data.status === "ready" && data.uid === uid) return true;
+  if (data.status !== "pending") return false;
   await ref.set(
     {
       ...data,
