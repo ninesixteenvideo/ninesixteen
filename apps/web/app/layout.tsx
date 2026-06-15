@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Inter } from "next/font/google";
+import { Faster_One, IBM_Plex_Mono, Inter, Tourney } from "next/font/google";
 import "@ninesixteen/brand/theme.css";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
@@ -17,6 +17,20 @@ const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
   variable: "--font-ibm-plex-mono",
+  display: "swap",
+});
+
+const tourney = Tourney({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-tourney",
+  display: "swap",
+});
+
+const fasterOne = Faster_One({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-faster-one",
   display: "swap",
 });
 
@@ -53,7 +67,10 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${ibmPlexMono.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${ibmPlexMono.variable} ${tourney.variable} ${fasterOne.variable}`}
+    >
       <body className="ns-grain min-h-screen font-body antialiased">
         <AuthProvider>
           <div className="relative z-10 flex min-h-screen flex-col">

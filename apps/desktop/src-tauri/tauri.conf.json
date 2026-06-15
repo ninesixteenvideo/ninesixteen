@@ -37,7 +37,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' nsmedia: blob: asset: http://asset.localhost https://asset.localhost http://nsmedia.localhost https://nsmedia.localhost; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.stripe.com https://ninesixteen.video http://localhost:3000 http://nsmedia.localhost https://nsmedia.localhost ws://localhost:1421 ws://127.0.0.1:1421; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' nsmedia: blob: asset: http://asset.localhost https://asset.localhost http://nsmedia.localhost https://nsmedia.localhost; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.stripe.com https://ninesixteen.video http://localhost:3000 http://nsmedia.localhost https://nsmedia.localhost ws://localhost:1421 ws://127.0.0.1:1421; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {

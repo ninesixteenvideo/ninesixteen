@@ -53,10 +53,10 @@ export const fonts = {
   body: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   /** Mono for technical/recording metadata. */
   mono: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
-  /** Logo: "ninesixteen." */
-  wordmark: '"Tourney", system-ui, sans-serif',
+  /** Logo: "ninesixteen." — `--font-tourney` set by Next.js (web) or theme.css @import (desktop). */
+  wordmark: 'var(--font-tourney, "Tourney"), system-ui, sans-serif',
   /** Logo suffix: "video" */
-  wordmarkVideo: '"Faster One", system-ui, sans-serif',
+  wordmarkVideo: 'var(--font-faster-one, "Faster One"), system-ui, sans-serif',
 } as const;
 
 export const radii = {
