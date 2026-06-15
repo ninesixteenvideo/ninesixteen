@@ -315,6 +315,11 @@ pub struct EntitlementCache {
     uid: Option<String>,
     pro: bool,
     pro_ends_at_ms: Option<i64>,
+    /// True only after the *server* confirmed this session's entitlement.
+    /// Never set by the client cache, the on-disk file, or `apply()` — it exists
+    /// so export can fall back to offline grace only for a genuinely-verified
+    /// license, not a tampered local cache. In-memory only (never persisted).
+    server_verified: bool,
 }
 
 impl EntitlementCache {
@@ -322,16 +327,38 @@ impl EntitlementCache {
         self.uid = Some(uid.to_string());
         self.pro = pro;
         self.pro_ends_at_ms = pro_ends_at_ms;
+        // Optimistic/disk source — must be re-confirmed by the server.
+        self.server_verified = false;
+    }
+
+    /// Apply a result that came straight from the server's entitlement check.
+    /// This is the only path allowed to grant the offline-export grace flag.
+    pub fn apply_server_verified(&mut self, pro: bool) {
+        self.pro = pro;
+        self.server_verified = true;
     }
 
     pub fn set_pro(&mut self, pro: bool) {
         self.pro = pro;
     }
 
+    /// Set the account identity/expiry without touching `pro` or the
+    /// `server_verified` flag (used after a server check has already run).
+    pub fn set_identity(&mut self, uid: &str, pro_ends_at_ms: Option<i64>) {
+        self.uid = Some(uid.to_string());
+        self.pro_ends_at_ms = pro_ends_at_ms;
+    }
+
     pub fn clear(&mut self) {
         self.uid = None;
         self.pro = false;
         self.pro_ends_at_ms = None;
+        self.server_verified = false;
+    }
+
+    /// Whether the server confirmed Pro at least once this session.
+    pub fn server_verified(&self) -> bool {
+        self.server_verified
     }
 
     /// Active Pro subscription (respects proEndsAt; survives offline once cached).

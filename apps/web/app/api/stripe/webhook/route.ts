@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
-import { getStripe, isStripeConfigured, STRIPE_WEBHOOK_SECRET } from "@/lib/stripe";
+import {
+  getStripe,
+  isStripeConfigured,
+  STRIPE_PRICE_ID,
+  STRIPE_WEBHOOK_SECRET,
+} from "@/lib/stripe";
 import { setUserEntitlement } from "@/lib/firebaseAdmin";
 import { productionConfigRequired } from "@/lib/serverEnv";
 
@@ -44,8 +49,31 @@ export async function POST(req: Request) {
         const uid = session.client_reference_id ?? session.metadata?.uid;
         if (!uid) break;
 
-        // Only grant Pro on a fully paid one-time checkout.
+        // Only grant Pro on a fully paid one-time checkout (not subscription/setup).
+        if (session.mode !== "payment") break;
         if (session.payment_status !== "paid") break;
+
+        // Reject $0 sessions (e.g. a 100%-off promo code or a manually created
+        // zero-amount session) — Pro must be an actual purchase.
+        if ((session.amount_total ?? 0) <= 0) break;
+
+        // Verify the purchase was for *our* Pro price. The line items are not in
+        // the webhook payload, so fetch them and confirm the configured price id
+        // is present — this stops a spoofed/cheaper checkout from granting Pro.
+        if (!STRIPE_PRICE_ID) break;
+        let priceMatches = false;
+        try {
+          const lineItems = await stripe.checkout.sessions.listLineItems(
+            session.id,
+            { limit: 100 }
+          );
+          priceMatches = lineItems.data.some(
+            (item) => item.price?.id === STRIPE_PRICE_ID
+          );
+        } catch {
+          priceMatches = false;
+        }
+        if (!priceMatches) break;
 
         const customerId =
           typeof session.customer === "string" ? session.customer : undefined;

@@ -4,14 +4,15 @@ import { friendlyAuthError } from "./authErrors";
 export async function registerAuthHandoff(
   kind: "desktop" | "drive",
   code: string,
-  secret: string
+  secret: string,
+  verifier?: string
 ): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${WEB_URL}/api/auth/handoff/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, secret, kind }),
+      body: JSON.stringify({ code, secret, kind, verifier }),
     });
   } catch (error) {
     throw new Error(friendlyAuthError(error));

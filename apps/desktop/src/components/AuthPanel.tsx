@@ -26,11 +26,13 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [verifierCode, setVerifierCode] = useState<string | null>(null);
 
   const isSignUp = mode === "sign-up";
 
   async function run(fn: () => Promise<void>) {
     setError(null);
+    setVerifierCode(null);
     setBusy(true);
     try {
       await fn();
@@ -39,6 +41,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       setError(friendlyAuthError(e));
     } finally {
       setBusy(false);
+      setVerifierCode(null);
     }
   }
 
@@ -47,15 +50,23 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       <button
         className="btn google-btn"
         disabled={busy}
-        onClick={() => run(() => signInWithGoogle())}
+        onClick={() => run(() => signInWithGoogle(setVerifierCode))}
       >
         <GoogleGlyph /> Continue with Google
       </button>
-      {isDesktop && firebaseEnabled && (
+      {isDesktop && firebaseEnabled && !verifierCode && (
         <p className="auth-google-note muted">
           Opens your browser to sign in with Google, then links your account back here
           automatically.
         </p>
+      )}
+      {verifierCode && (
+        <div className="auth-verifier">
+          <p className="muted">
+            In your browser, enter this code to finish signing in:
+          </p>
+          <p className="auth-verifier-code">{verifierCode}</p>
+        </div>
       )}
 
       <div className="auth-divider">

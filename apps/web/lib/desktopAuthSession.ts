@@ -12,13 +12,18 @@ export type DesktopAuthSession = {
 
 export async function registerDesktopAuthHandoff(
   code: string,
-  secret: string
+  secret: string,
+  verifier: string
 ): Promise<boolean> {
   const db = getAdminDb();
-  if (!db || !code || !secret) return false;
+  if (!db || !code || !secret || !verifier) return false;
   const now = Date.now();
   await db.collection("desktopAuthSessions").doc(code).set({
     secretHash: hashHandoffSecret(secret),
+    // The user must type this short code (shown only in their desktop app) to
+    // authorize the handoff — it stops a phished link from silently linking a
+    // victim's account to an attacker-controlled handoff.
+    verifierHash: hashHandoffSecret(verifier.toUpperCase()),
     status: "pending",
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
@@ -28,10 +33,11 @@ export async function registerDesktopAuthHandoff(
 
 export async function markDesktopAuthReady(
   code: string,
-  uid: string
+  uid: string,
+  verifier: string
 ): Promise<boolean> {
   const db = getAdminDb();
-  if (!db || !code || !uid) return false;
+  if (!db || !code || !uid || !verifier) return false;
   const ref = db.collection("desktopAuthSessions").doc(code);
   const snap = await ref.get();
   if (!snap.exists) return false;
@@ -39,6 +45,13 @@ export async function markDesktopAuthReady(
   if (!data?.secretHash) return false;
   if (typeof data.expiresAt === "number" && data.expiresAt < Date.now()) {
     await ref.delete();
+    return false;
+  }
+  // The verification code must match the one the desktop app generated.
+  if (
+    typeof data.verifierHash !== "string" ||
+    !secretsMatch(data.verifierHash, verifier.toUpperCase())
+  ) {
     return false;
   }
   // Idempotent — React / Firestore can trigger duplicate complete calls.

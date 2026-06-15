@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     return jsonWithCors(req, { error: "Too many requests" }, { status: 429 });
   }
 
-  let body: { code?: string; secret?: string; kind?: string };
+  let body: { code?: string; secret?: string; kind?: string; verifier?: string };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -38,17 +38,26 @@ export async function POST(req: Request) {
   const code = body.code?.trim() ?? "";
   const secret = body.secret?.trim() ?? "";
   const kind = body.kind?.trim();
+  const verifier = body.verifier?.trim() ?? "";
 
   if (!UUID_RE.test(code) || secret.length < 16 || secret.length > 256) {
     return jsonWithCors(req, { error: "Invalid handoff parameters" }, { status: 400 });
   }
 
-  const ok =
-    kind === "desktop"
-      ? await registerDesktopAuthHandoff(code, secret)
-      : kind === "drive"
-        ? await registerDriveAuthHandoff(code, secret)
-        : false;
+  let ok = false;
+  if (kind === "desktop") {
+    // Desktop handoffs require a short user-visible verification code.
+    if (!/^[A-Z0-9]{4,12}$/.test(verifier.toUpperCase())) {
+      return jsonWithCors(
+        req,
+        { error: "Invalid handoff parameters" },
+        { status: 400 }
+      );
+    }
+    ok = await registerDesktopAuthHandoff(code, secret, verifier);
+  } else if (kind === "drive") {
+    ok = await registerDriveAuthHandoff(code, secret);
+  }
 
   if (!ok) {
     return jsonWithCors(req, { error: "Could not register handoff" }, { status: 500 });

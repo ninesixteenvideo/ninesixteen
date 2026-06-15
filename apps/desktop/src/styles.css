@@ -1645,6 +1645,28 @@ button.cam-pill.off:not(:disabled):hover {
   margin-bottom: 12px;
   text-align: center;
 }
+.auth-verifier {
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border: 2px solid var(--ns-blue);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ns-blue) 14%, transparent);
+  text-align: center;
+}
+.auth-verifier .muted {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin: 0 0 6px;
+}
+.auth-verifier-code {
+  margin: 0;
+  font-family: var(--ns-font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  color: var(--ns-ink);
+  text-indent: 0.32em;
+}
 .auth-form {
   display: flex;
   flex-direction: column;

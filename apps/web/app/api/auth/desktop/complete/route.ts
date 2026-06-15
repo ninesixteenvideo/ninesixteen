@@ -23,9 +23,9 @@ export async function POST(req: Request) {
   }
 
   const ip = clientIp(req);
-  let body: { code?: string } = {};
+  let body: { code?: string; verifier?: string } = {};
   try {
-    body = (await req.json()) as { code?: string };
+    body = (await req.json()) as { code?: string; verifier?: string };
   } catch {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
   }
@@ -33,6 +33,14 @@ export async function POST(req: Request) {
   const code = (body.code ?? "").trim();
   if (!UUID_RE.test(code)) {
     return NextResponse.json({ error: "Invalid code" }, { status: 400 });
+  }
+
+  const verifier = (body.verifier ?? "").trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,12}$/.test(verifier)) {
+    return NextResponse.json(
+      { error: "Enter the code shown in your desktop app." },
+      { status: 400 }
+    );
   }
 
   // Per-handoff code limit — duplicate browser retries should not burn the IP bucket.
@@ -58,10 +66,10 @@ export async function POST(req: Request) {
     displayName: decoded.name ?? null,
   });
 
-  const linked = await markDesktopAuthReady(code, decoded.uid);
+  const linked = await markDesktopAuthReady(code, decoded.uid, verifier);
   if (!linked) {
     return NextResponse.json(
-      { error: "Invalid or expired desktop handoff" },
+      { error: "That code didn't match, or the request expired. Check the code in your desktop app and try again." },
       { status: 400 }
     );
   }

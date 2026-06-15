@@ -654,12 +654,12 @@ pub fn sync_entitlement(
     uid: String,
     pro_ends_at: Option<i64>,
 ) -> Result<bool, String> {
+    // `check_entitlement` updates the in-memory cache and (on a real server
+    // response) sets the `server_verified` flag. Use `set_identity` here so we
+    // record the uid/expiry without clobbering that flag.
     let pro = crate::entitlement::check_entitlement(&id_token)?;
-    handles
-        .entitlement
-        .lock()
-        .apply(&uid, pro, pro_ends_at);
-    crate::entitlement::persist_entitlement(&uid, pro, pro_ends_at);
+    handles.entitlement.lock().set_identity(&uid, pro_ends_at);
+    crate::entitlement_store::save(&uid, pro, pro_ends_at);
     Ok(pro)
 }
 

@@ -15,12 +15,28 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Short, unambiguous human-typeable verification code (no 0/O/1/I). */
+function generateVerifier(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return out;
+}
+
 /**
  * Desktop Google sign-in via the system browser.
  * WebView2 loses Firebase redirect state; this flow signs in on the web app
  * and exchanges a one-time custom token back to the desktop app.
+ *
+ * `onVerifier` is called with a short code the user must type into the browser
+ * page to authorize the handoff — this binds the browser session to *this*
+ * desktop instance and defeats phishing of the sign-in link.
  */
-export async function signInViaDesktopBrowser(): Promise<void> {
+export async function signInViaDesktopBrowser(
+  onVerifier?: (code: string) => void
+): Promise<void> {
   if (!isDesktop) {
     throw new Error("Desktop browser sign-in is only available in the desktop app.");
   }
@@ -30,7 +46,9 @@ export async function signInViaDesktopBrowser(): Promise<void> {
 
   const code = crypto.randomUUID();
   const secret = crypto.randomUUID();
-  await registerAuthHandoff("desktop", code, secret);
+  const verifier = generateVerifier();
+  await registerAuthHandoff("desktop", code, secret, verifier);
+  onVerifier?.(verifier);
 
   const url = new URL("/auth/desktop", WEB_URL);
   url.searchParams.set("code", code);

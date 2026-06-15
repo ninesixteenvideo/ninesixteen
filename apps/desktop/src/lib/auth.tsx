@@ -45,7 +45,7 @@ interface AuthState {
   isPro: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (onVerifier?: (code: string) => void) => Promise<void>;
   signOut: () => Promise<void>;
   openCheckout: () => Promise<void>;
   getIdToken: () => Promise<string | null>;
@@ -242,11 +242,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithGoogle = useCallback(async (onVerifier?: (code: string) => void) => {
     const auth = getFirebaseAuth();
     if (auth) {
       if (isDesktop) {
-        await signInViaDesktopBrowser();
+        await signInViaDesktopBrowser(onVerifier);
         return;
       }
       const { signInWithPopup } = await import("firebase/auth");

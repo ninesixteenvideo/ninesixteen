@@ -68,10 +68,18 @@ pub fn check_entitlement(id_token: &str) -> Result<bool, String> {
         let payload: serde_json::Value = response
             .json()
             .map_err(|e| format!("Invalid verification response: {e}"))?;
-        return Ok(payload.get("pro").and_then(|v| v.as_bool()) == Some(true));
+        let pro = payload.get("pro").and_then(|v| v.as_bool()) == Some(true);
+        // Server spoke — mark this session as genuinely verified.
+        crate::state::global_entitlement()
+            .lock()
+            .apply_server_verified(pro);
+        return Ok(pro);
     }
 
     if status == reqwest::StatusCode::FORBIDDEN {
+        crate::state::global_entitlement()
+            .lock()
+            .apply_server_verified(false);
         return Ok(false);
     }
     if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -92,15 +100,54 @@ pub fn check_entitlement(id_token: &str) -> Result<bool, String> {
     Err("Could not verify your Pro license — check your connection and try again".to_string())
 }
 
-/// Verify the caller owns Pro via the web API (offline cache fallback).
+/// Verify the caller owns Pro before allowing an export.
+///
+/// The server is the source of truth here: the local cache (`.entitlement.json`,
+/// in-memory `apply_entitlement_cache`) is user-editable and is **never** trusted
+/// on its own to unlock an export. We only fall back to the cache when the server
+/// is unreachable, and only for a license the server confirmed earlier this
+/// session (`server_verified`) — so a tampered cache can't mint exports offline.
 pub fn verify_pro_export(id_token: &str) -> Result<(), String> {
-    if crate::state::global_entitlement().lock().is_pro() {
-        return Ok(());
+    match verify_request(id_token) {
+        Ok(response) => {
+            let status = response.status();
+            if status.is_success() {
+                let payload: serde_json::Value = response
+                    .json()
+                    .map_err(|e| format!("Invalid verification response: {e}"))?;
+                let pro = payload.get("pro").and_then(|v| v.as_bool()) == Some(true);
+                crate::state::global_entitlement()
+                    .lock()
+                    .apply_server_verified(pro);
+                return if pro {
+                    Ok(())
+                } else {
+                    Err("Pro is required to export. Buy Pro to unlock export.".to_string())
+                };
+            }
+            if status == reqwest::StatusCode::FORBIDDEN {
+                crate::state::global_entitlement()
+                    .lock()
+                    .apply_server_verified(false);
+                return Err("Pro is required to export. Buy Pro to unlock export.".to_string());
+            }
+            if status == reqwest::StatusCode::UNAUTHORIZED {
+                return Err("Sign in required".to_string());
+            }
+            // 5xx / unexpected — treat like unreachable and fall through to grace.
+        }
+        Err(_) => { /* network failure — fall through to offline grace */ }
     }
 
-    match check_entitlement(id_token)? {
-        true => Ok(()),
-        false => Err("Pro is required to export. Buy Pro to unlock export.".to_string()),
+    let cache = crate::state::global_entitlement();
+    let guard = cache.lock();
+    if guard.is_pro() && guard.server_verified() {
+        Ok(())
+    } else {
+        Err(
+            "Could not verify your Pro license — connect to the internet and try again."
+                .to_string(),
+        )
     }
 }
 
