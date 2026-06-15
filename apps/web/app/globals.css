@@ -244,21 +244,49 @@ a {
 }
 
 /* Hero promo player — matches the desktop preview/library playback frame
-   (2px ink border, 14px radius-md, hard-offset shadow, black backdrop). */
+   (2px ink border, 14px radius-md, hard-offset shadow, black backdrop).
+   Locked to an exact 9:16 box so it never depends on metadata load timing. */
 .ns-hero-video {
-  display: flex;
-  justify-content: center;
+  position: relative;
   width: 100%;
+  max-width: 300px;
+  margin-inline: auto;
+  aspect-ratio: 9 / 16;
 }
 .ns-hero-video video {
   display: block;
   width: 100%;
-  max-width: 320px;
-  height: auto;
+  height: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
   background: #000;
   border: 2px solid var(--color-ink);
   border-radius: 14px;
   box-shadow: 6px 6px 0 var(--color-shadow);
+}
+.ns-hero-video__unmute {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--color-onbright);
+  background: var(--color-blue);
+  border: 2px solid var(--color-ink);
+  border-radius: 999px;
+  box-shadow: 3px 3px 0 var(--color-shadow);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ns-hero-video__unmute:hover {
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 4px 4px 0 var(--color-shadow);
 }
 
 /* Stripe Embedded Checkout */

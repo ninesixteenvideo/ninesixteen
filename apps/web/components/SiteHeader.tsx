@@ -11,7 +11,7 @@ const TICKER = [
   "frame with your cursor",
   "alt + scroll to zoom",
   "system + mic audio",
-  "built for shorts · reels · tiktok",
+  "built for short-form content",
   "one-time $49 · no subscription",
   "private & local-first",
 ];
