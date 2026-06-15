@@ -31,8 +31,10 @@ export function Settings() {
       <section className="panel" style={{ marginBottom: 16 }}>
         <h3>Zoom</h3>
         <p className="muted" style={{ marginBottom: 12 }}>
-          Hold <span className="kbd">Alt</span> and scroll to zoom. Pauses for 1s at full 9×16 so
-          you can land there easily; scroll out further to see the whole desktop letterboxed.
+          Hold <span className="kbd">Alt</span> and scroll to zoom — or, on a laptop trackpad, hold{" "}
+          <span className="kbd">Alt</span> and press <span className="kbd">↑</span> /{" "}
+          <span className="kbd">↓</span>. Pauses for 1s at full 9×16 so you can land there easily;
+          zoom out further to see the whole desktop letterboxed.
         </p>
         <Slider
           label="Scroll sensitivity"

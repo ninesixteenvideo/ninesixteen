@@ -645,6 +645,37 @@ fn mux_pcm_audio(video_path: &Path, pcm_path: &Path, duration_secs: f64) -> Resu
     let ffmpeg = find_ffmpeg()?;
     let temp = video_path.with_extension("mux.tmp.mp4");
     let rate = audio::SAMPLE_RATE.to_string();
+
+    // The PCM was captured at the audio device's clock, which drifts slightly
+    // from the CPU/wall clock that drives the video. Compute how long the audio
+    // really is and, if it diverges from the video timeline, time-scale it with
+    // a pitch-preserving tempo filter so A/V stays locked from start to finish.
+    let pcm_bytes = std::fs::metadata(pcm_path).map(|m| m.len()).unwrap_or(0);
+    let audio_secs = if pcm_bytes > 0 {
+        (pcm_bytes / audio::BYTES_PER_FRAME as u64) as f64 / audio::SAMPLE_RATE as f64
+    } else {
+        0.0
+    };
+    let tempo = if duration_secs > 0.25 && audio_secs > 0.25 {
+        let ratio = audio_secs / duration_secs;
+        // Only correct meaningful, physically-plausible drift (>0.1%, <=10%).
+        if (ratio - 1.0).abs() > 0.001 && (0.9..=1.1).contains(&ratio) {
+            capture_log(&format!(
+                "Audio drift correction: {audio_secs:.3}s captured → {duration_secs:.3}s video (atempo {ratio:.5})"
+            ));
+            Some(ratio)
+        } else {
+            if (ratio - 1.0).abs() > 0.1 {
+                capture_log(&format!(
+                    "WARN: large audio/video divergence ({audio_secs:.2}s vs {duration_secs:.2}s) — muxing without tempo correction"
+                ));
+            }
+            None
+        }
+    } else {
+        None
+    };
+
     let mut cmd = ffmpeg_command(&ffmpeg);
     cmd.args([
         "-hide_banner",
@@ -678,6 +709,9 @@ fn mux_pcm_audio(video_path: &Path, pcm_path: &Path, duration_secs: f64) -> Resu
         "-movflags",
         "+faststart",
     ]);
+    if let Some(ratio) = tempo {
+        cmd.args(["-filter:a", &format!("atempo={ratio:.6}")]);
+    }
     if duration_secs > 0.1 {
         cmd.args(["-t", &format!("{duration_secs:.3}")]);
     }

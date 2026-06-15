@@ -1074,6 +1074,7 @@ button.cam-pill.off:not(:disabled):hover {
   gap: 12px;
 }
 .preview-player-wrap {
+  position: relative;
   flex: 1 1 0;
   display: flex;
   align-items: center;
@@ -1082,6 +1083,55 @@ button.cam-pill.off:not(:disabled):hover {
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 40%, rgba(120, 116, 110, 0.08), transparent 60%);
+}
+.preview-cap-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(18, 17, 15, 0.82);
+  backdrop-filter: blur(3px);
+}
+.preview-cap-overlay-badge {
+  font-family: var(--ns-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ns-yellow);
+  border: 1px solid var(--ns-yellow);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.preview-cap-overlay-title {
+  margin: 6px 0 0;
+  font-family: var(--ns-font-display, var(--ns-font-mono));
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--ns-on-accent);
+}
+.preview-cap-overlay-sub {
+  margin: 0;
+  max-width: 320px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: rgba(231, 216, 182, 0.78);
+}
+.preview-cap-overlay-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.preview-upgrade-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .preview-player {
   /* Anchor the cap to the viewport so the player (incl. rounded corners +

@@ -72,7 +72,7 @@ export function Studio() {
         : "Ready to record";
 
   const statusBody = arming
-    ? "Frame is on your desktop — Alt + scroll to zoom, move the mouse to position. Capture starts when the countdown ends."
+    ? "Frame is on your desktop — Alt + scroll (or Alt + ↑/↓) to zoom, move the mouse to position. Capture starts when the countdown ends."
     : finalizing
       ? "Writing and securing your file — this can take a minute on long clips."
       : recording

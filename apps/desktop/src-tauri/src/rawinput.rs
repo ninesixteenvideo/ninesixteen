@@ -13,7 +13,9 @@ mod imp {
 
     use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_MENU, VK_RMENU};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_DOWN, VK_MENU, VK_RMENU, VK_UP,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
         HC_ACTION, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL,
@@ -159,6 +161,51 @@ mod imp {
         (prev - 1.0) * (raw_next - 1.0) < 0.0
     }
 
+    /// Per-press keyboard zoom step. Precision-touchpad two-finger scroll is
+    /// never delivered to global mouse hooks (Windows routes it as pointer /
+    /// gesture messages to the focused window), so `Alt` + `↑`/`↓` is the
+    /// device-independent zoom path. Holding the key auto-repeats for a smooth
+    /// continuous zoom.
+    const KEY_ZOOM_STEP: f64 = 0.7;
+
+    fn zoom_key_dir(vk: u32) -> Option<f64> {
+        if vk == VK_UP.0 as u32 {
+            Some(1.0)
+        } else if vk == VK_DOWN.0 as u32 {
+            Some(-1.0)
+        } else {
+            None
+        }
+    }
+
+    /// Queue a keyboard zoom step through the same accumulator the mouse wheel
+    /// uses. Returns true if the key was consumed (Alt held) and should be
+    /// swallowed so it doesn't reach the focused app.
+    fn handle_zoom_key(dir: f64) -> bool {
+        if !alt_held() {
+            return false;
+        }
+        if dir < 0.0 && ZOOM_AT_MIN.load(Ordering::Acquire) {
+            alt_log_throttled("key zoom-out dropped — already at min zoom (full desktop)", 600);
+            return true;
+        }
+        if scroll_input_blocked() {
+            alt_log_throttled(
+                &format!("key zoom swallowed while blocked ({})", scroll_block_reason()),
+                400,
+            );
+            return true;
+        }
+        let step = dir * KEY_ZOOM_STEP;
+        let queued = {
+            let mut acc = PENDING_WHEEL_DELTA.lock();
+            *acc = (*acc + step).clamp(-12.0, 12.0);
+            *acc
+        };
+        alt_log(&format!("key zoom step {step:.2} (total pending {queued:.3})"));
+        true
+    }
+
     fn wheel_delta_from_hook(mouse_data: u32) -> f64 {
         let steps = ((mouse_data >> 16) as i16) as f64 / 120.0;
         // Trackpads often emit smaller deltas — keep zoom responsive.
@@ -187,6 +234,15 @@ mod imp {
                             }
                         }
                         _ => release_alt_zoom_state(),
+                    }
+                } else if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
+                    // Keyboard zoom fallback (works on trackpads, which never
+                    // deliver wheel events to global hooks). Only swallowed
+                    // while Alt is held.
+                    if let Some(dir) = zoom_key_dir(kb.vkCode) {
+                        if handle_zoom_key(dir) {
+                            return LRESULT(1);
+                        }
                     }
                 }
             }
@@ -230,7 +286,9 @@ mod imp {
                     }
                     let queued = {
                         let mut acc = PENDING_WHEEL_DELTA.lock();
-                        *acc += delta;
+                        // Clamp the backlog so a fast spin (or a trackpad flick that
+                        // out-paces the drain) can't build an unbounded zoom burst.
+                        *acc = (*acc + delta).clamp(-12.0, 12.0);
                         *acc
                     };
                     alt_log(&format!(
@@ -262,22 +320,24 @@ mod imp {
             return false;
         }
 
-        let mut applied = false;
-        for _ in 0..4 {
-            let delta = {
-                let mut acc = PENDING_WHEEL_DELTA.lock();
-                if acc.abs() < f64::EPSILON {
-                    break;
-                }
-                let step = acc.signum();
-                *acc -= step;
-                step
-            };
-            if apply_wheel_delta(ctx, delta) {
-                applied = true;
+        // Apply the *actual* accumulated delta (fractional for trackpads, whole
+        // notches for mice), capped per tick so a big backlog eases in smoothly
+        // instead of jolting. Using signum here silently cancelled the small
+        // fractional deltas trackpads emit, so Alt+scroll never zoomed on a
+        // touchpad — apply the real value instead.
+        const MAX_PER_TICK: f64 = 3.0;
+        const MIN_APPLY: f64 = 1.0e-3;
+        let delta = {
+            let mut acc = PENDING_WHEEL_DELTA.lock();
+            if acc.abs() < MIN_APPLY {
+                *acc = 0.0;
+                return false;
             }
-        }
-        applied
+            let take = acc.clamp(-MAX_PER_TICK, MAX_PER_TICK);
+            *acc -= take;
+            take
+        };
+        apply_wheel_delta(ctx, delta)
     }
 
     fn apply_wheel_delta(ctx: &Ctx, delta: f64) -> bool {

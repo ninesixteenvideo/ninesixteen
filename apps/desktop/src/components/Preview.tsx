@@ -11,6 +11,9 @@ import { Paywall } from "./Paywall";
 type ExportKind = "local" | "drive";
 type CardMode = "default" | "export" | "delete";
 
+/** Free accounts can preview only the first slice of each recording. */
+const FREE_PREVIEW_SECONDS = 15;
+
 export function Preview() {
   const { recordings, deleteRecording } = useStore();
   const { isPro, getIdToken } = useAuth();
@@ -22,6 +25,8 @@ export function Preview() {
   const [cardMode, setCardMode] = useState<CardMode>("default");
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [capReached, setCapReached] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const driveExportRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -35,7 +40,28 @@ export function Preview() {
   useEffect(() => {
     setCardMode("default");
     setPlaybackError(null);
+    setCapReached(false);
   }, [selectedId]);
+
+  // Free accounts: stop playback at the preview limit and block scrubbing past it.
+  function enforcePreviewCap() {
+    if (isPro) return;
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.currentTime >= FREE_PREVIEW_SECONDS) {
+      if (v.currentTime > FREE_PREVIEW_SECONDS) v.currentTime = FREE_PREVIEW_SECONDS;
+      if (!v.paused) v.pause();
+      setCapReached(true);
+    }
+  }
+
+  function replayPreview() {
+    const v = videoRef.current;
+    if (!v) return;
+    setCapReached(false);
+    v.currentTime = 0;
+    void v.play().catch(() => {});
+  }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -45,6 +71,15 @@ export function Preview() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [cardMode]);
+
+  // Pause playback when the app is minimized (the webview reports hidden).
+  useEffect(() => {
+    function onVisibility() {
+      if (document.hidden) videoRef.current?.pause();
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -237,10 +272,13 @@ export function Preview() {
               {srcMap[selected.id] ? (
                 <video
                   key={selected.id}
+                  ref={videoRef}
                   className="preview-player"
                   src={srcMap[selected.id]}
                   controls
                   autoPlay
+                  onTimeUpdate={enforcePreviewCap}
+                  onSeeking={enforcePreviewCap}
                   onError={() =>
                     setPlaybackError(
                       "Could not load this recording. Rebuild the app if playback recently broke — the release CSP must allow https://nsmedia.localhost."
@@ -252,6 +290,26 @@ export function Preview() {
                 />
               ) : (
                 <div className="preview-player loading">Loading…</div>
+              )}
+
+              {!isPro && capReached && (
+                <div className="preview-cap-overlay">
+                  <span className="preview-cap-overlay-badge">Free preview</span>
+                  <p className="preview-cap-overlay-title">
+                    That&apos;s the first {FREE_PREVIEW_SECONDS} seconds
+                  </p>
+                  <p className="preview-cap-overlay-sub">
+                    Upgrade to Pro to watch the full recording and export it without a watermark.
+                  </p>
+                  <div className="preview-cap-overlay-actions">
+                    <button className="btn pink" onClick={() => setShowPaywall(true)}>
+                      Upgrade to Pro
+                    </button>
+                    <button className="btn ghost" onClick={replayPreview}>
+                      Replay preview
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -267,17 +325,19 @@ export function Preview() {
                 </div>
                 {!isPro && (
                   <div className="preview-cap-note">
-                    Preview limited to 15 seconds ·{" "}
-                    <button
-                      type="button"
-                      className="linkish"
-                      onClick={() => setShowPaywall(true)}
-                    >
-                      Upgrade for full playback &amp; export
-                    </button>
+                    Free preview · {FREE_PREVIEW_SECONDS}-second playback, export locked.
                   </div>
                 )}
               </div>
+              {!isPro && (
+                <button
+                  type="button"
+                  className="btn pink preview-upgrade-btn"
+                  onClick={() => setShowPaywall(true)}
+                >
+                  Upgrade to Pro to export
+                </button>
+              )}
             </div>
           </>
         )}

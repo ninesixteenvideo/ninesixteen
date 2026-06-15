@@ -24,8 +24,16 @@ pub const WRITE_BLOCK_FRAMES: usize = SAMPLE_RATE as usize / 100;
 mod imp {
     use super::*;
     use std::fs::File;
+    use std::io::BufWriter;
     use std::path::PathBuf;
     use wasapi::*;
+
+    /// Capture buffer we ask WASAPI for, in 100-ns units (~60 ms). A generous
+    /// buffer absorbs scheduling jitter on slow/fresh PCs so the engine never
+    /// overruns and drops samples (the usual cause of "grainy" audio). Latency
+    /// is irrelevant here because audio is muxed offline. Falls back to the
+    /// device minimum if a driver rejects this size.
+    const CAPTURE_BUFFER_100NS: i64 = 60 * 10_000;
 
     fn com_init() {
         let _ = initialize_mta();
@@ -111,29 +119,55 @@ mod imp {
         }
 
         fn open_device(device: Device, loopback: bool) -> Result<Self, String> {
-            let mut client = device.get_iaudioclient().map_err(|e| e.to_string())?;
-            if loopback {
-                if let Ok(mix) = client.get_mixformat() {
-                    capture_log(&format!(
-                        "Loopback device mix: {} Hz, {} ch, {}-bit",
-                        mix.get_samplespersec(),
-                        mix.get_nchannels(),
-                        mix.get_bitspersample()
-                    ));
-                }
-            }
             let format = output_format();
-            let (_, min_time) = client.get_periods().map_err(|e| e.to_string())?;
-            client
-                .initialize_client(
-                    &format,
-                    min_time,
-                    &Direction::Capture,
-                    &ShareMode::Shared,
-                    true,
-                )
-                .map_err(|e| e.to_string())?;
-            let event = client.set_get_eventhandle().map_err(|e| e.to_string())?;
+
+            // Probe the device for its periods / mix format, then drop the probe
+            // client so we always Initialize on a fresh client.
+            let (default_time, min_time) = {
+                let probe = device.get_iaudioclient().map_err(|e| e.to_string())?;
+                if loopback {
+                    if let Ok(mix) = probe.get_mixformat() {
+                        capture_log(&format!(
+                            "Loopback device mix: {} Hz, {} ch, {}-bit",
+                            mix.get_samplespersec(),
+                            mix.get_nchannels(),
+                            mix.get_bitspersample()
+                        ));
+                    }
+                }
+                probe.get_periods().map_err(|e| e.to_string())?
+            };
+
+            // Initialize a fresh client at the requested buffer size. Shared mode
+            // + auto-convert lets WASAPI deliver our 48 kHz/stereo/float format
+            // regardless of the device's native mix format.
+            let init = |buffer: i64| -> Result<(AudioClient, Handle), String> {
+                let mut client = device.get_iaudioclient().map_err(|e| e.to_string())?;
+                client
+                    .initialize_client(
+                        &format,
+                        buffer,
+                        &Direction::Capture,
+                        &ShareMode::Shared,
+                        true,
+                    )
+                    .map_err(|e| e.to_string())?;
+                let event = client.set_get_eventhandle().map_err(|e| e.to_string())?;
+                Ok((client, event))
+            };
+
+            let generous = CAPTURE_BUFFER_100NS.max(default_time);
+            let (client, event) = match init(generous) {
+                Ok(v) => v,
+                Err(e) => {
+                    capture_log(&format!(
+                        "WARN: {}ms capture buffer rejected ({e}); falling back to device minimum",
+                        generous / 10_000
+                    ));
+                    init(min_time)?
+                }
+            };
+
             let capture = client.get_audiocaptureclient().map_err(|e| e.to_string())?;
             client.start_stream().map_err(|e| e.to_string())?;
             Ok(Self {
@@ -217,8 +251,8 @@ mod imp {
             r = r.clamp(-1.0, 1.0);
             let li = i * BYTES_PER_FRAME;
             if li + 3 < out.len() {
-                let sl = (l * 32767.0) as i16;
-                let sr = (r * 32767.0) as i16;
+                let sl = (l * 32767.0).round().clamp(-32768.0, 32767.0) as i16;
+                let sr = (r * 32767.0).round().clamp(-32768.0, 32767.0) as i16;
                 out[li..li + 2].copy_from_slice(&sl.to_le_bytes());
                 out[li + 2..li + 4].copy_from_slice(&sr.to_le_bytes());
             }
@@ -271,6 +305,10 @@ mod imp {
             for _ in 0..frames * CHANNELS as usize {
                 self.samples.push_front(0.0);
             }
+        }
+
+        fn clear(&mut self) {
+            self.samples.clear();
         }
     }
 
@@ -528,10 +566,6 @@ mod imp {
         }
     }
 
-    fn target_from_secs(secs: f64) -> u64 {
-        (secs * SAMPLE_RATE as f64).round() as u64
-    }
-
     fn available_mix_frames(
         settings: &AudioSettings,
         system_q: &SampleQueue,
@@ -545,8 +579,8 @@ mod imp {
         }
     }
 
-    fn write_pcm_block(
-        writer: &mut File,
+    fn write_pcm_block<W: Write>(
+        writer: &mut W,
         settings: &AudioSettings,
         system_q: &Arc<Mutex<SampleQueue>>,
         mic_q: &Arc<Mutex<SampleQueue>>,
@@ -577,17 +611,33 @@ mod imp {
         Ok(peak)
     }
 
-    fn wait_for_pcm_time(session_start: Instant, frames_written: u64, stop: &AtomicBool) {
-        let deadline =
-            session_start + Duration::from_secs_f64(frames_written as f64 / SAMPLE_RATE as f64);
-        while Instant::now() < deadline && !stop.load(Ordering::Relaxed) {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining > Duration::from_millis(2) {
-                std::thread::sleep(Duration::from_millis(1));
-            } else {
-                std::hint::spin_loop();
+    /// Drain every frame currently queued and write it, in `max_block` chunks.
+    /// Returns the number of frames written and the peak seen.
+    fn drain_available<W: Write>(
+        writer: &mut W,
+        settings: &AudioSettings,
+        system_q: &Arc<Mutex<SampleQueue>>,
+        mic_q: &Arc<Mutex<SampleQueue>>,
+        max_block: usize,
+        buf: &mut [u8],
+    ) -> Result<(u64, f32), String> {
+        let mut written = 0u64;
+        let mut peak_max = 0.0f32;
+        loop {
+            let avail = {
+                let sys = system_q.lock();
+                let mic = mic_q.lock();
+                available_mix_frames(settings, &sys, &mic)
+            };
+            if avail == 0 {
+                break;
             }
+            let chunk = avail.min(max_block);
+            let peak = write_pcm_block(writer, settings, system_q, mic_q, chunk, buf)?;
+            peak_max = peak_max.max(peak);
+            written += chunk as u64;
         }
+        Ok((written, peak_max))
     }
 
     fn run_recording_pcm(
@@ -598,22 +648,19 @@ mod imp {
         session_target: Arc<AtomicU64>,
     ) -> Result<(), String> {
         com_init();
+        // session_target is no longer used to gate writes — audio runs at the
+        // device clock and is locked to the video duration at mux time.
+        let _ = session_target;
 
-        let mut writer = File::create(&pcm_path).map_err(|e| format!("create PCM sidecar: {e}"))?;
-
-        let session_start = match session_rx.recv_timeout(Duration::from_secs(30)) {
-            Ok(t) => t,
-            Err(_) => return Err("audio never received session start".into()),
-        };
+        let file = File::create(&pcm_path).map_err(|e| format!("create PCM sidecar: {e}"))?;
+        let mut writer = BufWriter::with_capacity(256 * 1024, file);
 
         let system_q = Arc::new(Mutex::new(SampleQueue::new()));
         let mic_q = Arc::new(Mutex::new(SampleQueue::new()));
-        {
-            let mut sys = system_q.lock();
-            let mut mic = mic_q.lock();
-            apply_mic_sync(&mut sys, &mut mic, settings.mic_delay_ms);
-        }
 
+        // Open + start the capture devices BEFORE the session clock begins, so
+        // the 50–200 ms device-open latency is absorbed during pre-roll and the
+        // recording never loses its head (a constant lip-sync offset otherwise).
         let mut feeders = Vec::new();
         if wants_system(settings.source) {
             feeders.push(spawn_capture_feeder(
@@ -633,106 +680,66 @@ mod imp {
             ));
         }
 
+        // t = 0 is defined by the video thread. If it never arrives, bail out
+        // cleanly (and stop the feeders we already started).
+        let session_start = match session_rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(t) => t,
+            Err(_) => {
+                stop.store(true, Ordering::Relaxed);
+                for feeder in feeders {
+                    let _ = feeder.join();
+                }
+                return Err("audio never received session start".into());
+            }
+        };
+
+        // Discard everything captured during pre-roll so audio and video share
+        // the same t = 0, then apply the user's mic/system delay offset.
+        {
+            let mut sys = system_q.lock();
+            let mut mic = mic_q.lock();
+            sys.clear();
+            mic.clear();
+            apply_mic_sync(&mut sys, &mut mic, settings.mic_delay_ms);
+        }
+
         let max_block = WRITE_BLOCK_FRAMES;
         let mut buf = vec![0u8; max_block * BYTES_PER_FRAME];
         let mut frames_written = 0u64;
-        let mut bytes_written = 0u64;
         let mut mix_peak_max = 0.0f32;
-        let mut catchup_warned = false;
 
+        // Faithful capture: write every sample the device delivers, in order, at
+        // the device's own clock. No wall-clock gating, no zero-fill, no drops —
+        // drift vs. the video timeline is corrected once, at mux time.
         while !stop.load(Ordering::Relaxed) {
-            wait_for_pcm_time(session_start, frames_written, &stop);
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
-
-            let wall_target = target_from_secs(session_start.elapsed().as_secs_f64());
-            let need = wall_target.saturating_sub(frames_written);
-            if need == 0 {
-                std::thread::sleep(Duration::from_millis(2));
-                continue;
-            }
-
-            if need > SAMPLE_RATE as u64 && !catchup_warned {
-                catchup_warned = true;
-                capture_log(&format!(
-                    "WARN: audio PCM {:.2}s behind wall clock — waiting for samples (no zero-fill)",
-                    need as f64 / SAMPLE_RATE as f64
-                ));
-            }
-
-            let avail = {
-                let sys = system_q.lock();
-                let mic = mic_q.lock();
-                available_mix_frames(&settings, &sys, &mic)
-            };
-            if avail == 0 {
-                std::thread::sleep(Duration::from_millis(2));
-                continue;
-            }
-
-            let chunk = (need as usize).min(max_block).min(avail).max(1);
-            let peak = write_pcm_block(
-                &mut writer,
-                &settings,
-                &system_q,
-                &mic_q,
-                chunk,
-                &mut buf,
-            )?;
+            let (written, peak) =
+                drain_available(&mut writer, &settings, &system_q, &mic_q, max_block, &mut buf)?;
+            frames_written += written;
             mix_peak_max = mix_peak_max.max(peak);
-            frames_written += chunk as u64;
-            bytes_written += (chunk * BYTES_PER_FRAME) as u64;
+            if written == 0 {
+                std::thread::sleep(Duration::from_millis(2));
+            }
         }
 
+        // Stop the feeders, then drain whatever they captured up to the stop.
         for feeder in feeders {
             let _ = feeder.join();
         }
-
-        let final_target = {
-            let t = session_target.load(Ordering::Acquire);
-            if t > 0 {
-                t
-            } else {
-                target_from_secs(session_start.elapsed().as_secs_f64())
-            }
-        }
-        .max(frames_written);
-        while frames_written < final_target {
-            let avail = {
-                let sys = system_q.lock();
-                let mic = mic_q.lock();
-                available_mix_frames(&settings, &sys, &mic)
-            };
-            let chunk = ((final_target - frames_written) as usize)
-                .min(max_block)
-                .min(avail.max(1))
-                .max(1);
-            if avail == 0 {
-                break;
-            }
-            let peak = write_pcm_block(
-                &mut writer,
-                &settings,
-                &system_q,
-                &mic_q,
-                chunk,
-                &mut buf,
-            )?;
-            mix_peak_max = mix_peak_max.max(peak);
-            frames_written += chunk as u64;
-            bytes_written += (chunk * BYTES_PER_FRAME) as u64;
-        }
+        let (tail, peak) =
+            drain_available(&mut writer, &settings, &system_q, &mic_q, max_block, &mut buf)?;
+        frames_written += tail;
+        mix_peak_max = mix_peak_max.max(peak);
 
         writer
             .flush()
             .map_err(|e| format!("flush PCM sidecar: {e}"))?;
 
         let secs = frames_written as f64 / SAMPLE_RATE as f64;
-        let sys_queued = system_q.lock().len_frames();
+        let wall = session_start.elapsed().as_secs_f64();
         capture_log(&format!(
-            "Audio PCM wrote {bytes_written} bytes ({secs:.2}s, wall-clock); mix peak {:.3}, {} frames queued",
-            mix_peak_max, sys_queued
+            "Audio PCM wrote {} bytes ({secs:.2}s captured / {wall:.2}s wall, device clock); mix peak {:.3}",
+            frames_written * BYTES_PER_FRAME as u64,
+            mix_peak_max
         ));
         Ok(())
     }

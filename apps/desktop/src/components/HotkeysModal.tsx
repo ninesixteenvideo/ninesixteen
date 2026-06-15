@@ -23,8 +23,14 @@ const HOTKEYS: HotkeyEntry[] = [
   {
     group: "framing",
     keys: ["Alt", "Scroll"],
-    title: "Zoom in / out",
-    detail: "Hold Alt and scroll to crop tighter or pull back to full desktop.",
+    title: "Zoom in / out (mouse)",
+    detail: "Hold Alt and scroll the wheel to crop tighter or pull back to full desktop.",
+  },
+  {
+    group: "framing",
+    keys: ["Alt", "↑ / ↓"],
+    title: "Zoom in / out (keyboard)",
+    detail: "On a laptop trackpad, hold Alt and press ↑ or ↓ — works the same as the wheel.",
   },
   {
     group: "framing",
@@ -64,7 +70,7 @@ export function HotkeysModal({ onClose }: { onClose: () => void }) {
         <HotkeyGroup heading="Framing" items={framingKeys} />
 
         <p className="hotkeys-foot muted">
-          Snap to full 9×16 with Alt + scroll — the frame pauses briefly when you land there.
+          Snap to full 9×16 with Alt + scroll or Alt + ↓ — the frame pauses briefly when you land there.
         </p>
       </div>
     </div>
