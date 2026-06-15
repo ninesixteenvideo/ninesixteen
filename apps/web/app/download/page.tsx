@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 
-const VERSION = "0.1.0";
+const INSTALLER_URL = process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL?.trim() ?? "";
+const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "0.1.0";
+const INSTALLER_FILENAME = INSTALLER_URL
+  ? decodeURIComponent(INSTALLER_URL.split("/").pop() ?? "")
+  : "";
+const INSTALLER_EXT = INSTALLER_FILENAME.match(/\.(msi|exe)$/i)?.[1]?.toLowerCase() ?? "msi";
 
 const REQUIREMENTS = [
   "Windows 10 or 11 (64-bit)",
@@ -68,20 +73,31 @@ export default function DownloadPage() {
             </ul>
           </div>
           <div className="flex flex-col items-center justify-center gap-4 bg-bgalt p-8">
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                alert(
-                  "Installer hosting coming soon.\n\nBuild locally with:\n  pnpm desktop:build\n\nFind the installer in apps/desktop/src-tauri/target/release/bundle/"
-                );
-              }}
-              className="ns-cta ns-cta--primary w-full max-w-xs text-center"
-            >
-              Free download · .msi
-            </a>
+            {INSTALLER_URL ? (
+              <a
+                href={INSTALLER_URL}
+                download={INSTALLER_FILENAME || undefined}
+                className="ns-cta ns-cta--primary w-full max-w-xs text-center"
+              >
+                Free download · .{INSTALLER_EXT}
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  alert(
+                    "Installer URL not configured.\n\n1. Build: pnpm desktop:build\n2. Upload the installer from apps/desktop/src-tauri/target/release/bundle/\n3. Set NEXT_PUBLIC_DESKTOP_INSTALLER_URL in Vercel (and .env.local for dev)"
+                  );
+                }}
+                className="ns-cta ns-cta--primary w-full max-w-xs text-center opacity-80"
+              >
+                Free download · .msi
+              </button>
+            )}
             <p className="text-center font-mono text-[11px] text-inkfaint">
-              Signed build · auto-updates later
+              {INSTALLER_URL
+                ? `v${VERSION} · signed build`
+                : "Set NEXT_PUBLIC_DESKTOP_INSTALLER_URL to go live"}
             </p>
           </div>
         </div>
