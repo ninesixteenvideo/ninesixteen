@@ -43,6 +43,8 @@ recordings/
 *.mkv
 *.ns
 *.flv
+# …but the landing-page promo video must ship to Vercel.
+!apps/web/public/promo.mp4
 
 # Deploy tooling
 .vercel/
