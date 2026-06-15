@@ -243,6 +243,18 @@ a {
   background: linear-gradient(165deg, var(--color-surface) 0%, var(--color-bgalt) 100%);
 }
 
+/* Mobile only: shrink the wordmarks to 70% of their desktop size.
+   The brand component sets font-size inline on its inner spans, so we override
+   with !important (a stylesheet rule beats a non-important inline style). */
+@media (max-width: 767px) {
+  .ns-wm-nav span {
+    font-size: 21px !important; /* 70% of 30px */
+  }
+  .ns-wm-cta span {
+    font-size: 33.6px !important; /* 70% of 48px */
+  }
+}
+
 /* Hero promo player — matches the desktop preview/library playback frame
    (2px ink border, 14px radius-md, hard-offset shadow, black backdrop).
    Locked to an exact 9:16 box so it never depends on metadata load timing. */

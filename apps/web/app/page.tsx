@@ -86,7 +86,7 @@ export default function HomePage() {
       {/* CTA */}
       <section className="py-16 pb-24">
         <div className="ns-card ns-cta-panel flex flex-col items-center gap-6 px-6 py-14 text-center md:px-12 md:py-16">
-          <Wordmark size={48} showSuffix />
+          <Wordmark size={48} showSuffix className="ns-wm-cta" />
           <p className="max-w-lg font-body text-lg text-inksoft">
             Record and preview free, forever. Unlock unlimited MP4 export with a single $49
             payment — no subscription, no watermark, no catch.

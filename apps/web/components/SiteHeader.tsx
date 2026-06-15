@@ -24,7 +24,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-50 border-b-2 border-ink/90 bg-bg/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
         <Link href="/" className="shrink-0" aria-label="ninesixteen.video home">
-          <Wordmark size={30} showSuffix />
+          <Wordmark size={30} showSuffix className="ns-wm-nav" />
         </Link>
 
         <div className="flex items-center gap-2">
