@@ -18,7 +18,7 @@ export const colors = {
   surfaceSunken: "#201F1C",
 
   // Ink & structure (warm dark cream — text + brutalist outlines)
-  ink: "#E7D8B6",
+  ink: "#F0E4C8",
   inkSoft: "#B0A994",
   inkFaint: "#7C7565",
 
@@ -26,7 +26,7 @@ export const colors = {
   shadow: "#0C0B0A",
 
   // Text colour that sits on accents
-  onAccent: "#E7D8B6",
+  onAccent: "#F0E4C8",
   onBright: "#1B1A18",
 
   // Brand syllables + UI accents
@@ -37,11 +37,11 @@ export const colors = {
   pinkDeep: "#84493B",
 
   // Accents
-  yellow: "#E7D8B6",
+  yellow: "#F0E4C8",
   mint: "#74B29A",
 
   // Utility
-  line: "#E7D8B6",
+  line: "#F0E4C8",
   lineSoft: "#38352F",
   danger: "#E0635F",
   success: "#5FA37E",

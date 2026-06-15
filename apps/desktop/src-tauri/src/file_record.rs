@@ -384,7 +384,46 @@ fn run(
         return Err("FFmpeg stdin unavailable".into());
     };
 
+    let fps_f = fps.max(1) as f64;
+    let mut written = 0u64;
+    let mut hold_frames = 0u64;
+    let mut last_arc: Option<Arc<Vec<u8>>> = None;
+    let mut stop_session_secs: Option<f64> = None;
+
+    // Start the GPU feeder first so it begins pulling published capture frames.
+    let gpu_feed = GpuFeeder::start(state.clone(), fps);
+    let gpu_renders = gpu_feed.renders.clone();
+    let latest = gpu_feed.latest.clone();
+
+    // Anchor t=0 to the FIRST real captured frame, not to thread start. On
+    // slower machines the GPU scaler init + first WGC frame can take several
+    // seconds; if we started the clock (and released audio) here, video would
+    // freeze on its first frame for that gap while audio ran ahead — producing
+    // the "audio 5–10s ahead of video" desync. Waiting here keeps A/V aligned.
+    let first_frame_deadline = Instant::now() + Duration::from_secs(12);
+    let mut waited_for_first = false;
+    while latest.lock().is_none() {
+        if stop_rx.try_recv().is_ok() {
+            // Stopped before any frame arrived — nothing was recorded.
+            drop(stdin);
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&path);
+            gpu_feed.stop();
+            return Ok((0, 0.0));
+        }
+        if Instant::now() >= first_frame_deadline {
+            capture_log("WARN: no capture frame after 12s — starting clock without first-frame anchor");
+            break;
+        }
+        waited_for_first = true;
+        std::thread::sleep(Duration::from_millis(2));
+    }
+
     let session_start = Instant::now();
+    if waited_for_first {
+        capture_log("Recording clock anchored to first captured frame");
+    }
     {
         let mut st = state.lock();
         st.session_start = Some(session_start);
@@ -396,16 +435,6 @@ fn run(
             let _ = tx.send(session_start);
         }
     }
-
-    let fps_f = fps.max(1) as f64;
-    let mut written = 0u64;
-    let mut hold_frames = 0u64;
-    let mut last_arc: Option<Arc<Vec<u8>>> = None;
-    let mut stop_session_secs: Option<f64> = None;
-
-    let gpu_feed = GpuFeeder::start(state.clone(), fps);
-    let gpu_renders = gpu_feed.renders.clone();
-    let latest = gpu_feed.latest.clone();
 
     let (frame_tx, frame_rx) = mpsc::channel::<Arc<Vec<u8>>>();
     let recording_done = Arc::new(AtomicBool::new(false));

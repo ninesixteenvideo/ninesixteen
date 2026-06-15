@@ -14,12 +14,12 @@
   --ns-surface-sunken: #201f1c;
 
   /* Ink & borders (warm dark cream — text + brutalist outlines) */
-  --ns-ink: #e7d8b6;
+  --ns-ink: #f0e4c8;
   --ns-ink-soft: #b0a994;
   --ns-ink-faint: #7c7565;
 
   /* Text colour that sits ON accents */
-  --ns-on-accent: #e7d8b6; /* dark cream on deep accents (charcoal / terracotta) */
+  --ns-on-accent: #f0e4c8; /* soft cream on deep accents (charcoal / terracotta) */
   --ns-on-bright: #1b1a18; /* on bright accents (cream / mint / white) */
 
   /* Primary accent (charcoal grey) + secondary (terracotta) */
@@ -31,11 +31,11 @@
   --ns-pink-link: #cf8c77; /* legible terracotta for accent text on dark */
 
   /* Accents */
-  --ns-yellow: #e7d8b6; /* warm dark cream — pairs with dark on-bright text */
+  --ns-yellow: #f0e4c8; /* warm soft cream — pairs with dark on-bright text */
   --ns-mint: #74b29a;
 
   /* Utility */
-  --ns-line: #e7d8b6;
+  --ns-line: #f0e4c8;
   --ns-line-soft: #38352f;
   --ns-danger: #e0635f;
   --ns-success: #5fa37e;
@@ -71,7 +71,7 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 70% at 50% -10%, rgba(231, 216, 182, 0.05), transparent 55%),
+    radial-gradient(120% 70% at 50% -10%, rgba(240, 228, 200, 0.05), transparent 55%),
     radial-gradient(90% 60% at 100% 0%, rgba(163, 93, 77, 0.05), transparent 50%);
 }
 .ns-grain::before {

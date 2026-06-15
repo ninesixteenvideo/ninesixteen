@@ -96,7 +96,7 @@ export function HeroDemo() {
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
             transition: drag.current.active ? "none" : "width 280ms cubic-bezier(.22,1,.36,1)",
             boxShadow:
-              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(231,216,182,0.12)",
+              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(240,228,200,0.12)",
             background: "transparent",
           }}
         >

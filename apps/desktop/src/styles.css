@@ -17,7 +17,7 @@ body,
 
 body {
   background:
-    radial-gradient(125% 60% at 50% -12%, rgba(231, 216, 182, 0.05), transparent 55%),
+    radial-gradient(125% 60% at 50% -12%, rgba(240, 228, 200, 0.05), transparent 55%),
     radial-gradient(80% 50% at 100% 0%, rgba(163, 93, 77, 0.05), transparent 50%),
     var(--ns-bg);
   overflow: hidden;
@@ -490,7 +490,7 @@ input[type="range"] {
   color: var(--ns-on-accent);
 }
 .src-card.active .muted {
-  color: rgba(231, 216, 182, 0.78);
+  color: rgba(240, 228, 200, 0.78);
 }
 .src-radio {
   flex: 0 0 auto;
@@ -1030,7 +1030,7 @@ button.cam-pill.off:not(:disabled):hover {
   color: var(--ns-on-accent);
 }
 .preview-item.active .muted {
-  color: rgba(231, 216, 182, 0.78);
+  color: rgba(240, 228, 200, 0.78);
 }
 .preview-thumb {
   flex: 0 0 auto;
@@ -1120,7 +1120,7 @@ button.cam-pill.off:not(:disabled):hover {
   max-width: 320px;
   font-size: 0.82rem;
   line-height: 1.4;
-  color: rgba(231, 216, 182, 0.78);
+  color: rgba(240, 228, 200, 0.78);
 }
 .preview-cap-overlay-actions {
   display: flex;
@@ -1587,7 +1587,7 @@ button.cam-pill.off:not(:disabled):hover {
   justify-content: center;
   gap: 10px;
   background: var(--ns-white);
-  color: var(--ns-on-bright);
+  color: #000;
   font-size: 0.92rem;
   padding: 11px;
 }
