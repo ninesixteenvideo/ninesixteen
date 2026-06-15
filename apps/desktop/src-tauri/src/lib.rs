@@ -33,7 +33,7 @@ mod tray;
 mod watchdog;
 
 use state::new_app_handles;
-use tauri::{Emitter, LogicalSize, Manager};
+use tauri::{Emitter, LogicalSize, Manager, Theme};
 
 /// Parse a `Range: bytes=…` header value into an inclusive `(start, end)` range.
 fn parse_range(header: Option<&str>, total: u64) -> Option<(u64, u64)> {
@@ -162,10 +162,19 @@ fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Resp
 }
 
 /// Size the main window: 9×16 height band, twice the portrait content width.
+fn apply_main_window_theme(app: &tauri::AppHandle) {
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    // Native title bar + window chrome (Windows DWM dark mode).
+    let _ = win.set_theme(Some(Theme::Dark));
+}
+
 fn fit_main_window_portrait(app: &tauri::AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
+    apply_main_window_theme(app);
     let Ok(Some(mon)) = win.primary_monitor() else {
         return;
     };

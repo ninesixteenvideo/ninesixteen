@@ -35,6 +35,9 @@ mod imp {
     static ZOOM_LOCK_UNTIL: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
     /// Easing toward full 9×16 — ignore Alt+scroll until the 0.4s hold starts.
     static PENDING_FULL_LOCK: AtomicBool = AtomicBool::new(false);
+    /// When `PENDING_FULL_LOCK` was last engaged (ms since epoch). Used purely as a
+    /// safety deadline so the latch can never stay stuck and swallow Alt+scroll.
+    static PENDING_FULL_LOCK_SINCE_MS: AtomicU64 = AtomicU64::new(0);
     /// Wheel deltas queued by the hook; drained on the follow thread only.
     static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
     static LAST_ALT_DEBUG_MS: AtomicU64 = AtomicU64::new(0);
@@ -52,6 +55,11 @@ mod imp {
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
     const FULL_FRAME_LOCK: Duration = Duration::from_millis(400);
+    /// Hard safety bound for the easing-to-full latch. Easing to full 9×16 settles
+    /// in well under a second; if the latch is somehow still set after this long
+    /// (a starved follow tick, a failed cursor read, or the monitor handle going
+    /// away mid-ease) we force-clear it so Alt+scroll can NEVER stay swallowed.
+    const MAX_PENDING_FULL_MS: u64 = 2000;
 
     fn alt_log(msg: &str) {
         capture_log(&format!("Alt: {msg}"));
@@ -99,6 +107,31 @@ mod imp {
             .unwrap_or(0)
     }
 
+    /// Set/clear the easing-to-full latch, stamping when it engaged so it can
+    /// be force-recovered if it ever overstays its welcome.
+    fn set_pending_full_lock(on: bool) {
+        PENDING_FULL_LOCK.store(on, Ordering::Release);
+        PENDING_FULL_LOCK_SINCE_MS.store(if on { now_ms() } else { 0 }, Ordering::Release);
+    }
+
+    /// True while genuinely easing to full 9×16. Self-heals: if the latch has
+    /// been set longer than `MAX_PENDING_FULL_MS` it is force-cleared (and any
+    /// queued wheel dropped) so a stranded ease can never swallow Alt+scroll
+    /// forever. Safe to call from the hook or the follow thread.
+    fn pending_full_lock_active() -> bool {
+        if !PENDING_FULL_LOCK.load(Ordering::Acquire) {
+            return false;
+        }
+        let since = PENDING_FULL_LOCK_SINCE_MS.load(Ordering::Acquire);
+        if since != 0 && now_ms().saturating_sub(since) > MAX_PENDING_FULL_MS {
+            set_pending_full_lock(false);
+            *PENDING_WHEEL_DELTA.lock() = 0.0;
+            alt_log("recovered stuck easing-to-full latch — Alt+scroll re-armed");
+            return false;
+        }
+        true
+    }
+
     fn alt_held() -> bool {
         unsafe {
             let left = GetAsyncKeyState(VK_MENU.0 as i32) as u16;
@@ -118,7 +151,7 @@ mod imp {
 
     fn release_alt_zoom_state() {
         let pending = *PENDING_WHEEL_DELTA.lock();
-        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        set_pending_full_lock(false);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = None;
         let _ = alt_held();
@@ -130,7 +163,7 @@ mod imp {
     }
 
     fn reset_zoom_input_state(viewport: &SharedViewport) {
-        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        set_pending_full_lock(false);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = None;
         let _ = alt_held();
@@ -152,11 +185,11 @@ mod imp {
 
     /// True while easing to, or holding at, full 9×16 — Alt+wheel is swallowed and ignored.
     fn scroll_input_blocked() -> bool {
-        zoom_hold_active() || PENDING_FULL_LOCK.load(Ordering::Acquire)
+        zoom_hold_active() || pending_full_lock_active()
     }
 
     fn engage_full_frame_hold() {
-        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        set_pending_full_lock(false);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = Some(Instant::now() + FULL_FRAME_LOCK);
         alt_log("landed full 9×16 — 0.4s scroll lock");
@@ -164,7 +197,7 @@ mod imp {
 
     fn aim_full_frame(vp: &mut ViewportState) {
         vp.zoom_target = 1.0;
-        PENDING_FULL_LOCK.store(true, Ordering::Release);
+        set_pending_full_lock(true);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         alt_log("snap toward full 9×16");
     }
@@ -400,7 +433,7 @@ mod imp {
             return false;
         }
 
-        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        set_pending_full_lock(false);
         vp.zoom_target = next;
         sync_zoom_at_min(next);
         let (x, y, z) = (vp.viewport.x, vp.viewport.y, vp.viewport.zoom);
@@ -635,7 +668,7 @@ mod imp {
     /// so a clip that ended zoomed all the way out (or any stuck snap/hold/
     /// at-min latch) can never carry over and swallow Alt+↑/↓ on the next take.
     pub fn reset_for_new_recording(viewport: &SharedViewport) {
-        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        set_pending_full_lock(false);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = None;
         *LAST_FOLLOW.lock() = None;

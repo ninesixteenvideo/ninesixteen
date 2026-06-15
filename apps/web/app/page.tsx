@@ -27,7 +27,7 @@ export default function HomePage() {
               Download
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--accent">
-              Purchase · $49
+              Purchase · $49 USD
             </Link>
           </div>
           <p className="mt-5 font-mono text-xs text-inkfaint">

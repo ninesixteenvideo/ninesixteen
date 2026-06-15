@@ -729,8 +729,14 @@ pub fn open_recordings_folder() {
 #[tauri::command]
 pub fn set_input_settings(
     handles: State<AppHandles>,
-    settings: InputSettings,
+    mut settings: InputSettings,
 ) {
+    // Clamp to the UI slider range and reject non-finite values so a bad payload
+    // can never poison the zoom math (which would silently break Alt+scroll).
+    if !settings.zoom_sensitivity.is_finite() {
+        settings.zoom_sensitivity = 1.0;
+    }
+    settings.zoom_sensitivity = settings.zoom_sensitivity.clamp(0.2, 3.0);
     handles.state.lock().input_settings = settings;
     handles.viewport.lock().zoom_sensitivity = settings.zoom_sensitivity;
 }

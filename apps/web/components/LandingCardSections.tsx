@@ -21,7 +21,7 @@ const USE_CASES = [
     icon: DeviceMobile,
     tone: "mint" as const,
     title: "Native short-form content",
-    desc: "Vertical from frame one. Publish clips with no crop step and no black bars.",
+    desc: "Vertical from frame one. Publish clips in seconds with no post production reframing.",
   },
   {
     icon: RocketLaunch,
