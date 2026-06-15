@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
 import { Wordmark } from "@ninesixteen/brand";
 import { useAuth } from "@/lib/auth";
 
@@ -20,14 +19,6 @@ const TICKER = [
 export function SiteHeader() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const playFancyDemonstration = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = 0;
-    void audio.play().catch(() => {});
-  };
 
   return (
     <header className="sticky top-0 z-50 border-b-2 border-ink/90 bg-bg/85 backdrop-blur-md">
@@ -37,13 +28,6 @@ export function SiteHeader() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={playFancyDemonstration}
-            className="ns-cta ns-cta--sm ns-cta--primary"
-          >
-            Begin fancy demonstration
-          </button>
           {!loading && user ? (
             <Link href="/dashboard" className="ns-cta ns-cta--sm ns-cta--primary">
               Dashboard
@@ -54,7 +38,6 @@ export function SiteHeader() {
             </Link>
           )}
         </div>
-        <audio ref={audioRef} src="/fancy-demonstration.mp3" preload="auto" />
       </div>
       {pathname === "/" && (
         <div className="overflow-hidden border-t-2 border-ink bg-yellow">
