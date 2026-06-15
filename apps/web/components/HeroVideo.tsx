@@ -7,11 +7,8 @@ import { SpeakerSimpleHigh, SpeakerSimpleSlash } from "@phosphor-icons/react";
  * Landing-page promo player. Houses promo.mp4 (720×1280, exact 9:16) in the same
  * hard-offset, curved frame the desktop app uses for preview/library playback.
  *
- * Playback strategy:
- * - Autoplay MUTED on load — the only mode every browser allows unconditionally.
- *   We set `muted` via the DOM property (the React `muted` attribute is unreliable
- *   and otherwise lets Chrome treat it as a blocked unmuted autoplay).
- * - A subtle speaker glyph to the left of the frame toggles sound on/off.
+ * Default: paused on the first frame. User plays via native controls or by
+ * unmuting (which starts playback with sound).
  */
 export function HeroVideo() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -23,20 +20,12 @@ export function HeroVideo() {
 
     video.muted = true;
     video.volume = 1;
-
-    const tryPlay = () => {
-      void video.play().catch(() => {});
-    };
-    tryPlay();
-    video.addEventListener("canplay", tryPlay, { once: true });
-    video.addEventListener("loadeddata", tryPlay, { once: true });
+    video.pause();
 
     const syncMuted = () => setMuted(video.muted);
     video.addEventListener("volumechange", syncMuted);
 
     return () => {
-      video.removeEventListener("canplay", tryPlay);
-      video.removeEventListener("loadeddata", tryPlay);
       video.removeEventListener("volumechange", syncMuted);
     };
   }, []);
@@ -68,7 +57,6 @@ export function HeroVideo() {
       <video
         ref={videoRef}
         src="/promo.mp4"
-        autoPlay
         loop
         muted
         playsInline
