@@ -391,6 +391,7 @@ pub fn start_recording(
         let mut vp = handles.viewport.lock();
         vp.viewport.orientation = Orientation::Portrait;
     }
+    crate::rawinput::reset_frame_follow(&handles.viewport);
 
     crate::log::capture_log("Record countdown armed (5s)");
     emit_recording_state(

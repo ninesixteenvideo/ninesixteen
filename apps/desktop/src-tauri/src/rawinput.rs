@@ -100,13 +100,15 @@ mod imp {
     }
 
     fn alt_held() -> bool {
-        if ALT_HELD.load(Ordering::Acquire) {
-            return true;
-        }
         unsafe {
             let left = GetAsyncKeyState(VK_MENU.0 as i32) as u16;
             let right = GetAsyncKeyState(VK_RMENU.0 as i32) as u16;
-            (left & 0x8000) != 0 || (right & 0x8000) != 0
+            let held = (left & 0x8000) != 0 || (right & 0x8000) != 0;
+            // Always mirror physical Alt — a missed WM_SYSKEYUP (focus churn
+            // when minimizing/restoring between recordings) must not leave a
+            // stale true that swallows Alt+arrow without zooming.
+            ALT_HELD.store(held, Ordering::Release);
+            held
         }
     }
 
@@ -116,14 +118,24 @@ mod imp {
 
     fn release_alt_zoom_state() {
         let pending = *PENDING_WHEEL_DELTA.lock();
-        ALT_HELD.store(false, Ordering::Release);
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
+        *ZOOM_LOCK_UNTIL.lock() = None;
+        let _ = alt_held();
         if pending.abs() > f64::EPSILON {
             alt_log(&format!("key up — cleared pending wheel delta {pending:.3}"));
         } else {
             alt_log("key up — zoom state reset");
         }
+    }
+
+    fn reset_zoom_input_state(viewport: &SharedViewport) {
+        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        *ZOOM_LOCK_UNTIL.lock() = None;
+        let _ = alt_held();
+        sync_zoom_at_min(viewport.lock().zoom_target);
+        alt_log("capture input reset");
     }
 
     fn zoom_hold_active() -> bool {
@@ -611,9 +623,11 @@ mod imp {
     }
 
     pub fn reset_frame_follow(viewport: &SharedViewport) {
+        reset_zoom_input_state(viewport);
         let mut vp = viewport.lock();
         vp.frame_frozen = false;
         vp.frame_unfreeze_at = None;
+        mark_viewport_dirty();
     }
 }
 

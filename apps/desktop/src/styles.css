@@ -465,6 +465,9 @@ input[type="range"] {
   border-color: var(--ns-blue);
   box-shadow: 3px 3px 0 var(--ns-shadow-color);
 }
+.cursor-choice-btn.active .muted {
+  color: rgba(27, 26, 24, 0.72);
+}
 .quality-select {
   flex: 1;
   max-width: 280px;
@@ -496,8 +499,10 @@ input[type="range"] {
   background: var(--ns-blue);
   color: var(--ns-on-bright);
 }
-.src-card.active .muted {
-  color: rgba(250, 250, 250, 0.78);
+.src-card.active .muted,
+.src-card.active .label,
+.src-card.active .select-label {
+  color: rgba(27, 26, 24, 0.72);
 }
 .src-radio {
   flex: 0 0 auto;
@@ -814,6 +819,10 @@ input[type="range"] {
 }
 .device.bound {
   background: var(--ns-blue);
+  color: var(--ns-on-bright);
+}
+.device.bound .muted {
+  color: rgba(27, 26, 24, 0.72);
 }
 
 .kbd {
@@ -1038,7 +1047,7 @@ button.cam-pill.off:not(:disabled):hover {
   color: var(--ns-on-bright);
 }
 .preview-item.active .muted {
-  color: rgba(250, 250, 250, 0.78);
+  color: rgba(27, 26, 24, 0.72);
 }
 .preview-thumb {
   flex: 0 0 auto;
@@ -1313,12 +1322,14 @@ button.cam-pill.off:not(:disabled):hover {
   color: var(--ns-on-bright);
 }
 .card-action.cancel {
-  background: var(--ns-surface);
-  color: var(--ns-ink);
+  background: var(--ns-blue);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
 }
 .card-action.confirm {
-  background: #ff5a5a;
+  background: var(--ns-pink);
   color: var(--ns-on-bright);
+  border-color: var(--ns-pink);
 }
 .card-action.icon-only {
   display: inline-flex;
