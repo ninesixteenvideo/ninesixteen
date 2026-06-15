@@ -61,17 +61,9 @@ function DashboardInner() {
       )}
 
       <div className="ns-card mt-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="ns-chip">Current plan</span>
-            <h2 className="mt-2 font-display text-2xl">{isPro ? "Pro" : "Free"}</h2>
-          </div>
-          <span
-            className="rounded-full border-2 border-ink px-4 py-1.5 font-display"
-            style={{ background: isPro ? "var(--color-pink)" : "var(--color-blue)" }}
-          >
-            {isPro ? "Lifetime" : "$0"}
-          </span>
+        <div>
+          <span className="ns-chip">Current status</span>
+          <h2 className="mt-2 font-display text-2xl">{isPro ? "Pro" : "Free"}</h2>
         </div>
 
         {isPro && (
