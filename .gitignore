@@ -45,7 +45,6 @@ recordings/
 *.flv
 # …but the landing-page promo video must ship to Vercel.
 !apps/web/public/promo.mp4
-!apps/web/public/epic-introduction.mp3
 
 # Deploy tooling
 .vercel/

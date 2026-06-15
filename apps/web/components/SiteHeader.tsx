@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRef } from "react";
 import { Wordmark } from "@ninesixteen/brand";
 import { useAuth } from "@/lib/auth";
 
@@ -20,14 +19,6 @@ const TICKER = [
 export function SiteHeader() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
-  const epicIntroRef = useRef<HTMLAudioElement | null>(null);
-
-  const playEpicIntroduction = () => {
-    const audio = epicIntroRef.current ?? new Audio("/epic-introduction.mp3");
-    epicIntroRef.current = audio;
-    audio.currentTime = 0;
-    void audio.play().catch(() => {});
-  };
 
   return (
     <header className="sticky top-0 z-50 border-b-2 border-ink/90 bg-bg/85 backdrop-blur-md">
@@ -42,20 +33,9 @@ export function SiteHeader() {
               Dashboard
             </Link>
           ) : (
-            <>
-              {pathname === "/" && (
-                <button
-                  type="button"
-                  onClick={playEpicIntroduction}
-                  className="ns-cta ns-cta--sm ns-cta--primary"
-                >
-                  Epic introduction
-                </button>
-              )}
-              <Link href="/sign-in" className="ns-cta ns-cta--sm ns-cta--accent">
-                Sign in
-              </Link>
-            </>
+            <Link href="/sign-in" className="ns-cta ns-cta--sm ns-cta--accent">
+              Sign in
+            </Link>
           )}
         </div>
       </div>
