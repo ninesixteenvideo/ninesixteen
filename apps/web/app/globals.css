@@ -243,6 +243,24 @@ a {
   background: linear-gradient(165deg, var(--color-surface) 0%, var(--color-bgalt) 100%);
 }
 
+/* Hero promo player — matches the desktop preview/library playback frame
+   (2px ink border, 14px radius-md, hard-offset shadow, black backdrop). */
+.ns-hero-video {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.ns-hero-video video {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  background: #000;
+  border: 2px solid var(--color-ink);
+  border-radius: 14px;
+  box-shadow: 6px 6px 0 var(--color-shadow);
+}
+
 /* Stripe Embedded Checkout */
 .stripe-embedded-checkout,
 .stripe-embedded-checkout iframe {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { FeaturesGrid, StepsGrid, UseCasesGrid } from "@/components/LandingCardSections";
-import { HeroDemo } from "@/components/HeroDemo";
+import { HeroVideo } from "@/components/HeroVideo";
 
 export default function HomePage() {
   return (
@@ -27,7 +27,7 @@ export default function HomePage() {
               Download free
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--accent">
-              Unlock Pro · $49
+              Purchase · $49
             </Link>
           </div>
           <p className="mt-5 font-mono text-xs text-inkfaint">
@@ -35,8 +35,8 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="ns-float">
-          <HeroDemo />
+        <div className="flex justify-center">
+          <HeroVideo />
         </div>
       </section>
 
@@ -96,7 +96,7 @@ export default function HomePage() {
               Download free
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--accent">
-              Unlock Pro · $49
+              Purchase · $49
             </Link>
           </div>
         </div>
