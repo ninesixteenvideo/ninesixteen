@@ -18,13 +18,13 @@ export default function HomePage() {
           <p className="mt-6 max-w-lg font-body text-lg leading-relaxed text-inksoft">
             <Wordmark size={20} /> records your screen in true{" "}
             <b className="font-semibold text-ink">9×16</b> — no cropping, no reframing
-            in post. Follow your cursor, zoom with Alt + scroll, and walk away with
+            in post production. Follow your cursor, zoom with Alt + scroll, and walk away with
             short-form footage that drops straight into CapCut, Premiere, or your editor
             of choice.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
-              Download free
+              Download
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--accent">
               Purchase · $49
@@ -93,7 +93,7 @@ export default function HomePage() {
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/download" className="ns-cta ns-cta--accent">
-              Download free
+              Download
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--accent">
               Purchase · $49

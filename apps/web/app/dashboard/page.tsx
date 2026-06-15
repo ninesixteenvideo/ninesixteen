@@ -68,7 +68,7 @@ function DashboardInner() {
 
         {isPro && (
           <p className="mt-3 font-body text-sm text-inksoft">
-            Thanks for buying Pro — your one-time purchase unlocks MP4 export forever.
+            Thanks for buying Pro — your one-time purchase unlocks all features including future updates.
           </p>
         )}
 
