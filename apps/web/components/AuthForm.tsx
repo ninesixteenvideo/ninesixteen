@@ -89,7 +89,7 @@ function AuthFormInner({
           type="button"
           onClick={onGoogle}
           disabled={busy}
-          className="mt-5 flex w-full items-center justify-center gap-3 rounded-full border-2 border-ink bg-white px-5 py-3 font-display text-base text-black shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+          className="ns-google-btn mt-5 flex w-full items-center justify-center gap-3 rounded-full border-2 border-ink bg-white px-5 py-3 font-display text-base shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
         >
           <GoogleGlyph />
           Continue with Google

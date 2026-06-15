@@ -2,7 +2,7 @@
    Warm charcoal surfaces, bright off-white structure, terracotta + mustard accents.
    Premium neo-brutalist: crisp light borders, deep hard-offset shadows, retro glow. */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Faster+One&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Tourney:wght@400..700&display=swap");
 
 :root {
   color-scheme: dark;
@@ -47,6 +47,8 @@
   --ns-font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ns-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ns-font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
+  --ns-font-wordmark: "Tourney", system-ui, sans-serif;
+  --ns-font-wordmark-video: "Faster One", system-ui, sans-serif;
 
   /* Radii */
   --ns-radius-sm: 8px;

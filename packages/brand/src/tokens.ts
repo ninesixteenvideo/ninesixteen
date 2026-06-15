@@ -2,10 +2,9 @@
  * ninesixteen.video — brand design tokens.
  *
  * Professional stone palette with mild retro structure (hard shadows, pill radii).
- * Wordmark syllables:
- *   "nine"  -> white (outlined on light backgrounds)
- *   "six"   -> medium charcoal
- *   "teen"  -> terracotta clay
+ * Wordmark:
+ *   "ninesixteen." -> Tourney, cream
+ *   "video"        -> Faster One, terracotta red
  *
  * Shared by the web app and Tauri desktop app.
  */
@@ -54,6 +53,10 @@ export const fonts = {
   body: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   /** Mono for technical/recording metadata. */
   mono: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
+  /** Logo: "ninesixteen." */
+  wordmark: '"Tourney", system-ui, sans-serif',
+  /** Logo suffix: "video" */
+  wordmarkVideo: '"Faster One", system-ui, sans-serif',
 } as const;
 
 export const radii = {

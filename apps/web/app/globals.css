@@ -180,6 +180,11 @@ a {
   color: var(--color-ink);
 }
 
+/* Google sign-in — must stay black on white (global button { color: inherit } otherwise wins). */
+.ns-google-btn {
+  color: #000;
+}
+
 /* Stats row */
 .ns-stats-row {
   display: grid;
