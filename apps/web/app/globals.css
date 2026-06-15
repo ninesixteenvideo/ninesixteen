@@ -264,29 +264,21 @@ a {
   border-radius: 14px;
   box-shadow: 6px 6px 0 var(--color-shadow);
 }
-.ns-hero-video__unmute {
+.ns-hero-video__sound {
   position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
+  top: 2px;
+  left: -46px;
   display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.9rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.04em;
-  color: var(--color-onbright);
-  background: var(--color-blue);
-  border: 2px solid var(--color-ink);
-  border-radius: 999px;
-  box-shadow: 3px 3px 0 var(--color-shadow);
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-inkfaint);
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: color 0.14s ease, transform 0.14s ease;
 }
-.ns-hero-video__unmute:hover {
-  transform: translateX(-50%) translateY(-1px);
-  box-shadow: 4px 4px 0 var(--color-shadow);
+.ns-hero-video__sound:hover {
+  color: var(--color-inksoft);
+  transform: translateY(-1px);
 }
 
 /* Stripe Embedded Checkout */

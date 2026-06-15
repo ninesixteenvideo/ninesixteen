@@ -7,7 +7,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-5">
       {/* HERO */}
-      <section className="grid items-center gap-12 py-16 md:grid-cols-[1.05fr_1fr] md:py-24">
+      <section className="grid items-center gap-8 py-16 md:grid-cols-[1.15fr_1fr] md:gap-4 md:py-24">
         <div>
           <span className="ns-chip inline-block">Windows · vertical screen recorder</span>
           <h1 className="mt-6 font-display text-[2.75rem] leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-[4.25rem]">
@@ -35,7 +35,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center md:justify-start md:self-start md:-mt-[46px]">
           <HeroVideo />
         </div>
       </section>
