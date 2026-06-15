@@ -170,11 +170,63 @@ fn apply_main_window_theme(app: &tauri::AppHandle) {
     let _ = win.set_theme(Some(Theme::Dark));
 }
 
+/// Stop the Alt key from freezing our windows.
+///
+/// When Alt (or F10) is pressed while one of our windows is the active window,
+/// Windows' `DefWindowProc` enters the modal **system-menu loop** (`SC_KEYMENU`),
+/// which takes over and blocks that window's message thread until menu mode is
+/// dismissed. Because Tauri pumps the overlay's per-frame updates on that same
+/// thread, the on-desktop framing box stops following the cursor until Alt is
+/// pressed again (which exits menu mode). The recorder runs on its own thread,
+/// so the captured video is unaffected — exactly the reported symptom.
+///
+/// We have no native menus, so we subclass our windows and swallow `SC_KEYMENU`,
+/// which prevents the modal loop from ever starting. Alt itself still works
+/// everywhere else (Alt+scroll zoom uses low-level hooks that fire before this).
+#[cfg(windows)]
+unsafe extern "system" fn alt_menu_guard_proc(
+    hwnd: windows::Win32::Foundation::HWND,
+    msg: u32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+    _uid: usize,
+    _data: usize,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::Shell::DefSubclassProc;
+    use windows::Win32::UI::WindowsAndMessaging::{SC_KEYMENU, WM_SYSCOMMAND};
+    if msg == WM_SYSCOMMAND && (wparam.0 & 0xFFF0) == SC_KEYMENU as usize {
+        return windows::Win32::Foundation::LRESULT(0);
+    }
+    DefSubclassProc(hwnd, msg, wparam, lparam)
+}
+
+#[cfg(windows)]
+fn install_alt_menu_guard(app: &tauri::AppHandle, label: &str) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::SetWindowSubclass;
+    let Some(win) = app.get_webview_window(label) else {
+        return;
+    };
+    if let Ok(h) = win.hwnd() {
+        // Reconstruct the HWND in our own `windows` crate version to avoid any
+        // version-coupling with Tauri's internal handle type.
+        let hwnd = HWND(h.0 as *mut core::ffi::c_void);
+        unsafe {
+            let _ = SetWindowSubclass(hwnd, Some(alt_menu_guard_proc), 0, 0);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn install_alt_menu_guard(_app: &tauri::AppHandle, _label: &str) {}
+
 fn fit_main_window_portrait(app: &tauri::AppHandle) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
     apply_main_window_theme(app);
+    install_alt_menu_guard(app, "main");
+    install_alt_menu_guard(app, "overlay");
     let Ok(Some(mon)) = win.primary_monitor() else {
         return;
     };

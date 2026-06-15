@@ -47,12 +47,17 @@ mod imp {
 
     const CURSOR_TICK_MS: u64 = 8;
     const PAN_SMOOTH_HZ: f64 = 11.0;
-    const PAN_SMOOTH_HZ_ALT: f64 = 22.0;
+    // While Alt is held (zooming) keep the follow at the same lazy character as
+    // idle instead of speeding it up — a consistent lead reads far smoother than
+    // the box lurching faster the moment you start to zoom.
+    const PAN_SMOOTH_HZ_ALT: f64 = 12.0;
     const PAN_SMOOTH_HZ_UNFREEZE: f64 = 6.5;
     const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(2500);
     const UNFREEZE_ARRIVED_PX: f64 = 10.0;
-    const ZOOM_SMOOTH_HZ: f64 = 3.8;
-    const WHEEL_ZOOM_STEP: f64 = 0.09;
+    // Lower = creamier zoom glide toward the target.
+    const ZOOM_SMOOTH_HZ: f64 = 3.0;
+    // Gentler per-notch magnitude so each scroll step eases rather than jumps.
+    const WHEEL_ZOOM_STEP: f64 = 0.075;
     const FULL_FRAME_SETTLE: f64 = 0.012;
     const FULL_FRAME_LOCK: Duration = Duration::from_millis(400);
     /// Hard safety bound for the easing-to-full latch. Easing to full 9×16 settles
@@ -395,20 +400,11 @@ mod imp {
 
         let mut vp = ctx.viewport.lock();
 
-        // Keep zoom anchored to the live cursor — unless the frame is frozen.
-        if !vp.frame_frozen {
-            if let Some(m) = vp.monitor.as_ref() {
-                if let Some((tx, ty)) = cursor_pos_for_monitor(
-                    m.origin_x,
-                    m.origin_y,
-                    m.width as f64,
-                    m.height as f64,
-                ) {
-                    vp.viewport.x = tx;
-                    vp.viewport.y = ty;
-                }
-            }
-        }
+        // Note: we deliberately do NOT snap the viewport center to the cursor on
+        // each wheel notch. The pan system in `advance_viewport` already eases the
+        // center toward the live cursor every frame, so letting that lazy follow
+        // lead — while zoom animates independently toward `zoom_target` — keeps the
+        // glide smooth instead of teleporting the box on every notch.
 
         let factor = 1.0 + delta * WHEEL_ZOOM_STEP * vp.zoom_sensitivity;
         let prev = vp.zoom_target;

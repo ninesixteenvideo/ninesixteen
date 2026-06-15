@@ -229,27 +229,56 @@ fn take_capture_frame() -> Option<Arc<Vec<u8>>> {
         .and_then(|slot| slot.lock().take())
 }
 
+/// Drop any frame left in the shared slot from a previous recording.
+///
+/// The slot is a process-global latch that retains the last published frame
+/// after a recording stops. If the next recording uses a different resolution
+/// (e.g. 1080p → 720p) that stale frame would be the wrong size for the new
+/// FFmpeg pipe, so we discard it here so the new recording only ever starts
+/// from a freshly captured frame at the current resolution.
+fn clear_capture_frame() {
+    if let Some(slot) = REC_CAPTURE_FRAME.get() {
+        *slot.lock() = None;
+    }
+    STRAY_FRAME_LOGS.store(0, Ordering::Relaxed);
+}
+
+/// Per-recording counter so we log (at most) a few stray-frame skips without spam.
+static STRAY_FRAME_LOGS: AtomicU64 = AtomicU64::new(0);
+
+/// Writes a frame to FFmpeg, returning `Ok(true)` if it was written.
+///
+/// A frame whose byte length doesn't match the expected `width*height*4` is
+/// never written — its stride wouldn't line up and it would corrupt or kill the
+/// recording. Instead we skip it (returning `Ok(false)`) and let the scheduler
+/// keep feeding until a correctly-sized frame arrives. Only a real I/O failure
+/// on the FFmpeg pipe is fatal. This makes resolution switches bulletproof: a
+/// stray wrong-size frame can never abort a recording.
 fn write_arc_frame(
     stdin: &mut impl Write,
     bgra: &Arc<Vec<u8>>,
     width: u32,
     height: u32,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let expected = (width as usize)
         .saturating_mul(height as usize)
         .saturating_mul(4);
     if bgra.len() != expected {
-        return Err(format!(
-            "frame size mismatch: got {} bytes, expected {} for {}x{}",
-            bgra.len(),
-            expected,
-            width,
-            height
-        ));
+        if STRAY_FRAME_LOGS.fetch_add(1, Ordering::Relaxed) < 3 {
+            capture_log(&format!(
+                "skipped stray frame: got {} bytes, expected {} for {}x{}",
+                bgra.len(),
+                expected,
+                width,
+                height
+            ));
+        }
+        return Ok(false);
     }
     stdin
         .write_all(bgra.as_slice())
-        .map_err(|e| format!("write frame to FFmpeg: {e}"))
+        .map_err(|e| format!("write frame to FFmpeg: {e}"))?;
+    Ok(true)
 }
 
 struct GpuFeeder {
@@ -390,6 +419,10 @@ fn run(
     let mut last_arc: Option<Arc<Vec<u8>>> = None;
     let mut stop_session_secs: Option<f64> = None;
 
+    // Drop any frame left over from a previous recording so a stale wrong-size
+    // frame (after a resolution switch) can never prime this recording.
+    clear_capture_frame();
+
     // Start the GPU feeder first so it begins pulling published capture frames.
     let gpu_feed = GpuFeeder::start(state.clone(), fps);
     let gpu_renders = gpu_feed.renders.clone();
@@ -469,13 +502,15 @@ fn run(
 
         match frame_rx.recv_timeout(Duration::from_millis(50)) {
             Ok(arc) => {
-                if last_arc
+                let is_hold = last_arc
                     .as_ref()
-                    .is_some_and(|prev| Arc::ptr_eq(prev, &arc))
-                {
+                    .is_some_and(|prev| Arc::ptr_eq(prev, &arc));
+                if !write_arc_frame(&mut stdin, &arc, width, height)? {
+                    continue;
+                }
+                if is_hold {
                     hold_frames += 1;
                 }
-                write_arc_frame(&mut stdin, &arc, width, height)?;
                 last_arc = Some(arc);
                 written += 1;
 
@@ -512,13 +547,15 @@ fn run(
         .unwrap_or(written.max(1));
 
     while let Ok(arc) = frame_rx.recv() {
-        if last_arc
+        let is_hold = last_arc
             .as_ref()
-            .is_some_and(|prev| Arc::ptr_eq(prev, &arc))
-        {
+            .is_some_and(|prev| Arc::ptr_eq(prev, &arc));
+        if !write_arc_frame(&mut stdin, &arc, width, height)? {
+            continue;
+        }
+        if is_hold {
             hold_frames += 1;
         }
-        write_arc_frame(&mut stdin, &arc, width, height)?;
         last_arc = Some(arc);
         written += 1;
         if target_frames > 0 && written % 500 == 0 {
