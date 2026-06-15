@@ -2,24 +2,29 @@
 
 /* Tailwind utilities → same tokens as desktop (packages/brand/theme.css) */
 @theme {
-  --color-bg: #f4f3ef;
-  --color-bgalt: #eae8e2;
-  --color-surface: #fafaf8;
-  --color-surfacesunken: #efede8;
+  --color-bg: #1b1a18;
+  --color-bgalt: #242220;
+  --color-surface: #2c2a27;
+  --color-surfacesunken: #201f1c;
 
-  --color-ink: #323238;
-  --color-inksoft: #5c5c66;
-  --color-inkfaint: #878792;
+  --color-ink: #e7d8b6;
+  --color-inksoft: #b0a994;
+  --color-inkfaint: #7c7565;
 
-  --color-blue: #6e6e78;
-  --color-bluedeep: #565660;
-  --color-pink: #8f5e55;
-  --color-pinkdeep: #6e443d;
-  --color-yellow: #ffce4a;
-  --color-mint: #6b9e8a;
-  --color-line: #323238;
-  --color-linesoft: #d5d2cb;
-  --color-danger: #b84a4f;
+  --color-onaccent: #e7d8b6;
+  --color-onbright: #1b1a18;
+  --color-shadow: #0c0b0a;
+
+  --color-white: #ffffff;
+  --color-blue: #6d6a65;
+  --color-bluedeep: #a7a19a;
+  --color-pink: #a35d4d;
+  --color-pinkdeep: #cf8c77;
+  --color-yellow: #e7d8b6;
+  --color-mint: #74b29a;
+  --color-line: #e7d8b6;
+  --color-linesoft: #38352f;
+  --color-danger: #e0635f;
 
   --font-display: var(--ns-font-display);
   --font-body: var(--ns-font-body);
@@ -68,8 +73,8 @@ h6 {
 }
 
 ::selection {
-  background: var(--color-bluedeep);
-  color: var(--color-surface);
+  background: var(--color-yellow);
+  color: var(--color-onbright);
 }
 
 @keyframes ns-spin {
@@ -126,7 +131,13 @@ a {
 
 .bg-blue,
 .bg-pink {
-  color: var(--color-surface);
+  color: var(--color-onaccent);
+}
+
+/* Dark mode: bright accents need dark ink on top */
+.bg-yellow,
+.bg-mint {
+  color: var(--color-onbright);
 }
 
 /* CTAs — same as desktop .tab / .ns-btn weight */
@@ -141,28 +152,28 @@ a {
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  box-shadow: 5px 5px 0 var(--color-ink);
+  box-shadow: 5px 5px 0 var(--color-shadow);
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 .ns-cta:hover {
   transform: translate(-2px, -2px);
-  box-shadow: 7px 7px 0 var(--color-ink);
+  box-shadow: 7px 7px 0 var(--color-shadow);
 }
 .ns-cta--sm {
   padding: 0.45rem 1rem;
   font-size: 0.875rem;
-  box-shadow: 3px 3px 0 var(--color-ink);
+  box-shadow: 3px 3px 0 var(--color-shadow);
 }
 .ns-cta--sm:hover {
-  box-shadow: 4px 4px 0 var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-shadow);
 }
 .ns-cta--primary {
   background: var(--color-blue);
-  color: var(--color-surface);
+  color: var(--color-onaccent);
 }
 .ns-cta--accent {
   background: var(--color-pink);
-  color: var(--color-surface);
+  color: var(--color-onaccent);
 }
 .ns-cta--ghost {
   background: var(--color-surface);

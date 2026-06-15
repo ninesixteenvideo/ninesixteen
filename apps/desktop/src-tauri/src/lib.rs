@@ -209,7 +209,19 @@ pub fn run() {
     #[cfg(windows)]
     capture::bind_viewport(viewport.clone());
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Single-instance MUST be the first plugin: a second launch forwards to the
+    // already-running app (show + focus the window) and then exits, so we never
+    // accumulate duplicate processes / tray icons.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            tray::show_main_window(app);
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(

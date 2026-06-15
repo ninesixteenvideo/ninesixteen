@@ -68,7 +68,7 @@ export function SiteHeader() {
       </div>
       {pathname === "/" && (
         <div className="overflow-hidden border-t-2 border-ink bg-yellow">
-          <div className="ns-marquee flex w-[200%] gap-10 whitespace-nowrap py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+          <div className="ns-marquee flex w-[200%] gap-10 whitespace-nowrap py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-onbright">
             {Array.from({ length: 2 }).map((_, i) => (
               <span key={i} className="flex gap-10">
                 {TICKER.map((item) => (

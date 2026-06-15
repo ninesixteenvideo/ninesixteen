@@ -79,7 +79,7 @@ function AuthFormInner({
         </p>
 
         {!firebaseEnabled && (
-          <div className="mt-4 rounded-lg border-2 border-ink bg-yellow/60 p-3 font-mono text-[11px] leading-relaxed text-ink">
+          <div className="mt-4 rounded-lg border-2 border-ink bg-yellow/60 p-3 font-mono text-[11px] leading-relaxed text-onbright">
             Demo mode: Firebase isn’t configured yet, so accounts are stored locally
             in this browser. Add your keys to <code>.env.local</code> to go live.
           </div>
@@ -89,7 +89,7 @@ function AuthFormInner({
           type="button"
           onClick={onGoogle}
           disabled={busy}
-          className="mt-5 flex w-full items-center justify-center gap-3 rounded-full border-2 border-ink bg-white px-5 py-3 font-display text-base shadow-[4px_4px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+          className="mt-5 flex w-full items-center justify-center gap-3 rounded-full border-2 border-ink bg-white px-5 py-3 font-display text-base text-onbright shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
         >
           <GoogleGlyph />
           Continue with Google
@@ -146,7 +146,7 @@ function AuthFormInner({
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-full border-2 border-ink bg-blue px-5 py-3 font-display text-lg shadow-[4px_4px_0_var(--color-ink)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            className="w-full rounded-full border-2 border-ink bg-blue px-5 py-3 font-display text-lg shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
           >
             {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
           </button>
@@ -196,7 +196,7 @@ function AuthFormInner({
           font-size: 0.95rem;
           outline: none;
         }
-        .ns-input:focus { box-shadow: 3px 3px 0 var(--color-ink); }
+        .ns-input:focus { box-shadow: 3px 3px 0 var(--color-shadow); }
       `}</style>
     </div>
   );

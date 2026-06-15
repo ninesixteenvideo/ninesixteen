@@ -31,7 +31,7 @@ export function PricingPlans() {
         className="ns-card relative flex flex-col p-7"
         style={{ boxShadow: "7px 7px 0 var(--color-pinkdeep)" }}
       >
-        <span className="absolute -top-3 right-6 rounded-full border-2 border-ink bg-yellow px-3 py-0.5 font-display text-xs">
+        <span className="absolute -top-3 right-6 rounded-full border-2 border-ink bg-yellow px-3 py-0.5 font-display text-xs text-onbright">
           One-time
         </span>
         <h3 className="font-display text-2xl">Pro · Full version</h3>

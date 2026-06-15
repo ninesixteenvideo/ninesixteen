@@ -36,31 +36,32 @@ export function Wordmark({
     whiteSpace: "nowrap",
   };
 
-  // "nine" is white — on a light grey bg it needs a hard retro outline to read.
+  // "nine" is white — on the dark bg it gets a deep retro outline + offset emboss.
+  const edge = colors.shadow;
   const outline =
     "-1px -1px 0 " +
-    colors.ink +
+    edge +
     ", 1px -1px 0 " +
-    colors.ink +
+    edge +
     ", -1px 1px 0 " +
-    colors.ink +
+    edge +
     ", 1px 1px 0 " +
-    colors.ink;
+    edge;
 
   const nine: React.CSSProperties = {
-    color: colors.white,
+    color: colors.ink,
     textShadow: `${outline}, ${Math.max(2, size * 0.06)}px ${Math.max(
       2,
       size * 0.06
-    )}px 0 rgba(50, 50, 56, 0.18)`,
+    )}px 0 ${edge}`,
   };
   const six: React.CSSProperties = {
     color: colors.blue,
-    textShadow: `0 0 ${size * 0.12}px rgba(110, 110, 120, 0.22)`,
+    textShadow: `0 0 ${size * 0.16}px rgba(140, 134, 126, 0.45)`,
   };
   const teen: React.CSSProperties = {
     color: colors.pink,
-    textShadow: `0 0 ${size * 0.12}px rgba(143, 94, 85, 0.28)`,
+    textShadow: `0 0 ${size * 0.16}px rgba(163, 93, 77, 0.5)`,
   };
   const suffix: React.CSSProperties = {
     color: colors.inkSoft,

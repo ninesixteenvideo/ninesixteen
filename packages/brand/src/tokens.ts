@@ -11,33 +11,40 @@
  */
 
 export const colors = {
-  // Surfaces
-  bg: "#F4F3EF",
-  bgAlt: "#EAE8E2",
-  surface: "#FAFAF8",
-  surfaceSunken: "#EFEDE8",
+  // Surfaces (neutral warm charcoal — no blue/violet tint)
+  bg: "#1B1A18",
+  bgAlt: "#242220",
+  surface: "#2C2A27",
+  surfaceSunken: "#201F1C",
 
-  // Ink & structure (dark charcoal — not pure black)
-  ink: "#323238",
-  inkSoft: "#5C5C66",
-  inkFaint: "#878792",
+  // Ink & structure (warm dark cream — text + brutalist outlines)
+  ink: "#E7D8B6",
+  inkSoft: "#B0A994",
+  inkFaint: "#7C7565",
+
+  // Deep shade used for retro outlines / hard-offset shadows on dark
+  shadow: "#0C0B0A",
+
+  // Text colour that sits on accents
+  onAccent: "#E7D8B6",
+  onBright: "#1B1A18",
 
   // Brand syllables + UI accents
   white: "#FFFFFF",
-  blue: "#6E6E78",
-  blueDeep: "#565660",
-  pink: "#8F5E55",
-  pinkDeep: "#6E443D",
+  blue: "#6D6A65",
+  blueDeep: "#A7A19A",
+  pink: "#A35D4D",
+  pinkDeep: "#84493B",
 
   // Accents
-  yellow: "#FFCE4A",
-  mint: "#6B9E8A",
+  yellow: "#E7D8B6",
+  mint: "#74B29A",
 
   // Utility
-  line: "#323238",
-  lineSoft: "#D5D2CB",
-  danger: "#B84A4F",
-  success: "#3D7355",
+  line: "#E7D8B6",
+  lineSoft: "#38352F",
+  danger: "#E0635F",
+  success: "#5FA37E",
 } as const;
 
 export const fonts = {
@@ -58,11 +65,11 @@ export const radii = {
 
 /** Hard-offset shadows (no blur) plus a soft ambient option. */
 export const shadows = {
-  hard: `4px 4px 0 ${colors.ink}`,
-  hardLg: `7px 7px 0 ${colors.ink}`,
+  hard: `4px 4px 0 ${colors.shadow}`,
+  hardLg: `7px 7px 0 ${colors.shadow}`,
   hardBlue: `4px 4px 0 ${colors.blueDeep}`,
   hardPink: `4px 4px 0 ${colors.pinkDeep}`,
-  soft: "0 10px 30px rgba(50,50,56,0.08)",
+  soft: "0 14px 40px rgba(0,0,0,0.45)",
 } as const;
 
 export const space = {

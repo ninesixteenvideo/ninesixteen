@@ -64,24 +64,24 @@ export function HeroDemo() {
   return (
     <div className="w-full">
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
-        <span className="ns-chip bg-yellow/80">Live preview</span>
+        <span className="ns-chip bg-yellow/80 text-onbright">Live preview</span>
         <span className="font-mono text-[11px] text-inkfaint">9×16 · portrait capture</span>
       </div>
 
       <div
         ref={stageRef}
         onWheel={onWheel}
-        className="relative aspect-[16/10] w-full select-none overflow-hidden rounded-[18px] border-2 border-ink shadow-[8px_8px_0_var(--color-ink)]"
+        className="relative aspect-[16/10] w-full select-none overflow-hidden rounded-[18px] border-2 border-ink shadow-[8px_8px_0_var(--color-shadow)]"
         style={{
           background:
-            "radial-gradient(120% 120% at 20% 10%, #565660 0%, #42424a 45%, #323238 100%)",
+            "radial-gradient(120% 120% at 20% 10%, #4c4a45 0%, #3a3833 45%, #2c2a27 100%)",
         }}
       >
         <MockDesktop />
 
         <div
           className="pointer-events-none absolute inset-0"
-          style={{ boxShadow: "inset 0 0 0 2000px rgba(18,15,34,0.58)" }}
+          style={{ boxShadow: "inset 0 0 0 2000px rgba(16,15,12,0.58)" }}
         />
 
         <button
@@ -96,7 +96,7 @@ export function HeroDemo() {
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
             transition: drag.current.active ? "none" : "width 280ms cubic-bezier(.22,1,.36,1)",
             boxShadow:
-              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(255,206,74,0.12)",
+              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(231,216,182,0.12)",
             background: "transparent",
           }}
         >
@@ -119,15 +119,15 @@ export function HeroDemo() {
               }}
             />
           ))}
-          <span className="absolute left-1.5 top-1.5 rounded bg-ink/85 px-1.5 py-0.5 font-mono text-[10px] text-white">
+          <span className="absolute left-1.5 top-1.5 rounded bg-shadow/85 px-1.5 py-0.5 font-mono text-[10px] text-onaccent">
             9×16 · {Math.round(zoom * 100)}%
           </span>
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-pink/90 px-1.5 py-0.5 font-mono text-[9px] text-white">
+          <span className="absolute bottom-1.5 right-1.5 rounded bg-pink/90 px-1.5 py-0.5 font-mono text-[9px] text-onaccent">
             5s countdown
           </span>
         </button>
 
-        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-white/30 bg-black/45 px-2.5 py-1 font-mono text-[10px] text-white">
+        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-white/30 bg-black/45 px-2.5 py-1 font-mono text-[10px] text-onaccent">
           <span className="h-2 w-2 animate-pulse rounded-full bg-[#ff4d4d]" /> REC
         </div>
       </div>
@@ -135,7 +135,7 @@ export function HeroDemo() {
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2 font-mono text-[11px] text-inksoft">
         <span className="rounded-full border border-linesoft bg-surface px-2.5 py-1">move = frame</span>
         <span className="rounded-full border border-linesoft bg-surface px-2.5 py-1">scroll = zoom</span>
-        <span className="rounded-full border-2 border-ink bg-yellow/70 px-2.5 py-1 text-ink">Alt + scroll in app</span>
+        <span className="rounded-full border-2 border-ink bg-yellow/70 px-2.5 py-1 text-onbright">Alt + scroll in app</span>
       </div>
     </div>
   );
@@ -155,7 +155,7 @@ function RuleOfThirds() {
 function MockDesktop() {
   return (
     <div className="absolute inset-0">
-      <div className="absolute left-[8%] top-[14%] h-[58%] w-[55%] rounded-lg border border-white/10 bg-[#191527] shadow-2xl">
+      <div className="absolute left-[8%] top-[14%] h-[58%] w-[55%] rounded-lg border border-white/10 bg-[#1f1d1a] shadow-2xl">
         <div className="flex items-center gap-1.5 border-b border-white/10 px-3 py-2">
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
           <span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" />
@@ -171,7 +171,7 @@ function MockDesktop() {
         </div>
       </div>
       <div className="absolute right-[10%] top-[22%] h-[34%] w-[24%] overflow-hidden rounded-full border-2 border-white/20 bg-gradient-to-br from-pink/60 to-blue/60" />
-      <div className="absolute bottom-[10%] left-[22%] h-[26%] w-[40%] rounded-lg border border-white/10 bg-gradient-to-r from-[#2a2440] to-[#1d1933]" />
+      <div className="absolute bottom-[10%] left-[22%] h-[26%] w-[40%] rounded-lg border border-white/10 bg-gradient-to-r from-[#2c2a26] to-[#1d1b18]" />
     </div>
   );
 }

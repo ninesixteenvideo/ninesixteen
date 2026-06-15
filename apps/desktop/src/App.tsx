@@ -54,7 +54,7 @@ export function App() {
         </nav>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {!isDesktop && (
-            <span className="pill" style={{ background: "var(--ns-yellow)", color: "var(--ns-ink)" }}>
+            <span className="pill" style={{ background: "var(--ns-yellow)", color: "var(--ns-on-bright)" }}>
               web preview
             </span>
           )}
