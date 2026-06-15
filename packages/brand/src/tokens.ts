@@ -31,8 +31,8 @@ export const colors = {
 
   // Brand syllables + UI accents
   white: "#FFFFFF",
-  blue: "#6D6A65",
-  blueDeep: "#A7A19A",
+  blue: "#A35D4D",
+  blueDeep: "#CF8C77",
   pink: "#A35D4D",
   pinkDeep: "#84493B",
 

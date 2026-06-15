@@ -55,8 +55,9 @@ export function Wordmark({
       size * 0.06
     )}px 0 ${edge}`,
   };
+  // "six" stays warm charcoal (independent of the UI accent token, which is red).
   const six: React.CSSProperties = {
-    color: colors.blue,
+    color: "#6D6A65",
     textShadow: `0 0 ${size * 0.16}px rgba(140, 134, 126, 0.45)`,
   };
   const teen: React.CSSProperties = {

@@ -24,8 +24,8 @@
 
   /* Primary accent (charcoal grey) + secondary (terracotta) */
   --ns-white: #ffffff;
-  --ns-blue: #6d6a65; /* medium charcoal — selected/active surfaces */
-  --ns-blue-deep: #a7a19a; /* light charcoal — legible accent text/sliders on dark */
+  --ns-blue: #a35d4d; /* app terracotta red — primary buttons / selected surfaces */
+  --ns-blue-deep: #cf8c77; /* legible terracotta — accent text/sliders on dark */
   --ns-pink: #a35d4d;
   --ns-pink-deep: #84493b; /* deep terracotta — background for rec/export (light text) */
   --ns-pink-link: #cf8c77; /* legible terracotta for accent text on dark */
