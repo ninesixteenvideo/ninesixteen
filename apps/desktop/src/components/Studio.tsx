@@ -102,30 +102,53 @@ export function Studio() {
       </section>
 
       {!sessionActive && (
-        <section className="panel quality-row">
-          <span className="label">Quality</span>
-          <select
-            className="quality-select"
-            value={qualityPresetValue(recordingSettings.quality, recordingSettings.fps)}
-            onChange={(e) => {
-              const preset = QUALITY_PRESETS.find(
-                (p) => qualityPresetValue(p.quality, p.fps) === e.target.value
-              );
-              if (preset) {
-                setRecordingSettings({ quality: preset.quality, fps: preset.fps });
-              }
-            }}
-          >
-            {QUALITY_PRESETS.map((preset) => (
-              <option
-                key={qualityPresetValue(preset.quality, preset.fps)}
-                value={qualityPresetValue(preset.quality, preset.fps)}
-              >
-                {preset.label}
-              </option>
-            ))}
-          </select>
-        </section>
+        <div className="studio-output-row">
+          <section className="panel studio-output-card">
+            <span className="label">Quality</span>
+            <select
+              className="quality-select"
+              value={qualityPresetValue(recordingSettings.quality, recordingSettings.fps)}
+              onChange={(e) => {
+                const preset = QUALITY_PRESETS.find(
+                  (p) => qualityPresetValue(p.quality, p.fps) === e.target.value
+                );
+                if (preset) {
+                  setRecordingSettings({ quality: preset.quality, fps: preset.fps });
+                }
+              }}
+            >
+              {QUALITY_PRESETS.map((preset) => (
+                <option
+                  key={qualityPresetValue(preset.quality, preset.fps)}
+                  value={qualityPresetValue(preset.quality, preset.fps)}
+                >
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </section>
+
+          <section className="panel studio-output-card">
+            <span className="label">Hide cursor in video</span>
+            <div className="cursor-choice" role="group" aria-label="Hide cursor in video">
+              {(["no", "yes"] as const).map((choice) => {
+                const hide = choice === "yes";
+                const active = hide === !recordingSettings.captureCursor;
+                return (
+                  <button
+                    key={choice}
+                    type="button"
+                    className={`cursor-choice-btn ${active ? "active" : ""}`}
+                    aria-pressed={active}
+                    onClick={() => setRecordingSettings({ captureCursor: !hide })}
+                  >
+                    {choice === "no" ? "No" : "Yes"}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
       )}
 
       {!sessionActive && (

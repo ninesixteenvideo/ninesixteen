@@ -15,11 +15,9 @@ async function openLegalPage(path: "/terms" | "/privacy") {
 export function Settings() {
   const {
     inputSettings,
-    recordingSettings,
     monitors,
     monitor,
     setInputSettings,
-    setRecordingSettings,
   } = useStore();
 
   return (
@@ -56,16 +54,6 @@ export function Settings() {
           <span className="muted">
             {monitor?.name ?? monitors[0]?.name ?? "—"} ({monitor?.width}×{monitor?.height})
           </span>
-        </div>
-        <div className="row">
-          <span className="label">Capture cursor</span>
-          <Toggle
-            label={recordingSettings.captureCursor ? "On" : "Off"}
-            on={recordingSettings.captureCursor}
-            onClick={() =>
-              setRecordingSettings({ captureCursor: !recordingSettings.captureCursor })
-            }
-          />
         </div>
       </section>
 
@@ -119,13 +107,5 @@ function Slider({
         onChange={(e) => onChange(parseFloat(e.target.value))}
       />
     </div>
-  );
-}
-
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button className={`btn sm ${on ? "blue" : "ghost"}`} onClick={onClick}>
-      {label}
-    </button>
   );
 }

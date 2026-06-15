@@ -108,6 +108,7 @@ const mock = (() => {
       cameraConnected,
       recordingArmed: arming,
       countdownSeconds,
+      captureCursor: true,
     };
   }
 

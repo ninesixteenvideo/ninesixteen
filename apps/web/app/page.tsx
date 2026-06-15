@@ -8,7 +8,7 @@ export default function HomePage() {
       {/* HERO */}
       <section className="grid items-center gap-12 py-16 md:grid-cols-[1.05fr_1fr] md:py-24">
         <div>
-          <span className="ns-chip inline-block">Windows · 9×16 vertical capture</span>
+          <span className="ns-chip inline-block">Windows · vertical screen recorder</span>
           <h1 className="mt-6 font-display text-[2.75rem] leading-[1.02] tracking-tight sm:text-6xl lg:text-[4.25rem]">
             Your desktop,
             <br />
@@ -20,21 +20,22 @@ export default function HomePage() {
             .
           </h1>
           <p className="mt-6 max-w-lg font-body text-lg leading-relaxed text-inksoft">
-            <Wordmark size={20} /> captures a crisp{" "}
-            <b className="font-semibold text-ink">9×16</b> frame from your screen. Press
-            Record, take five seconds to position and zoom, then save an encrypted
-            recording you can preview in the app — and export to MP4 with Pro.
+            <Wordmark size={20} /> records your screen in true{" "}
+            <b className="font-semibold text-ink">9×16</b> — no cropping, no reframing
+            in post. Follow your cursor, zoom with Alt + scroll, and walk away with
+            short-form footage that drops straight into CapCut, Premiere, or your editor
+            of choice.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
-              Download free trial
+              Download free
             </Link>
             <Link href="/pricing" className="ns-cta ns-cta--ghost">
-              Purchase for $49
+              Unlock Pro · $49
             </Link>
           </div>
           <p className="mt-5 font-mono text-xs text-inkfaint">
-            Record &amp; preview free · Pro unlocks export · No account required to try
+            Record &amp; preview free · $49 one-time to export · No account to start
           </p>
         </div>
 
@@ -57,12 +58,12 @@ export default function HomePage() {
       <section className="py-14">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <SectionHeading
-            kicker="Built for vertical"
-            title="Short-form, tutorials, and polished."
+            kicker="Who it's for"
+            title="Made for people who film their screen."
           />
           <p className="max-w-sm font-body text-sm text-inksoft">
-            One native app. One framing workflow. Output that already fits the platforms you
-            publish to.
+            If your content lives on a phone screen, your recordings should too. One app, one
+            framing workflow, and output that already fits where you publish.
           </p>
         </div>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -80,7 +81,7 @@ export default function HomePage() {
       <section id="features" className="py-16">
         <SectionHeading
           kicker="What you get"
-          title="Precise capture. Nothing extra."
+          title="Everything to shoot vertical. Nothing you don't."
         />
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
@@ -101,7 +102,7 @@ export default function HomePage() {
           <div className="border-b-2 border-ink bg-bgalt px-8 py-6 md:px-10">
             <span className="ns-chip">How it works</span>
             <h2 className="mt-4 max-w-xl font-display text-3xl leading-tight sm:text-4xl">
-              Frame in five seconds. Record with confidence.
+              Three steps from blank screen to ready-to-edit clip.
             </h2>
           </div>
           <div className="grid gap-0 md:grid-cols-3">
@@ -134,15 +135,15 @@ export default function HomePage() {
         <div className="ns-card ns-cta-panel flex flex-col items-center gap-6 px-6 py-14 text-center md:px-12 md:py-16">
           <Wordmark size={48} showSuffix />
           <p className="max-w-lg font-body text-lg text-inksoft">
-            Download free on Windows. Record and preview forever. Buy Pro once ($49) when
-            you need to export MP4 files from the app.
+            Record and preview free, forever. Unlock unlimited MP4 export with a single $49
+            payment — no subscription, no watermark, no catch.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Link href="/download" className="ns-cta ns-cta--accent">
-              Get the app
+              Download free
             </Link>
-            <Link href="/sign-up" className="ns-cta ns-cta--ghost">
-              Create account
+            <Link href="/pricing" className="ns-cta ns-cta--ghost">
+              Unlock Pro · $49
             </Link>
           </div>
         </div>
@@ -152,67 +153,67 @@ export default function HomePage() {
 }
 
 const STATS = [
-  { value: "9×16", label: "Portrait output" },
-  { value: "5s", label: "Framing countdown" },
-  { value: "60fps", label: "Up to 1080p" },
-  { value: "Local", label: "Encrypted on disk" },
+  { value: "9×16", label: "Native portrait capture" },
+  { value: "0", label: "Crop steps in post" },
+  { value: "1080p", label: "Up to 60fps" },
+  { value: "$49", label: "One-time, no subscription" },
 ];
 
 const USE_CASES = [
-  { icon: "📱", title: "Shorts & Reels", desc: "Vertical canvas from day one — no crop step in post." },
-  { icon: "💻", title: "Tutorials", desc: "Follow the cursor while keeping the frame tight on your UI." },
-  { icon: "🎚️", title: "Voice & system audio", desc: "Capture mic, desktop audio, or both with level meters before you roll." },
-  { icon: "🔒", title: "Private by default", desc: "Recordings stay on your machine until you export them." },
+  { icon: "📱", title: "Shorts, Reels & TikTok", desc: "Vertical from frame one. Publish clips with no crop step and no black bars." },
+  { icon: "🚀", title: "Demos & build-in-public", desc: "Show your app tight and vertical — the perfect launch and progress clips for founders and indie hackers." },
+  { icon: "🎓", title: "Tutorials & courses", desc: "Keep the frame locked on the UI that matters while the viewport follows your cursor." },
+  { icon: "🎮", title: "Walkthroughs & reviews", desc: "Capture software, tools, and gameplay in portrait with system audio and your voice." },
 ];
 
 const FEATURES = [
   {
     icon: "▯",
-    title: "9×16 vertical capture",
-    desc: "Every recording is portrait-native — built for Shorts, Reels, and TikTok.",
+    title: "True 9×16 capture",
+    desc: "Record portrait-native. What you frame is exactly what exports — zero letterboxing, zero cropping later.",
   },
   {
     icon: "◎",
     title: "Cursor-driven framing",
-    desc: "Move the mouse to position the frame. Hold Alt + scroll to zoom from full desktop down to a tight crop.",
+    desc: "The frame follows your mouse. Hold Alt + scroll to glide from full desktop into a tight, intentional crop — live, as you record.",
   },
   {
     icon: "🎚️",
-    title: "System & mic audio",
-    desc: "Capture system audio, microphone, or both with gain meters and a quick level check before you roll.",
+    title: "System + mic audio",
+    desc: "Blend desktop sound and your microphone with gain meters and a one-tap level check before you roll.",
   },
   {
     icon: "🪶",
-    title: "Native & lightweight",
-    desc: "Tauri on Windows Graphics Capture — low overhead, no bloated Electron shell.",
+    title: "Native & featherlight",
+    desc: "Built on Windows Graphics Capture, not a heavy Electron shell. Buttery capture, low CPU, no fan spin-up.",
   },
   {
     icon: "📤",
-    title: "Export to MP4",
-    desc: "Unlock Pro to export decrypted MP4 files straight to your computer or Google Drive.",
+    title: "Export-ready MP4",
+    desc: "Unlock Pro to export clean MP4s to your disk or Google Drive — ready for CapCut, Premiere, or straight to upload.",
   },
   {
-    icon: "💾",
-    title: "Encrypted local files",
-    desc: "Recordings save as encrypted .ns files on disk. Preview in-app; export decrypted MP4 with Pro.",
+    icon: "🔒",
+    title: "Private & local-first",
+    desc: "Recordings are encrypted on your own machine. Nothing leaves your disk until you choose to export.",
   },
 ];
 
 const STEPS = [
   {
-    title: "Press Record",
-    desc: "Hit the record button in Studio. The app minimizes and gives you a live framing overlay on your desktop.",
-    points: ["5-second countdown before capture starts", "Cancel anytime during the countdown"],
+    title: "Hit Record",
+    desc: "Press record in Studio. The app slips out of the way and drops a live 9×16 overlay onto your desktop.",
+    points: ["5-second countdown so you can get set", "Cancel anytime before capture starts"],
   },
   {
-    title: "Frame the shot",
-    desc: "Position the 9×16 viewport with your cursor. Zoom with Alt + scroll — snap to full frame when you need precision.",
-    points: ["Rule-of-thirds guides on the overlay", "Show or hide the frame before you roll"],
+    title: "Frame as you go",
+    desc: "Steer the viewport with your cursor and zoom with Alt + scroll. Rule-of-thirds guides keep every shot composed.",
+    points: ["Snap to full 9×16 for precision", "Reframe live, mid-recording"],
   },
   {
-    title: "Save & preview",
-    desc: "Capture encrypted video locally, preview it in-app, and export MP4 with Pro when you are ready.",
-    points: ["Up to 1080p · 30 or 60 fps", "Export MP4 anywhere with Pro"],
+    title: "Save & export",
+    desc: "Stop and your clip saves encrypted, ready to preview in-app. Export to MP4 with Pro whenever you want.",
+    points: ["Up to 1080p · 30 or 60 fps", "Drops straight into your editor"],
   },
 ];
 

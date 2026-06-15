@@ -16,30 +16,31 @@ const REQUIREMENTS = [
 ];
 
 const AFTER_INSTALL = [
-  "Open the app and hit Record — free to try, no account required",
-  "Preview recordings in the app — export MP4 with Pro",
-  "Sign in and upgrade to Pro when you want to export files",
+  "Open the app and hit Record — free, no account needed",
+  "Frame, capture, and preview your clip in seconds",
+  "Sign in and unlock Pro ($49) whenever you want to export",
 ];
 
 const INCLUDED = [
-  "Native Windows Graphics Capture — low CPU overhead",
-  "9×16 vertical framing with cursor + Alt-scroll zoom",
-  "Encrypted local recordings with in-app preview",
-  "System & microphone audio with level meters",
-  "FFmpeg bundled — nothing extra to install",
+  "True 9×16 vertical capture with cursor-driven framing",
+  "Alt + scroll zoom with rule-of-thirds guides",
+  "System & microphone audio with live level meters",
+  "Encrypted local recordings with built-in preview",
+  "Native Windows Graphics Capture — low CPU, no Electron",
+  "FFmpeg bundled — nothing else to install",
 ];
 
 export default function DownloadPage() {
   return (
     <div className="mx-auto max-w-4xl px-5 py-16">
       <div className="text-center">
-        <span className="ns-chip">Free download · free to try</span>
+        <span className="ns-chip">Free trial · no account needed</span>
         <h1 className="mt-4 font-display text-4xl tracking-tight sm:text-5xl">
           Download <Wordmark size={36} showSuffix />
         </h1>
         <p className="mx-auto mt-4 max-w-lg font-body text-lg text-inksoft">
-          One installer. Record, preview, and export — no command line, no
-          drivers, no account. Buy Pro once ($49) only when you need MP4 export.
+          One clean installer — record and preview free, then buy Pro once ($49) when
+          you&apos;re ready to export. No command line, no drivers, no subscription.
         </p>
       </div>
 

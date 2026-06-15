@@ -414,6 +414,45 @@ input[type="range"] {
   gap: 12px;
   padding: 10px 14px;
 }
+.studio-output-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.studio-output-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+.studio-output-card .quality-select {
+  width: 100%;
+  max-width: none;
+}
+.cursor-choice {
+  display: flex;
+  gap: 8px;
+}
+.cursor-choice-btn {
+  flex: 1;
+  border: 2px solid var(--ns-ink);
+  border-radius: var(--ns-radius-md);
+  padding: 7px 10px;
+  background: var(--ns-surface);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.cursor-choice-btn:hover {
+  background: var(--ns-bg-alt);
+}
+.cursor-choice-btn.active {
+  background: var(--ns-blue);
+  box-shadow: 3px 3px 0 var(--ns-ink);
+}
 .quality-select {
   flex: 1;
   max-width: 280px;

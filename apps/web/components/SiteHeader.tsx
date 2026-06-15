@@ -13,12 +13,14 @@ const NAV = [
 ];
 
 const TICKER = [
-  "9×16 vertical capture",
-  "cursor framing",
-  "Alt + scroll zoom",
-  "encrypted local recordings",
-  "preview in-app",
-  "export MP4 with Pro",
+  "true 9×16 capture",
+  "no crop in post",
+  "frame with your cursor",
+  "alt + scroll to zoom",
+  "system + mic audio",
+  "built for shorts · reels · tiktok",
+  "one-time $49 · no subscription",
+  "private & local-first",
 ];
 
 export function SiteHeader() {

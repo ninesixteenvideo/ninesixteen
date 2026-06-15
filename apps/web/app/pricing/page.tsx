@@ -11,9 +11,9 @@ export default function PricingPage() {
           One price. Yours for good.
         </h1>
         <p className="mt-4 font-body text-lg text-inksoft">
-          Pay once for decrypted MP4 export and free updates — no subscription. The
-          app is <b className="font-semibold text-ink">free to try</b>: download, record,
-          and preview without paying.
+          Pay once and own every export forever — no subscription, no renewals. The app is{" "}
+          <b className="font-semibold text-ink">free to try</b>: download, record, and
+          preview before you spend a cent.
         </p>
       </div>
       <PricingPlans />

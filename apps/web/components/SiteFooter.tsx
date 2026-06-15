@@ -8,8 +8,8 @@ export function SiteFooter() {
         <div>
           <Wordmark size={26} showSuffix />
           <p className="mt-4 max-w-xs font-body text-sm leading-relaxed text-inksoft">
-            Vertical desktop capture for creators. Frame with your cursor, record locally,
-            and export MP4 with Pro.
+            The vertical screen recorder for Windows. Frame with your cursor, record locally,
+            and export clean MP4s with Pro.
           </p>
         </div>
         <div>
@@ -17,7 +17,7 @@ export function SiteFooter() {
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
             <li><a href="/#features" className="hover:text-ink">Features</a></li>
             <li><a href="/#how-it-works" className="hover:text-ink">How it works</a></li>
-            <li><Link href="/pricing" className="hover:text-ink">Pricing</Link></li>
+            <li><Link href="/pricing" className="hover:text-ink">Purchase</Link></li>
             <li><Link href="/download" className="hover:text-ink">Download</Link></li>
           </ul>
         </div>

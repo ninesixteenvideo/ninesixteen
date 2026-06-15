@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
 const FEATURES = [
-  "Export & save unlimited videos to MP4",
-  "Local export and Google Drive export",
-  "No watermark",
+  "Unlimited MP4 export — no watermark",
+  "Save locally or straight to Google Drive",
   "Up to 1080p · 60fps encoding",
-  "Works on desktop and web with one account",
-  "Free updates · priority support",
+  "One account across desktop and web",
+  "Free updates, forever",
+  "Priority support from the developer",
 ];
 
 export function PricingPlans() {
@@ -36,8 +36,8 @@ export function PricingPlans() {
         </span>
         <h3 className="font-display text-2xl">Pro · Full version</h3>
         <p className="mt-1 font-body text-sm text-inksoft">
-          Pay once, own it for good. Unlock MP4 export across desktop and web — no
-          subscription, ever.
+          Pay once, own it for good. Unlock unlimited MP4 export across desktop and web —
+          no subscription, ever.
         </p>
         <div className="mt-4 flex items-end gap-1">
           <span className="font-display text-5xl">$49</span>
@@ -71,12 +71,12 @@ export function PricingPlans() {
       </div>
 
       <p className="mx-auto mt-10 max-w-xl text-center font-body text-sm text-inksoft">
-        Not ready to buy?{" "}
+        Want to try first?{" "}
         <Link href="/download" className="font-semibold text-bluedeep hover:underline">
           Download the free trial
         </Link>{" "}
-        — install the app and try everything except export. Record and preview at no
-        cost.
+        — record and preview everything at no cost. Exporting to MP4 is the only thing Pro
+        unlocks.
       </p>
     </div>
   );
