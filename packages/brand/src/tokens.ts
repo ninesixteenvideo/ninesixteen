@@ -3,8 +3,9 @@
  *
  * Professional stone palette with mild retro structure (hard shadows, pill radii).
  * Wordmark:
- *   "ninesixteen." -> Tourney, cream
- *   "video"        -> Faster One, terracotta red
+ *   "nine"     -> Bungee, light mint
+ *   "sixteen"  -> Bungee, coral
+ *   ".video"   -> Bungee, off-white
  *
  * Shared by the web app and Tauri desktop app.
  */
@@ -16,31 +17,31 @@ export const colors = {
   surface: "#2C2A27",
   surfaceSunken: "#201F1C",
 
-  // Ink & structure (warm dark cream — text + brutalist outlines)
-  ink: "#F0E4C8",
-  inkSoft: "#B0A994",
-  inkFaint: "#7C7565",
+  // Ink & structure (off-white — text + brutalist outlines)
+  ink: "#FAFAFA",
+  inkSoft: "#C5C5C0",
+  inkFaint: "#91918C",
 
   // Deep shade used for retro outlines / hard-offset shadows on dark
   shadow: "#0C0B0A",
 
   // Text colour that sits on accents
-  onAccent: "#F0E4C8",
+  onAccent: "#FAFAFA",
   onBright: "#1B1A18",
 
   // Brand syllables + UI accents
   white: "#FFFFFF",
-  blue: "#A35D4D",
-  blueDeep: "#CF8C77",
-  pink: "#A35D4D",
-  pinkDeep: "#84493B",
+  blue: "#78FFD4",
+  blueDeep: "#78FFD4",
+  pink: "#FF6B58",
+  pinkDeep: "#FF6B58",
 
   // Accents
-  yellow: "#F0E4C8",
-  mint: "#74B29A",
+  yellow: "#FAFAFA",
+  mint: "#78FFD4",
 
   // Utility
-  line: "#F0E4C8",
+  line: "#FAFAFA",
   lineSoft: "#38352F",
   danger: "#E0635F",
   success: "#5FA37E",
@@ -53,8 +54,8 @@ export const fonts = {
   body: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
   /** Mono for technical/recording metadata. */
   mono: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
-  /** Logo: "ninesixteen." — `--font-tourney` set by Next.js (web) or theme.css @import (desktop). */
-  wordmark: 'var(--font-tourney, "Tourney"), system-ui, sans-serif',
+  /** Logo: "ninesixteen." — `--font-bungee` set by Next.js (web) or theme.css @import (desktop). */
+  wordmark: 'var(--font-bungee, "Bungee"), system-ui, sans-serif',
   /** Logo suffix: "video" */
   wordmarkVideo: 'var(--font-faster-one, "Faster One"), system-ui, sans-serif',
 } as const;

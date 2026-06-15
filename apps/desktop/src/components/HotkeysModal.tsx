@@ -22,6 +22,12 @@ const HOTKEYS: HotkeyEntry[] = [
   },
   {
     group: "framing",
+    keys: ["Alt", "F"],
+    title: "Freeze / unfreeze frame",
+    detail: "Lock the crop in place during the countdown or while recording. Unfreeze to ease back to your cursor.",
+  },
+  {
+    group: "framing",
     keys: ["Alt", "Scroll"],
     title: "Zoom in / out (mouse)",
     detail: "Hold Alt and scroll the wheel to crop tighter or pull back to full desktop.",

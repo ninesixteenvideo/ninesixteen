@@ -19,6 +19,7 @@ export function Overlay() {
   const countdown = useRef(0);
   const recordingStartedAt = useRef<number | null>(null);
   const captureCursor = useRef(true);
+  const frameFrozen = useRef(false);
 
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -32,6 +33,7 @@ export function Overlay() {
         arming.current = st.recordingArmed ?? false;
         countdown.current = st.countdownSeconds ?? 0;
         captureCursor.current = st.captureCursor ?? true;
+        frameFrozen.current = st.frameFrozen ?? false;
       } catch {
         /* mock / not ready */
       }
@@ -58,6 +60,11 @@ export function Overlay() {
           if (m.w <= 0 || m.h <= 0) return;
           const crop = cropRect(vp, m.w, m.h, shortEdge.current);
           frame.current = { x: crop.x, y: crop.y, w: crop.w, h: crop.h, zoom: vp.zoom };
+        }),
+      );
+      unsubs.push(
+        await listen("frame:freeze", (p: { frozen: boolean }) => {
+          frameFrozen.current = p.frozen;
         }),
       );
       unsubs.push(
@@ -193,6 +200,23 @@ export function Overlay() {
         ctx.fillStyle = "#000000";
         ctx.textBaseline = "middle";
         ctx.fillText(text, cChipX + cpadX, cChipY + cChipH / 2);
+      }
+
+      if (frameFrozen.current && (recording.current || arming.current)) {
+        const text = "frame frozen";
+        ctx.font = `${12 * dpr}px "IBM Plex Mono", monospace`;
+        const fpadX = 7 * dpr;
+        const ftw = ctx.measureText(text).width;
+        const fChipW = ftw + fpadX * 2;
+        const fChipH = 20 * dpr;
+        const fChipX = rx + rw - fChipW - 6 * dpr;
+        const fChipY = ry + (captureCursor.current ? 6 : 30) * dpr;
+        ctx.fillStyle = "rgba(120, 255, 212, 0.92)";
+        roundRect(ctx, fChipX, fChipY, fChipW, fChipH, 6 * dpr);
+        ctx.fill();
+        ctx.fillStyle = "#1b1a18";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, fChipX + fpadX, fChipY + fChipH / 2);
       }
 
       const cd = countdown.current;

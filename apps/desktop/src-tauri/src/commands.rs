@@ -69,6 +69,7 @@ fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
         countdown_seconds: st.countdown_seconds,
         overlay_frame: overlay_frame(vp, st.recording_settings.quality),
         capture_cursor: st.recording_settings.capture_cursor,
+        frame_frozen: vp.frame_frozen,
     }
 }
 
@@ -432,6 +433,8 @@ pub fn cancel_recording_countdown(
         st.recording_armed = false;
         st.countdown_seconds = 0;
     }
+    crate::rawinput::reset_frame_follow(&handles.viewport);
+    let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
     emit_countdown(&app, 0);
     apply_overlay_visibility(&app, &handles.state.lock());
     capture::ensure_capture_session(handles.inner().state.clone());
@@ -453,6 +456,8 @@ pub fn stop_recording(
             return Ok(());
         }
     }
+    crate::rawinput::reset_frame_follow(&handles.viewport);
+    let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
     // Update UI immediately — finalize (FFmpeg join) can take a moment on long clips.
     emit_recording_state(
         &app,

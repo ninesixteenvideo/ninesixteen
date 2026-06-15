@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useAuth } from "@/lib/auth";
 
 function AuthFormInner({
@@ -64,11 +63,8 @@ function AuthFormInner({
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center px-5 py-16">
-      <Link href="/" aria-label="Home">
-        <Wordmark size={34} showSuffix />
-      </Link>
-      <div className="ns-card mt-8 w-full p-7">
+    <div className="mx-auto flex max-w-md flex-col items-center px-5 py-8">
+      <div className="ns-card w-full p-7">
         <h1 className="font-display text-2xl">
           {isSignUp ? "Create your account" : "Welcome back"}
         </h1>
@@ -146,7 +142,7 @@ function AuthFormInner({
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-full border-2 border-ink bg-blue px-5 py-3 font-display text-lg shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            className="w-full rounded-full border-2 border-blue bg-blue px-5 py-3 font-display text-lg shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
           >
             {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
           </button>
@@ -246,7 +242,7 @@ export function AuthForm({
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-md px-5 py-24 text-center font-mono text-inksoft">
+        <div className="mx-auto max-w-md px-5 py-12 text-center font-mono text-inksoft">
           Loading…
         </div>
       }

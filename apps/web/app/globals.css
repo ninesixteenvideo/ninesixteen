@@ -7,22 +7,22 @@
   --color-surface: #2c2a27;
   --color-surfacesunken: #201f1c;
 
-  --color-ink: #f0e4c8;
-  --color-inksoft: #b0a994;
-  --color-inkfaint: #7c7565;
+  --color-ink: #fafafa;
+  --color-inksoft: #c5c5c0;
+  --color-inkfaint: #91918c;
 
-  --color-onaccent: #f0e4c8;
+  --color-onaccent: #fafafa;
   --color-onbright: #1b1a18;
   --color-shadow: #0c0b0a;
 
   --color-white: #ffffff;
-  --color-blue: #a35d4d;
-  --color-bluedeep: #cf8c77;
-  --color-pink: #a35d4d;
-  --color-pinkdeep: #cf8c77;
-  --color-yellow: #f0e4c8;
-  --color-mint: #74b29a;
-  --color-line: #f0e4c8;
+  --color-blue: #78ffd4;
+  --color-bluedeep: #78ffd4;
+  --color-pink: #ff6b58;
+  --color-pinkdeep: #ff9e92;
+  --color-yellow: #fafafa;
+  --color-mint: #78ffd4;
+  --color-line: #fafafa;
   --color-linesoft: #38352f;
   --color-danger: #e0635f;
 
@@ -129,9 +129,11 @@ a {
   font-family: var(--ns-font-mono);
 }
 
-.bg-blue,
+.bg-blue {
+  color: var(--color-onbright);
+}
 .bg-pink {
-  color: var(--color-onaccent);
+  color: var(--color-onbright);
 }
 
 /* Dark mode: bright accents need dark ink on top */
@@ -169,11 +171,13 @@ a {
 }
 .ns-cta--primary {
   background: var(--color-blue);
-  color: var(--color-onaccent);
+  color: var(--color-onbright);
+  border-color: var(--color-blue);
 }
 .ns-cta--accent {
   background: var(--color-pink);
-  color: var(--color-onaccent);
+  color: var(--color-onbright);
+  border-color: var(--color-pink);
 }
 .ns-cta--ghost {
   background: var(--color-surface);

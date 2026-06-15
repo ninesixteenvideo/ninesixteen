@@ -9,7 +9,7 @@ mod imp {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::OnceLock;
     use std::time::{Duration, Instant};
-    use tauri::AppHandle;
+    use tauri::{AppHandle, Emitter, Manager};
 
     use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -45,6 +45,9 @@ mod imp {
     const CURSOR_TICK_MS: u64 = 8;
     const PAN_SMOOTH_HZ: f64 = 11.0;
     const PAN_SMOOTH_HZ_ALT: f64 = 22.0;
+    const PAN_SMOOTH_HZ_UNFREEZE: f64 = 6.5;
+    const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(2500);
+    const UNFREEZE_ARRIVED_PX: f64 = 10.0;
     const ZOOM_SMOOTH_HZ: f64 = 3.8;
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
@@ -347,16 +350,18 @@ mod imp {
 
         let mut vp = ctx.viewport.lock();
 
-        // Keep zoom anchored to the live cursor — prevents drift while Alt+scroll is held.
-        if let Some(m) = vp.monitor.as_ref() {
-            if let Some((tx, ty)) = cursor_pos_for_monitor(
-                m.origin_x,
-                m.origin_y,
-                m.width as f64,
-                m.height as f64,
-            ) {
-                vp.viewport.x = tx;
-                vp.viewport.y = ty;
+        // Keep zoom anchored to the live cursor — unless the frame is frozen.
+        if !vp.frame_frozen {
+            if let Some(m) = vp.monitor.as_ref() {
+                if let Some((tx, ty)) = cursor_pos_for_monitor(
+                    m.origin_x,
+                    m.origin_y,
+                    m.width as f64,
+                    m.height as f64,
+                ) {
+                    vp.viewport.x = tx;
+                    vp.viewport.y = ty;
+                }
             }
         }
 
@@ -483,10 +488,32 @@ mod imp {
         let oy = vp.viewport.y;
         let oz = vp.viewport.zoom;
 
-        let pan_hz = if alt_held() { PAN_SMOOTH_HZ_ALT } else { PAN_SMOOTH_HZ };
-        // Pan always runs — Alt must never interrupt cursor follow.
-        vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
-        vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
+        if !vp.frame_frozen {
+            let pan_hz = if let Some(at) = vp.frame_unfreeze_at {
+                if Instant::now().duration_since(at) < UNFREEZE_EASE_DURATION {
+                    PAN_SMOOTH_HZ_UNFREEZE
+                } else {
+                    vp.frame_unfreeze_at = None;
+                    if alt_held() {
+                        PAN_SMOOTH_HZ_ALT
+                    } else {
+                        PAN_SMOOTH_HZ
+                    }
+                }
+            } else if alt_held() {
+                PAN_SMOOTH_HZ_ALT
+            } else {
+                PAN_SMOOTH_HZ
+            };
+
+            vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
+            vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
+
+            let dist = (vp.viewport.x - tx).abs() + (vp.viewport.y - ty).abs();
+            if dist <= UNFREEZE_ARRIVED_PX {
+                vp.frame_unfreeze_at = None;
+            }
+        }
         sync_zoom_at_min(vp.zoom_target);
 
         if hold {
@@ -549,15 +576,62 @@ mod imp {
             let _ = advance_viewport_follow(&viewport, &state);
         });
     }
+
+    /// Toggle frame freeze during countdown or recording. Returns the new frozen state.
+    pub fn toggle_frame_frozen() -> Option<bool> {
+        let ctx = CTX.get()?;
+        {
+            let st = ctx.state.lock();
+            if !st.recording && !st.recording_armed {
+                return None;
+            }
+        }
+
+        let frozen = {
+            let mut vp = ctx.viewport.lock();
+            let was_frozen = vp.frame_frozen;
+            vp.frame_frozen = !was_frozen;
+            if was_frozen && !vp.frame_frozen {
+                vp.frame_unfreeze_at = Some(Instant::now());
+                alt_log("frame unfrozen — easing back to cursor");
+            } else if vp.frame_frozen {
+                vp.frame_unfreeze_at = None;
+                alt_log("frame frozen");
+            }
+            mark_viewport_dirty();
+            vp.frame_frozen
+        };
+
+        let _ = ctx.app.emit("frame:freeze", serde_json::json!({ "frozen": frozen }));
+        if let Some(overlay) = ctx.app.get_webview_window("overlay") {
+            let _ = overlay.emit("frame:freeze", serde_json::json!({ "frozen": frozen }));
+        }
+
+        Some(frozen)
+    }
+
+    pub fn reset_frame_follow(viewport: &SharedViewport) {
+        let mut vp = viewport.lock();
+        vp.frame_frozen = false;
+        vp.frame_unfreeze_at = None;
+    }
 }
 
 #[cfg(windows)]
-pub use imp::{start, start_cursor_follow};
+pub use imp::{reset_frame_follow, start, start_cursor_follow, toggle_frame_frozen};
 
 #[cfg(not(windows))]
 pub fn take_viewport_dirty() -> bool {
     false
 }
+
+#[cfg(not(windows))]
+pub fn toggle_frame_frozen() -> Option<bool> {
+    None
+}
+
+#[cfg(not(windows))]
+pub fn reset_frame_follow(_viewport: SharedViewport) {}
 
 #[cfg(not(windows))]
 pub fn start(_app: tauri::AppHandle, _viewport: SharedViewport, _state: SharedState) {}

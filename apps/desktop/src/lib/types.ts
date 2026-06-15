@@ -54,6 +54,7 @@ export interface CaptureState {
   countdownSeconds: number;
   overlayFrame?: OverlayFrame | null;
   captureCursor: boolean;
+  frameFrozen: boolean;
 }
 
 export interface RecordingInfo {

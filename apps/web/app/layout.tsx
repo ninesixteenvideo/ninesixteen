@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Faster_One, IBM_Plex_Mono, Inter, Tourney } from "next/font/google";
+import { Bungee, Faster_One, IBM_Plex_Mono, Inter } from "next/font/google";
 import "@ninesixteen/brand/theme.css";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
@@ -20,10 +20,10 @@ const ibmPlexMono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const tourney = Tourney({
+const bungee = Bungee({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-tourney",
+  weight: "400",
+  variable: "--font-bungee",
   display: "swap",
 });
 
@@ -69,7 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${ibmPlexMono.variable} ${tourney.variable} ${fasterOne.variable}`}
+      className={`${inter.variable} ${ibmPlexMono.variable} ${bungee.variable} ${fasterOne.variable}`}
     >
       <body className="ns-grain min-h-screen font-body antialiased">
         <AuthProvider>

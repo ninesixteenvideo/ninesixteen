@@ -1,77 +1,96 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const BASE_WIDTH_PCT = 34;
+const ZOOM_MIN = 0.85;
+const ZOOM_MAX = 2.2;
+const PORTRAIT = 16 / 9; // height / width for 9×16
 
 /**
  * Interactive preview of the desktop framing workflow: a 9×16 viewport on your
- * desktop, panned by cursor position and zoomed with Alt + scroll.
+ * desktop, follows the cursor on hover and zooms with scroll.
  */
 export function HeroDemo() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1.12);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const drag = useRef<{ active: boolean; sx: number; sy: number; px: number; py: number }>({
-    active: false,
-    sx: 0,
-    sy: 0,
-    px: 0,
-    py: 0,
-  });
+  const [hovering, setHovering] = useState(false);
 
-  const clampPan = useCallback((p: { x: number; y: number }, z: number) => {
-    const stage = stageRef.current;
-    if (!stage) return p;
-    const r = stage.getBoundingClientRect();
-    const vw = 0.34 / z;
-    const vh = vw * (16 / 9);
-    const maxX = (r.width * (1 - vw)) / 2;
-    const maxY = (r.height * (1 - vh)) / 2;
-    return {
-      x: Math.max(-maxX, Math.min(maxX, p.x)),
-      y: Math.max(-maxY, Math.min(maxY, p.y)),
-    };
+  const viewportSize = useCallback((stageW: number, stageH: number, z: number) => {
+    const w = (stageW * BASE_WIDTH_PCT * z) / 100;
+    const h = w * PORTRAIT;
+    return { w, h };
   }, []);
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    drag.current = { active: true, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current.active) return;
-    const nx = drag.current.px + (e.clientX - drag.current.sx);
-    const ny = drag.current.py + (e.clientY - drag.current.sy);
-    setPan(clampPan({ x: nx, y: ny }, zoom));
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    drag.current.active = false;
-    try {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
+  const clampPan = useCallback(
+    (p: { x: number; y: number }, z: number, stageW: number, stageH: number) => {
+      const { w: vpW, h: vpH } = viewportSize(stageW, stageH, z);
+      const maxX = Math.max(0, (stageW - vpW) / 2);
+      const maxY = Math.max(0, (stageH - vpH) / 2);
+      return {
+        x: Math.max(-maxX, Math.min(maxX, p.x)),
+        y: Math.max(-maxY, Math.min(maxY, p.y)),
+      };
+    },
+    [viewportSize],
+  );
+
+  const panFromCursor = useCallback(
+    (clientX: number, clientY: number, z: number) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const r = stage.getBoundingClientRect();
+      const mx = clientX - r.left;
+      const my = clientY - r.top;
+      setPan(
+        clampPan(
+          { x: mx - r.width / 2, y: my - r.height / 2 },
+          z,
+          r.width,
+          r.height,
+        ),
+      );
+    },
+    [clampPan],
+  );
+
+  const onStageMouseMove = (e: React.MouseEvent) => {
+    panFromCursor(e.clientX, e.clientY, zoom);
   };
 
-  const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    setZoom((z) => {
-      const next = Math.max(0.85, Math.min(2.2, z - e.deltaY * 0.0018));
-      setPan((p) => clampPan(p, next));
-      return next;
-    });
-  };
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
 
-  const w = 34 * zoom;
-  const h = w * (16 / 9);
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setZoom((z) => {
+        const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z - e.deltaY * 0.0018));
+        panFromCursor(e.clientX, e.clientY, next);
+        return next;
+      });
+    };
+
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [panFromCursor]);
+
+  const viewportWidthPct = BASE_WIDTH_PCT * zoom;
 
   return (
     <div className="w-full">
-      <div className="mb-3 flex items-center justify-between gap-3 px-1">
-        <span className="ns-chip bg-yellow/80 text-onbright">Live preview</span>
+      <div className="mb-3 flex justify-end px-1">
         <span className="font-mono text-[11px] text-inkfaint">9×16 · portrait capture</span>
       </div>
 
       <div
         ref={stageRef}
-        onWheel={onWheel}
-        className="relative aspect-[16/10] w-full select-none overflow-hidden rounded-[18px] border-2 border-ink shadow-[8px_8px_0_var(--color-shadow)]"
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        onMouseMove={onStageMouseMove}
+        className="relative aspect-[16/10] w-full cursor-crosshair select-none overflow-hidden rounded-[18px] border-2 border-ink shadow-[8px_8px_0_var(--color-shadow)]"
         style={{
           background:
             "radial-gradient(120% 120% at 20% 10%, #4c4a45 0%, #3a3833 45%, #2c2a27 100%)",
@@ -84,20 +103,18 @@ export function HeroDemo() {
           style={{ boxShadow: "inset 0 0 0 2000px rgba(16,15,12,0.58)" }}
         />
 
-        <button
-          aria-label="Drag to move the framing viewport"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          className="absolute left-1/2 top-1/2 cursor-grab touch-none rounded-md active:cursor-grabbing"
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 rounded-md"
           style={{
-            width: `${w}%`,
-            height: `${h}%`,
+            width: `${viewportWidthPct}%`,
+            aspectRatio: "9 / 16",
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
-            transition: drag.current.active ? "none" : "width 280ms cubic-bezier(.22,1,.36,1)",
+            transition: hovering
+              ? "width 280ms cubic-bezier(.22,1,.36,1), transform 70ms linear"
+              : "width 280ms cubic-bezier(.22,1,.36,1), transform 280ms cubic-bezier(.22,1,.36,1)",
             boxShadow:
-              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(240,228,200,0.12)",
-            background: "transparent",
+              "0 0 0 2px #fff, 0 0 0 4px var(--color-ink), 0 0 48px rgba(250,250,250,0.12)",
           }}
         >
           <RuleOfThirds />
@@ -122,20 +139,10 @@ export function HeroDemo() {
           <span className="absolute left-1.5 top-1.5 rounded bg-shadow/85 px-1.5 py-0.5 font-mono text-[10px] text-onaccent">
             9×16 · {Math.round(zoom * 100)}%
           </span>
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-pink/90 px-1.5 py-0.5 font-mono text-[9px] text-onaccent">
-            5s countdown
+          <span className="absolute bottom-1.5 right-1.5 flex items-center gap-1.5 rounded-full border border-white/30 bg-black/45 px-2 py-0.5 font-mono text-[9px] text-onaccent">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#ff4d4d]" /> REC
           </span>
-        </button>
-
-        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-white/30 bg-black/45 px-2.5 py-1 font-mono text-[10px] text-onaccent">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-[#ff4d4d]" /> REC
         </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2 font-mono text-[11px] text-inksoft">
-        <span className="rounded-full border border-linesoft bg-surface px-2.5 py-1">move = frame</span>
-        <span className="rounded-full border border-linesoft bg-surface px-2.5 py-1">scroll = zoom</span>
-        <span className="rounded-full border-2 border-ink bg-yellow/70 px-2.5 py-1 text-onbright">Alt + scroll in app</span>
       </div>
     </div>
   );

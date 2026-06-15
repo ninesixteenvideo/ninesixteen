@@ -50,6 +50,7 @@ export function Studio() {
     canRecord,
     recordingSettings,
     setRecordingSettings,
+    frameFrozen,
   } = useStore();
 
   const sessionActive = recording || finalizing || arming;
@@ -72,11 +73,15 @@ export function Studio() {
         : "Ready to record";
 
   const statusBody = arming
-    ? "Frame is on your desktop — Alt + scroll (or Alt + ↑/↓) to zoom, move the mouse to position. Capture starts when the countdown ends."
+    ? frameFrozen
+      ? "Frame frozen — Alt + F to follow your cursor again. Alt + scroll (or Alt + ↑/↓) still adjusts zoom."
+      : "Frame is on your desktop — Alt + scroll (or Alt + ↑/↓) to zoom, move the mouse to position. Alt + F freezes the frame."
     : finalizing
       ? "Writing and securing your file — this can take a minute on long clips."
       : recording
-        ? `Recording ${formatDuration(displayElapsed)}`
+        ? frameFrozen
+          ? `Recording ${formatDuration(displayElapsed)} · frame frozen (Alt + F to follow cursor)`
+          : `Recording ${formatDuration(displayElapsed)}`
         : "Press Record — you'll get 5 seconds to frame your shot first.";
 
   return (

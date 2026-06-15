@@ -2,7 +2,7 @@
    Warm charcoal surfaces, bright off-white structure, terracotta + mustard accents.
    Premium neo-brutalist: crisp light borders, deep hard-offset shadows, retro glow. */
 
-@import url("https://fonts.googleapis.com/css2?family=Faster+One&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Tourney:wght@400..700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Bungee&family=Faster+One&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 :root {
   color-scheme: dark;
@@ -13,29 +13,29 @@
   --ns-surface: #2c2a27;
   --ns-surface-sunken: #201f1c;
 
-  /* Ink & borders (warm dark cream — text + brutalist outlines) */
-  --ns-ink: #f0e4c8;
-  --ns-ink-soft: #b0a994;
-  --ns-ink-faint: #7c7565;
+  /* Ink & borders (off-white — text + brutalist outlines) */
+  --ns-ink: #fafafa;
+  --ns-ink-soft: #c5c5c0;
+  --ns-ink-faint: #91918c;
 
   /* Text colour that sits ON accents */
-  --ns-on-accent: #f0e4c8; /* soft cream on deep accents (charcoal / terracotta) */
-  --ns-on-bright: #1b1a18; /* on bright accents (cream / mint / white) */
+  --ns-on-accent: #fafafa; /* off-white on deep accents (charcoal / terracotta) */
+  --ns-on-bright: #1b1a18; /* on bright accents (banner / mint / white) */
 
   /* Primary accent (charcoal grey) + secondary (terracotta) */
   --ns-white: #ffffff;
-  --ns-blue: #a35d4d; /* app terracotta red — primary buttons / selected surfaces */
-  --ns-blue-deep: #cf8c77; /* legible terracotta — accent text/sliders on dark */
-  --ns-pink: #a35d4d;
-  --ns-pink-deep: #84493b; /* deep terracotta — background for rec/export (light text) */
-  --ns-pink-link: #cf8c77; /* legible terracotta for accent text on dark */
+  --ns-blue: #78ffd4; /* light mint — primary buttons, accents, links */
+  --ns-blue-deep: #78ffd4; /* same light mint (single mint across the product) */
+  --ns-pink: #ff6b58; /* neon coral — Pro, record, paywall CTAs */
+  --ns-pink-deep: #ff6b58; /* same neon coral (replaces former deep red) */
+  --ns-pink-link: #ff9e92; /* light coral — accent links on dark */
 
   /* Accents */
-  --ns-yellow: #f0e4c8; /* warm soft cream — pairs with dark on-bright text */
-  --ns-mint: #74b29a;
+  --ns-yellow: #fafafa; /* off-white banner — pairs with dark on-bright text */
+  --ns-mint: #78ffd4;
 
   /* Utility */
-  --ns-line: #f0e4c8;
+  --ns-line: #fafafa;
   --ns-line-soft: #38352f;
   --ns-danger: #e0635f;
   --ns-success: #5fa37e;
@@ -47,7 +47,7 @@
   --ns-font-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ns-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ns-font-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  --ns-font-wordmark: "Tourney", system-ui, sans-serif;
+  --ns-font-wordmark: "Bungee", system-ui, sans-serif;
   --ns-font-wordmark-video: "Faster One", system-ui, sans-serif;
 
   /* Radii */
@@ -73,8 +73,8 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 70% at 50% -10%, rgba(240, 228, 200, 0.05), transparent 55%),
-    radial-gradient(90% 60% at 100% 0%, rgba(163, 93, 77, 0.05), transparent 50%);
+    radial-gradient(120% 70% at 50% -10%, rgba(250, 250, 250, 0.04), transparent 55%),
+    radial-gradient(90% 60% at 100% 0%, rgba(255, 107, 88, 0.07), transparent 50%);
 }
 .ns-grain::before {
   content: "";
@@ -119,11 +119,13 @@
 }
 .ns-btn--blue {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
 }
 .ns-btn--pink {
   background: var(--ns-pink);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-pink);
 }
 .ns-btn--yellow {
   background: var(--ns-yellow);

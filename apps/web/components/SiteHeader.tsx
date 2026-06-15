@@ -2,15 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wordmark } from "@ninesixteen/brand/Wordmark";
+import { Wordmark } from "@ninesixteen/brand";
 import { useAuth } from "@/lib/auth";
-
-const NAV = [
-  { href: "/#features", label: "Features" },
-  { href: "/#how-it-works", label: "How it works" },
-  { href: "/pricing", label: "Purchase" },
-  { href: "/download", label: "Download" },
-];
 
 const TICKER = [
   "true 9×16 capture",
@@ -34,35 +27,15 @@ export function SiteHeader() {
           <Wordmark size={30} showSuffix />
         </Link>
 
-        <nav className="hidden items-center gap-8 md:flex">
-          {NAV.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="font-body text-sm font-medium text-inksoft transition-colors hover:text-ink"
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
-
         <div className="flex items-center gap-2">
           {!loading && user ? (
             <Link href="/dashboard" className="ns-cta ns-cta--sm ns-cta--primary">
               Dashboard
             </Link>
           ) : (
-            <>
-              <Link
-                href="/sign-in"
-                className="hidden rounded-full px-3 py-1.5 font-display text-sm text-ink transition-colors hover:text-bluedeep sm:inline-block"
-              >
-                Sign in
-              </Link>
-              <Link href="/sign-up" className="ns-cta ns-cta--sm ns-cta--accent">
-                Get started
-              </Link>
-            </>
+            <Link href="/sign-in" className="ns-cta ns-cta--sm ns-cta--accent">
+              Sign in
+            </Link>
           )}
         </div>
       </div>

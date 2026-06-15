@@ -17,8 +17,8 @@ body,
 
 body {
   background:
-    radial-gradient(125% 60% at 50% -12%, rgba(240, 228, 200, 0.05), transparent 55%),
-    radial-gradient(80% 50% at 100% 0%, rgba(163, 93, 77, 0.05), transparent 50%),
+    radial-gradient(125% 60% at 50% -12%, rgba(250, 250, 250, 0.04), transparent 55%),
+    radial-gradient(80% 50% at 100% 0%, rgba(255, 107, 88, 0.07), transparent 50%),
     var(--ns-bg);
   overflow: hidden;
   user-select: none;
@@ -94,7 +94,8 @@ button {
 }
 .tab.active {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
   box-shadow: 3px 3px 0 var(--ns-shadow-color);
 }
 .tab-hotkeys {
@@ -229,7 +230,8 @@ button {
 }
 .seg button.on {
   background: var(--ns-pink);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-pink);
 }
 
 input[type="range"] {
@@ -257,15 +259,18 @@ input[type="range"] {
 }
 .btn.blue {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
 }
 .btn.pink {
   background: var(--ns-pink);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-pink);
 }
 .btn.rec {
   background: var(--ns-pink-deep);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-pink-deep);
   width: 100%;
   font-size: 1rem;
   padding: 12px;
@@ -353,8 +358,8 @@ input[type="range"] {
   background: var(--ns-ink-faint);
 }
 .status-card.armed .live-dot {
-  background: #ff4d4d;
-  box-shadow: 0 0 0 4px rgba(255, 77, 77, 0.18);
+  background: var(--ns-pink);
+  box-shadow: 0 0 0 4px rgba(255, 107, 88, 0.22);
   animation: pulse 1.2s infinite;
 }
 .status-card.idle {
@@ -456,6 +461,8 @@ input[type="range"] {
 }
 .cursor-choice-btn.active {
   background: var(--ns-blue);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
   box-shadow: 3px 3px 0 var(--ns-shadow-color);
 }
 .quality-select {
@@ -487,10 +494,10 @@ input[type="range"] {
 }
 .src-card.active {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
 }
 .src-card.active .muted {
-  color: rgba(240, 228, 200, 0.78);
+  color: rgba(250, 250, 250, 0.78);
 }
 .src-radio {
   flex: 0 0 auto;
@@ -851,7 +858,8 @@ input[type="range"] {
 }
 .account-pill.ghost {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-blue);
 }
 .acct-dot {
   width: 8px;
@@ -879,9 +887,9 @@ input[type="range"] {
 }
 .cam-pill {
   cursor: default;
-  border: 2px solid var(--ns-ink);
+  border: 2px solid var(--ns-blue);
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
   font-family: var(--ns-font-display);
   font-size: 0.72rem;
   font-weight: 700;
@@ -1027,10 +1035,10 @@ button.cam-pill.off:not(:disabled):hover {
 }
 .preview-item.active {
   background: var(--ns-blue);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
 }
 .preview-item.active .muted {
-  color: rgba(240, 228, 200, 0.78);
+  color: rgba(250, 250, 250, 0.78);
 }
 .preview-thumb {
   flex: 0 0 auto;
@@ -1120,7 +1128,7 @@ button.cam-pill.off:not(:disabled):hover {
   max-width: 320px;
   font-size: 0.82rem;
   line-height: 1.4;
-  color: rgba(240, 228, 200, 0.78);
+  color: rgba(250, 250, 250, 0.78);
 }
 .preview-cap-overlay-actions {
   display: flex;
@@ -1293,7 +1301,8 @@ button.cam-pill.off:not(:disabled):hover {
 }
 .card-action.export {
   background: var(--ns-pink-deep);
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
+  border-color: var(--ns-pink-deep);
 }
 .card-action.drive {
   background: #fff;
@@ -1309,7 +1318,7 @@ button.cam-pill.off:not(:disabled):hover {
 }
 .card-action.confirm {
   background: #ff5a5a;
-  color: var(--ns-on-accent);
+  color: var(--ns-on-bright);
 }
 .card-action.icon-only {
   display: inline-flex;
@@ -1704,6 +1713,7 @@ button.cam-pill.off:not(:disabled):hover {
   border-radius: var(--ns-radius-pill);
   padding: 3px 12px;
   background: var(--ns-blue);
+  color: var(--ns-on-bright);
 }
 .plan-badge.pro {
   background: var(--ns-pink);

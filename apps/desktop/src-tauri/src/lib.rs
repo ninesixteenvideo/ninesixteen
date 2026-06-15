@@ -283,6 +283,7 @@ pub fn run() {
             for (mods, code, label) in [
                 (Modifiers::ALT, Code::KeyR, "Alt+R (record)"),
                 (Modifiers::ALT, Code::KeyV, "Alt+V (frame)"),
+                (Modifiers::ALT, Code::KeyF, "Alt+F (freeze frame)"),
             ] {
                 let shortcut = Shortcut::new(Some(mods), code);
                 if let Err(e) = app.global_shortcut().register(shortcut) {

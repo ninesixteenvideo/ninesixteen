@@ -8,7 +8,7 @@ const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "0.1.0";
 const INSTALLER_FILENAME = INSTALLER_URL
   ? decodeURIComponent(INSTALLER_URL.split("/").pop() ?? "")
   : "";
-const INSTALLER_EXT = INSTALLER_FILENAME.match(/\.(msi|exe)$/i)?.[1]?.toLowerCase() ?? "msi";
+const INSTALLER_EXT = INSTALLER_FILENAME.match(/\.(msi|exe)$/i)?.[1]?.toLowerCase() ?? "exe";
 
 const REQUIREMENTS = [
   "Windows 10 or 11 (64-bit)",
@@ -59,14 +59,14 @@ export default function DownloadPage() {
               <div>
                 <h2 className="font-display text-2xl">Windows installer</h2>
                 <p className="font-mono text-xs text-inksoft">
-                  v{VERSION} · x64 · MSI / NSIS
+                  v{VERSION} · x64 · NSIS
                 </p>
               </div>
             </div>
             <ul className="mt-6 space-y-2.5">
               {INCLUDED.map((item) => (
                 <li key={item} className="flex items-start gap-2 font-body text-sm text-inksoft">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-pink" />
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue" />
                   {item}
                 </li>
               ))}
@@ -91,7 +91,7 @@ export default function DownloadPage() {
                 }}
                 className="ns-cta ns-cta--primary w-full max-w-xs text-center opacity-80"
               >
-                Free download · .msi
+                Free download · .exe
               </button>
             )}
             <p className="text-center font-mono text-[11px] text-inkfaint">

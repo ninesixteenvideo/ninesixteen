@@ -196,6 +196,8 @@ pub struct CaptureState {
     pub overlay_frame: Option<OverlayFrame>,
     /// Whether the mouse cursor is baked into the final recording (Alt+C toggles).
     pub capture_cursor: bool,
+    /// True while Alt+F has paused cursor follow (crop stays fixed).
+    pub frame_frozen: bool,
 }
 
 #[derive(Clone, Copy, Serialize, Debug)]
@@ -227,6 +229,10 @@ pub struct ViewportState {
     pub zoom_target: f64,
     pub monitor: Option<MonitorInfo>,
     pub zoom_sensitivity: f64,
+    /// When true, pan follow is paused — the crop stays fixed until toggled off.
+    pub frame_frozen: bool,
+    /// Set when unfreezing so pan eases back to the cursor more slowly.
+    pub frame_unfreeze_at: Option<Instant>,
 }
 
 impl Default for ViewportState {
@@ -236,6 +242,8 @@ impl Default for ViewportState {
             zoom_target: 1.0,
             monitor: None,
             zoom_sensitivity: 1.0,
+            frame_frozen: false,
+            frame_unfreeze_at: None,
         }
     }
 }

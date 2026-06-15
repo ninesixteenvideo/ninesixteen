@@ -44,6 +44,7 @@ interface Store {
   savePhase: string;
   arming: boolean;
   countdownSeconds: number;
+  frameFrozen: boolean;
   cameraEnabled: boolean;
   cameraConnected: boolean;
   elapsed: number;
@@ -89,6 +90,7 @@ export const useStore = create<Store>((set, get) => ({
   savePhase: "",
   arming: false,
   countdownSeconds: 0,
+  frameFrozen: false,
   cameraEnabled: false,
   cameraConnected: false,
   elapsed: 0,
@@ -133,6 +135,7 @@ export const useStore = create<Store>((set, get) => ({
         arming: p.arming ?? (p.recording ? false : get().arming),
         countdownSeconds: p.recording || p.arming === false ? 0 : get().countdownSeconds,
         overlayVisible: p.recording || p.arming ? true : get().overlayVisible,
+        frameFrozen: p.recording || p.arming ? get().frameFrozen : false,
       })
     );
     listen("recording:save-progress", (p: { percent: number; phase: string }) =>
@@ -166,6 +169,7 @@ export const useStore = create<Store>((set, get) => ({
       if (s.recording || s.arming || s.finalizing) return;
       void s.setOverlayVisible(!s.overlayVisible);
     });
+    listen("frame:freeze", (p: { frozen: boolean }) => set({ frameFrozen: p.frozen }));
 
     set({ ready: true });
 
@@ -182,6 +186,7 @@ export const useStore = create<Store>((set, get) => ({
       recording: state.recording,
       arming: state.recordingArmed ?? false,
       countdownSeconds: state.countdownSeconds ?? 0,
+      frameFrozen: state.frameFrozen ?? false,
       cameraEnabled: state.cameraEnabled ?? false,
       cameraConnected: state.cameraConnected ?? false,
       elapsed: state.elapsed,

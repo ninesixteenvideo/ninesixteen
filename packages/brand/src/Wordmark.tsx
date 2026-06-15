@@ -4,8 +4,14 @@ import { colors, fonts } from "./tokens";
 export type WordmarkProps = {
   /** Font size of the wordmark in px (everything scales from this). */
   size?: number;
-  /** Show the "video" suffix after "ninesixteen." */
+  /** Show the ".video" suffix after "ninesixteen". */
   showSuffix?: boolean;
+  /** Override color for "nine" (default: light mint). */
+  nineColor?: string;
+  /** Override color for "sixteen" (default: coral). */
+  sixteenColor?: string;
+  /** Override color for ".video" (default: off-white). */
+  suffixColor?: string;
   /** Optional className passthrough. */
   className?: string;
   style?: React.CSSProperties;
@@ -13,12 +19,15 @@ export type WordmarkProps = {
 };
 
 /**
- * ninesixteen.video wordmark — "ninesixteen." (Tourney, cream) + "video" (Faster One, red).
+ * ninesixteen.video wordmark — "nine" (mint) + "sixteen" (coral) + ".video" (white).
  * Self-contained inline styles so it renders identically in web + desktop.
  */
 export function Wordmark({
   size = 40,
   showSuffix = false,
+  nineColor = colors.blue,
+  sixteenColor = colors.pink,
+  suffixColor = colors.ink,
   className,
   style,
   title = "ninesixteen.video",
@@ -34,25 +43,15 @@ export function Wordmark({
   const brand: React.CSSProperties = {
     fontFamily: fonts.wordmark,
     fontSize: size,
-    fontWeight: 600,
-    letterSpacing: "-0.02em",
-    color: colors.ink,
-  };
-
-  const video: React.CSSProperties = {
-    fontFamily: fonts.wordmarkVideo,
-    fontSize: size * 0.58,
     fontWeight: 400,
-    letterSpacing: "0.04em",
-    color: colors.pink,
-    marginLeft: size * 0.04,
-    transform: "translateY(0.04em)",
+    letterSpacing: "-0.02em",
   };
 
   return (
     <span className={className} style={{ ...base, ...style }} title={title} aria-label={title}>
-      <span style={brand}>ninesixteen{showSuffix ? "." : ""}</span>
-      {showSuffix && <span style={video}>video</span>}
+      <span style={{ ...brand, color: nineColor }}>nine</span>
+      <span style={{ ...brand, color: sixteenColor }}>sixteen</span>
+      {showSuffix && <span style={{ ...brand, color: suffixColor }}>.video</span>}
     </span>
   );
 }

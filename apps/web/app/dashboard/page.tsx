@@ -84,7 +84,7 @@ function DashboardInner() {
           {!isPro && (
             <Link
               href="/pricing"
-              className="rounded-full border-2 border-ink bg-pink px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
+              className="rounded-full border-2 border-pink bg-pink px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
             >
               Buy Pro · $49
             </Link>
@@ -99,7 +99,7 @@ function DashboardInner() {
           )}
           <Link
             href="/download"
-            className="rounded-full border-2 border-ink bg-blue px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
+            className="rounded-full border-2 border-blue bg-blue px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
           >
             Download app
           </Link>
