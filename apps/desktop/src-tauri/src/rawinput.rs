@@ -33,7 +33,7 @@ mod imp {
     static CTX: OnceLock<Ctx> = OnceLock::new();
     static LAST_FOLLOW: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
     static ZOOM_LOCK_UNTIL: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
-    /// Easing toward full 9×16 — ignore Alt+scroll until the 1s hold starts.
+    /// Easing toward full 9×16 — ignore Alt+scroll until the 0.4s hold starts.
     static PENDING_FULL_LOCK: AtomicBool = AtomicBool::new(false);
     /// Wheel deltas queued by the hook; drained on the follow thread only.
     static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
@@ -51,7 +51,7 @@ mod imp {
     const ZOOM_SMOOTH_HZ: f64 = 3.8;
     const WHEEL_ZOOM_STEP: f64 = 0.09;
     const FULL_FRAME_SETTLE: f64 = 0.012;
-    const FULL_FRAME_LOCK: Duration = Duration::from_secs(1);
+    const FULL_FRAME_LOCK: Duration = Duration::from_millis(400);
 
     fn alt_log(msg: &str) {
         capture_log(&format!("Alt: {msg}"));
@@ -159,7 +159,7 @@ mod imp {
         PENDING_FULL_LOCK.store(false, Ordering::Release);
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = Some(Instant::now() + FULL_FRAME_LOCK);
-        alt_log("landed full 9×16 — 1s scroll lock");
+        alt_log("landed full 9×16 — 0.4s scroll lock");
     }
 
     fn aim_full_frame(vp: &mut ViewportState) {
@@ -629,10 +629,43 @@ mod imp {
         vp.frame_unfreeze_at = None;
         mark_viewport_dirty();
     }
+
+    /// Hard reset before a new recording's countdown. Clears EVERY zoom/pan
+    /// input latch and returns the frame to full 9×16 centered on the monitor —
+    /// so a clip that ended zoomed all the way out (or any stuck snap/hold/
+    /// at-min latch) can never carry over and swallow Alt+↑/↓ on the next take.
+    pub fn reset_for_new_recording(viewport: &SharedViewport) {
+        PENDING_FULL_LOCK.store(false, Ordering::Release);
+        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        *ZOOM_LOCK_UNTIL.lock() = None;
+        *LAST_FOLLOW.lock() = None;
+        // Re-sync Alt to the physical key (drops any stale held=true).
+        let _ = alt_held();
+
+        {
+            let mut vp = viewport.lock();
+            vp.frame_frozen = false;
+            vp.frame_unfreeze_at = None;
+            vp.zoom_target = 1.0;
+            vp.viewport.zoom = 1.0;
+            let center = vp.monitor.as_ref().map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0));
+            if let Some((cx, cy)) = center {
+                vp.viewport.x = cx;
+                vp.viewport.y = cy;
+            }
+        }
+
+        // zoom_target is 1.0 now, so the at-min latch must read false.
+        sync_zoom_at_min(1.0);
+        mark_viewport_dirty();
+        alt_log("new recording — frame reset to full 9×16, input latches cleared");
+    }
 }
 
 #[cfg(windows)]
-pub use imp::{reset_frame_follow, start, start_cursor_follow, toggle_frame_frozen};
+pub use imp::{
+    reset_for_new_recording, reset_frame_follow, start, start_cursor_follow, toggle_frame_frozen,
+};
 
 #[cfg(not(windows))]
 pub fn take_viewport_dirty() -> bool {
@@ -646,6 +679,9 @@ pub fn toggle_frame_frozen() -> Option<bool> {
 
 #[cfg(not(windows))]
 pub fn reset_frame_follow(_viewport: SharedViewport) {}
+
+#[cfg(not(windows))]
+pub fn reset_for_new_recording(_viewport: SharedViewport) {}
 
 #[cfg(not(windows))]
 pub fn start(_app: tauri::AppHandle, _viewport: SharedViewport, _state: SharedState) {}

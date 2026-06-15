@@ -391,7 +391,11 @@ pub fn start_recording(
         let mut vp = handles.viewport.lock();
         vp.viewport.orientation = Orientation::Portrait;
     }
-    crate::rawinput::reset_frame_follow(&handles.viewport);
+    // Every new recording starts from full 9×16, centered — and with all zoom/pan
+    // input latches cleared, so Alt+↑/↓ is always live (the user can still reframe
+    // during the 5s countdown).
+    crate::rawinput::reset_for_new_recording(&handles.viewport);
+    emit_viewport_from_handles(&app, handles.inner());
 
     crate::log::capture_log("Record countdown armed (5s)");
     emit_recording_state(
