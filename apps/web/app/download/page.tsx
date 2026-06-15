@@ -23,7 +23,7 @@ const REQUIREMENTS = [
 const AFTER_INSTALL = [
   "Open the app and hit Record — free, no account needed",
   "Frame, capture, and preview your clip in seconds",
-  "Sign in and unlock Pro ($49) whenever you want to export",
+  "Sign in and purchase Pro ($49) whenever you want to export",
 ];
 
 const INCLUDED = [
