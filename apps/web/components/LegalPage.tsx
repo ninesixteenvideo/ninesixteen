@@ -57,7 +57,7 @@ export function LegalPage({
               <ul className="mt-4 space-y-2 font-body text-sm leading-relaxed text-inksoft">
                 {section.bullets.map((item) => (
                   <li key={item.slice(0, 48)} className="flex gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-pinkdeep" aria-hidden="true" />
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-inkfaint" aria-hidden="true" />
                     <span>{item}</span>
                   </li>
                 ))}
@@ -67,7 +67,7 @@ export function LegalPage({
         ))}
       </div>
 
-      <footer className="legal-page-footer mt-14 border-t-2 border-linesoft pt-8">
+      <footer className="legal-page-footer mt-14 border-t border-line pt-8">
         <p className="font-body text-sm text-inksoft">
           Questions about these policies? Email{" "}
           <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="font-semibold text-ink hover:underline">
@@ -77,7 +77,7 @@ export function LegalPage({
         </p>
         <p className="mt-4 font-body text-sm text-inksoft">
           See also{" "}
-          <Link href={sibling.href} className="font-semibold text-bluedeep hover:underline">
+          <Link href={sibling.href} className="ns-link">
             {sibling.label}
           </Link>
           .

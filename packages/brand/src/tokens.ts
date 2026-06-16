@@ -1,79 +1,76 @@
 /**
  * ninesixteen.video — brand design tokens.
  *
- * Professional stone palette with mild retro structure (hard shadows, pill radii).
- * Wordmark:
- *   "nine"     -> Bungee, light mint
- *   "sixteen"  -> Bungee, coral
- *   ".video"   -> Bungee, off-white
- *
- * Shared by the web app and Tauri desktop app.
+ * Monochrome charcoal + white UI. Colour lives in the wordmark (mint + coral)
+ * and the coral record / Pro accent. Shared by web and desktop.
  */
 
 export const colors = {
-  // Surfaces (neutral warm charcoal — no blue/violet tint)
-  bg: "#1B1A18",
-  bgAlt: "#242220",
-  surface: "#2C2A27",
-  surfaceSunken: "#201F1C",
+  // Surfaces — warm charcoal, layered for depth
+  bg: "#121110",
+  bgAlt: "#1A1917",
+  surface: "#262421",
+  surfaceSunken: "#1E1D1B",
+  surfaceHi: "#2F2D29",
+  hover: "#34322D",
 
-  // Ink & structure (off-white — text + brutalist outlines)
-  ink: "#FAFAFA",
-  inkSoft: "#C5C5C0",
-  inkFaint: "#91918C",
+  // Ink
+  ink: "#F4F3F0",
+  inkSoft: "#A8A6A0",
+  inkFaint: "#6F6D67",
 
-  // Deep shade used for retro outlines / hard-offset shadows on dark
-  shadow: "#0C0B0A",
+  // Inverted selection (primary buttons, active tabs)
+  sel: "#F4F3F0",
+  selInk: "#191816",
 
-  // Text colour that sits on accents
-  onAccent: "#FAFAFA",
-  onBright: "#1B1A18",
+  // Wordmark syllables + functional accent (record dot, Pro CTAs)
+  mint: "#78FFD4",
+  coral: "#FF6B58",
 
-  // Brand syllables + UI accents
+  // Legacy aliases — keep exports stable for Wordmark + existing imports
   white: "#FFFFFF",
   blue: "#78FFD4",
   blueDeep: "#78FFD4",
   pink: "#FF6B58",
-  pinkDeep: "#FF6B58",
+  pinkDeep: "#FF9E92",
+  yellow: "#F4F3F0",
+  onAccent: "#F4F3F0",
+  onBright: "#191816",
+  shadow: "#0A0908",
 
-  // Accents
-  yellow: "#FAFAFA",
-  mint: "#78FFD4",
+  // Structure
+  line: "rgba(255, 255, 255, 0.09)",
+  lineSoft: "rgba(255, 255, 255, 0.16)",
+  lineHi: "rgba(255, 255, 255, 0.16)",
 
-  // Utility
-  line: "#FAFAFA",
-  lineSoft: "#38352F",
   danger: "#E0635F",
   success: "#5FA37E",
 } as const;
 
 export const fonts = {
-  /** Headings, buttons, and logo — Inter semibold for a clean pro feel. */
   display: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
-  /** Body copy — Inter for maximum readability. */
   body: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
-  /** Mono for technical/recording metadata. */
   mono: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
-  /** Logo: "ninesixteen." — `--font-bungee` set by Next.js (web) or theme.css @import (desktop). */
   wordmark: 'var(--font-bungee, "Bungee"), system-ui, sans-serif',
-  /** Logo suffix: "video" */
   wordmarkVideo: 'var(--font-faster-one, "Faster One"), system-ui, sans-serif',
 } as const;
 
 export const radii = {
-  sm: "8px",
-  md: "14px",
-  lg: "22px",
+  xs: "6px",
+  sm: "9px",
+  md: "12px",
+  lg: "16px",
   pill: "999px",
 } as const;
 
-/** Hard-offset shadows (no blur) plus a soft ambient option. */
 export const shadows = {
-  hard: `4px 4px 0 ${colors.shadow}`,
-  hardLg: `7px 7px 0 ${colors.shadow}`,
-  hardBlue: `4px 4px 0 ${colors.blueDeep}`,
-  hardPink: `4px 4px 0 ${colors.pinkDeep}`,
-  soft: "0 14px 40px rgba(0,0,0,0.45)",
+  soft: "0 8px 32px -12px rgba(0, 0, 0, 0.55)",
+  rail: "8px 0 32px -12px rgba(0, 0, 0, 0.55)",
+  /** @deprecated hard shadows removed in v1.0 — kept for type compat */
+  hard: `0 8px 32px -12px rgba(0, 0, 0, 0.55)`,
+  hardLg: `0 12px 40px -12px rgba(0, 0, 0, 0.6)`,
+  hardBlue: `0 8px 32px -12px rgba(0, 0, 0, 0.55)`,
+  hardPink: `0 8px 32px -12px rgba(0, 0, 0, 0.55)`,
 } as const;
 
 export const space = {

@@ -19,25 +19,25 @@ import { LandingCardIcon } from "@/components/LandingCardIcon";
 const USE_CASES = [
   {
     icon: DeviceMobile,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "Native short-form content",
     desc: "Vertical from frame one. Publish clips in seconds with no post production reframing.",
   },
   {
     icon: RocketLaunch,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Demos & build-in-public",
     desc: "Show your app tight and vertical — the perfect launch and progress clips for founders and indie hackers.",
   },
   {
     icon: GraduationCap,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "Tutorials & courses",
     desc: "Keep the frame locked on the UI that matters while the viewport follows your cursor.",
   },
   {
     icon: GameController,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Walkthroughs & reviews",
     desc: "Capture software, tools, and gameplay in portrait with system audio and your voice.",
   },
@@ -46,37 +46,37 @@ const USE_CASES = [
 const FEATURES = [
   {
     icon: FilmStrip,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "True 9×16 capture",
     desc: "Record portrait-native. What you frame is exactly what exports — zero letterboxing, zero cropping later.",
   },
   {
     icon: Cursor,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Cursor-driven framing",
     desc: "The frame follows your mouse. Hold Alt + scroll to glide from full desktop into a tight, intentional crop — live, as you record.",
   },
   {
     icon: Waveform,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "System + mic audio",
     desc: "Blend desktop sound and your microphone with gain meters and a one-tap level check before you roll.",
   },
   {
     icon: Feather,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Native & featherlight",
     desc: "Built on Windows Graphics Capture, not a heavy Electron shell. Buttery capture, low CPU, no fan spin-up.",
   },
   {
     icon: Export,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "Export-ready MP4",
     desc: "Unlock Pro to export clean MP4s to your disk or Google Drive — ready for CapCut, Premiere, or straight to upload.",
   },
   {
     icon: LockSimple,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Private & local-first",
     desc: "Recordings are encrypted on your own machine. Nothing leaves your disk until you choose to export.",
   },
@@ -85,21 +85,21 @@ const FEATURES = [
 const STEPS = [
   {
     icon: Record,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Hit Record",
     desc: "Press record in Studio. The app slips out of the way and drops a live 9×16 overlay onto your desktop.",
     points: ["5-second countdown so you can get set", "Cancel anytime before capture starts"],
   },
   {
     icon: FrameCorners,
-    tone: "mint" as const,
+    tone: "soft" as const,
     title: "Frame as you go",
     desc: "Steer the viewport with your cursor and zoom with Alt + scroll. Rule-of-thirds guides keep every shot composed.",
     points: ["Snap to full 9×16 for precision", "Reframe live, mid-recording"],
   },
   {
     icon: Export,
-    tone: "coral" as const,
+    tone: "ink" as const,
     title: "Save & export",
     desc: "Stop and your clip saves encrypted, ready to preview in-app. Export to MP4 with Pro whenever you want.",
     points: ["Up to 1080p · 30 or 60 fps", "Drops straight into your editor"],

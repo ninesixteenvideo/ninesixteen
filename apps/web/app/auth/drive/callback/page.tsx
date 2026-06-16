@@ -63,9 +63,7 @@ function DriveCallbackInner() {
   }, []);
 
   return (
-    <div
-      className={`ns-card mt-8 p-5 font-body text-sm ${done ? "bg-mint/40" : "bg-yellow/30"}`}
-    >
+    <div className="ns-banner ns-card mt-8 p-5 font-body text-sm text-inksoft">
       {message}
     </div>
   );

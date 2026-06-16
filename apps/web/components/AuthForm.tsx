@@ -75,7 +75,7 @@ function AuthFormInner({
         </p>
 
         {!firebaseEnabled && (
-          <div className="mt-4 rounded-lg border-2 border-ink bg-yellow/60 p-3 font-mono text-[11px] leading-relaxed text-onbright">
+          <div className="ns-banner mt-4 p-3 font-mono text-[11px] leading-relaxed text-inksoft">
             Demo mode: Firebase isn’t configured yet, so accounts are stored locally
             in this browser. Add your keys to <code>.env.local</code> to go live.
           </div>
@@ -85,16 +85,16 @@ function AuthFormInner({
           type="button"
           onClick={onGoogle}
           disabled={busy}
-          className="ns-google-btn mt-5 flex w-full items-center justify-center gap-3 rounded-full border-2 border-ink bg-white px-5 py-3 font-display text-base shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+          className="ns-google-btn mt-5 flex w-full items-center justify-center gap-3 px-5 py-3 font-display text-base disabled:opacity-60"
         >
           <GoogleGlyph />
           Continue with Google
         </button>
 
-        <div className="my-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-wide text-inksoft">
-          <span className="h-px flex-1 bg-ink/20" />
+        <div className="my-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-wide text-inkfaint">
+          <span className="h-px flex-1 bg-line" />
           or with email
-          <span className="h-px flex-1 bg-ink/20" />
+          <span className="h-px flex-1 bg-line" />
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
@@ -134,7 +134,7 @@ function AuthFormInner({
           </Field>
 
           {error && (
-            <p className="rounded-lg border-2 border-danger bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
+            <p className="rounded-[9px] border border-danger/40 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
               {error}
             </p>
           )}
@@ -142,7 +142,7 @@ function AuthFormInner({
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-full border-2 border-blue bg-blue px-5 py-3 font-display text-lg shadow-[4px_4px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            className="ns-cta ns-cta--primary w-full disabled:opacity-60"
           >
             {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
           </button>
@@ -151,11 +151,11 @@ function AuthFormInner({
         {isSignUp && (
           <p className="mt-5 text-center font-body text-sm text-inksoft">
             By creating an account, you agree to our{" "}
-            <Link href="/terms" className="font-semibold text-bluedeep hover:underline">
+            <Link href="/terms" className="ns-link">
               Terms of Use
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="font-semibold text-bluedeep hover:underline">
+            <Link href="/privacy" className="ns-link">
               Privacy Policy
             </Link>
             .
@@ -166,34 +166,20 @@ function AuthFormInner({
           {isSignUp ? (
             <>
               Already have an account?{" "}
-              <Link href="/sign-in" className="font-semibold text-bluedeep hover:underline">
+              <Link href="/sign-in" className="ns-link">
                 Sign in
               </Link>
             </>
           ) : (
             <>
               New here?{" "}
-              <Link href="/sign-up" className="font-semibold text-pinkdeep hover:underline">
+              <Link href="/sign-up" className="ns-link">
                 Create an account
               </Link>
             </>
           )}
         </p>
       </div>
-
-      <style>{`
-        .ns-input {
-          width: 100%;
-          border: 2px solid var(--color-ink);
-          border-radius: 12px;
-          background: var(--color-bg);
-          padding: 0.7rem 0.9rem;
-          font-family: var(--ns-font-body);
-          font-size: 0.95rem;
-          outline: none;
-        }
-        .ns-input:focus { box-shadow: 3px 3px 0 var(--color-shadow); }
-      `}</style>
     </div>
   );
 }

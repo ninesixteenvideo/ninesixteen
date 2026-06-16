@@ -4,21 +4,19 @@ import type { Icon } from "@phosphor-icons/react";
 
 type LandingCardIconProps = {
   icon: Icon;
-  /** Mint by default — matches brand accent on dark cards. */
-  tone?: "mint" | "coral" | "ink";
+  tone?: "soft" | "ink";
   size?: number;
 };
 
 const TONE_CLASS = {
-  mint: "text-blue",
-  coral: "text-pink",
-  ink: "text-inksoft",
+  soft: "text-inksoft",
+  ink: "text-ink",
 } as const;
 
-/** Top-left card glyph — bold Phosphor, no box or border. */
+/** Top-left card glyph — monochrome, matching desktop UI chrome. */
 export function LandingCardIcon({
   icon: IconComponent,
-  tone = "mint",
+  tone = "soft",
   size = 26,
 }: LandingCardIconProps) {
   return (

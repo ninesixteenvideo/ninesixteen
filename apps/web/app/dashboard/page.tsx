@@ -10,7 +10,6 @@ function DashboardInner() {
   const router = useRouter();
   const params = useSearchParams();
 
-  // On return from mock checkout (dev only): upgrade demo users optimistically.
   useEffect(() => {
     if (
       params.get("upgraded") === "mock" &&
@@ -45,14 +44,14 @@ function DashboardInner() {
         </div>
         <button
           onClick={() => signOut()}
-          className="rounded-full border-2 border-ink bg-surface px-4 py-2 font-display text-sm shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
+          className="ns-cta ns-cta--sm ns-cta--ghost"
         >
           Sign out
         </button>
       </div>
 
       {params.get("upgraded") && (
-        <div className="ns-card mt-6 bg-mint/40 p-4 font-body text-sm">
+        <div className="ns-banner ns-card mt-6 p-4 font-body text-sm">
           🎉 You own <b>Pro</b> — exports are unlocked for good.{" "}
           {params.get("upgraded") === "mock" && user.demo && (
             <span className="font-mono text-xs text-inksoft">(mock checkout — Stripe not live yet)</span>
@@ -74,25 +73,19 @@ function DashboardInner() {
 
         <div className="mt-5 flex flex-wrap gap-3">
           {!isPro && (
-            <Link
-              href="/pricing"
-              className="rounded-full border-2 border-pink bg-pink px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
-            >
+            <Link href="/pricing" className="ns-cta ns-cta--sm ns-cta--accent">
               Buy Pro · $49
             </Link>
           )}
           {isPro && user.demo && (
             <button
               onClick={() => setPlan("trial")}
-              className="rounded-full border-2 border-ink bg-surface px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
+              className="ns-cta ns-cta--sm ns-cta--ghost"
             >
               Reset (demo)
             </button>
           )}
-          <Link
-            href="/download"
-            className="rounded-full border-2 border-blue bg-blue px-5 py-2.5 font-display shadow-[3px_3px_0_var(--color-shadow)] transition-transform hover:-translate-y-0.5"
-          >
+          <Link href="/download" className="ns-cta ns-cta--sm ns-cta--primary">
             Download app
           </Link>
         </div>
@@ -113,7 +106,7 @@ function DashboardInner() {
       </div>
 
       {user.demo && (
-        <p className="mt-6 rounded-lg border-2 border-ink bg-yellow/50 p-3 font-mono text-[11px] text-onbright">
+        <p className="ns-banner mt-6 p-3 font-mono text-[11px] text-inksoft">
           Demo session stored locally in this browser. Configure Firebase to persist real accounts.
         </p>
       )}

@@ -81,7 +81,7 @@ function DesktopAuthInner() {
               autoComplete="off"
               spellCheck={false}
               maxLength={12}
-              className="mt-2 w-full rounded-xl border-2 border-ink bg-bg px-4 py-3 text-center font-mono text-lg tracking-[0.3em] outline-none focus:shadow-[3px_3px_0_var(--color-shadow)]"
+              className="ns-input mt-2 text-center font-mono text-lg tracking-[0.3em]"
             />
           </label>
           <p className="mt-3 font-body text-xs text-inksoft">
@@ -100,13 +100,15 @@ function DesktopAuthInner() {
       )}
 
       {status === "done" && (
-        <div className="ns-card mt-8 bg-mint/40 p-5 font-body text-sm">
+        <div className="ns-banner ns-card mt-8 p-5 font-body text-sm">
           You&rsquo;re signed in. Return to the ninesixteen desktop app.
         </div>
       )}
 
       {error && (
-        <div className="ns-card mt-8 bg-yellow/40 p-5 font-body text-sm">{error}</div>
+        <div className="ns-banner ns-card mt-8 border-danger/30 p-5 font-body text-sm text-inksoft">
+          {error}
+        </div>
       )}
     </div>
   );

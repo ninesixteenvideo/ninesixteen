@@ -66,9 +66,9 @@ export default function DownloadPage() {
 
       <div className="ns-card mt-6 overflow-hidden sm:mt-8">
         <div className="grid gap-0 md:grid-cols-[1fr_auto]">
-          <div className="border-b-2 border-ink p-8 md:border-b-0 md:border-r-2">
+          <div className="border-b border-line p-8 md:border-b-0 md:border-r">
             <div className="flex items-center gap-4">
-              <span className="grid h-14 w-14 place-items-center rounded-2xl border-2 border-ink bg-bgalt text-2xl">
+              <span className="grid h-14 w-14 place-items-center rounded-[12px] border border-line bg-bgalt text-2xl">
                 🪟
               </span>
               <div>
@@ -81,7 +81,7 @@ export default function DownloadPage() {
             <ul className="mt-6 space-y-2.5">
               {INCLUDED.map((item) => (
                 <li key={item} className="flex items-start gap-2 font-body text-sm text-inksoft">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue" />
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-inkfaint" />
                   {item}
                 </li>
               ))}
@@ -122,7 +122,7 @@ export default function DownloadPage() {
         </div>
       </div>
 
-      <div className="ns-card ns-card--flat mt-6 border-l-4 border-blue p-5 sm:p-6">
+      <div className="ns-card ns-card--flat mt-6 border-l border-linehi p-5 sm:p-6">
         <p className="font-display text-lg">A little note from the solo dev</p>
         <p className="mt-2 font-body text-sm leading-relaxed text-inksoft">
           Hi — I&apos;m building ninesixteen.video on my own. The Windows installer
@@ -152,11 +152,11 @@ export default function DownloadPage() {
 
       <p className="mt-8 text-center font-body text-sm text-inksoft">
         Already on Pro?{" "}
-        <Link href="/dashboard" className="font-semibold text-bluedeep hover:underline">
+        <Link href="/dashboard" className="ns-link">
           Open your dashboard
         </Link>
         {" · "}
-        <Link href="/pricing" className="font-semibold text-bluedeep hover:underline">
+        <Link href="/pricing" className="ns-link">
           View pricing
         </Link>
       </p>

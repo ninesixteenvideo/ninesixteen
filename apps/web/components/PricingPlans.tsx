@@ -27,11 +27,8 @@ export function PricingPlans() {
 
   return (
     <div className="mx-auto mt-8 max-w-md">
-      <div
-        className="ns-card relative flex flex-col p-7"
-        style={{ boxShadow: "7px 7px 0 var(--color-pinkdeep)" }}
-      >
-        <span className="absolute -top-3 right-6 rounded-full border-2 border-ink bg-yellow px-3 py-0.5 font-display text-xs text-onbright">
+      <div className="ns-card relative flex flex-col p-7">
+        <span className="absolute -top-3 right-6 ns-chip bg-surfacehi text-ink">
           One-time
         </span>
         <h3 className="font-display text-2xl">Pro · Full version</h3>
@@ -50,7 +47,7 @@ export function PricingPlans() {
         <ul className="mt-5 space-y-2">
           {FEATURES.map((f) => (
             <li key={f} className="flex items-start gap-2 font-body text-sm text-inksoft">
-              <span className="mt-0.5 font-display text-bluedeep">✓</span>
+              <span className="mt-0.5 font-display text-ink">✓</span>
               {f}
             </li>
           ))}
@@ -72,7 +69,7 @@ export function PricingPlans() {
 
       <p className="mx-auto mt-10 max-w-xl text-center font-body text-sm text-inksoft">
         Want to try first?{" "}
-        <Link href="/download" className="font-semibold text-bluedeep hover:underline">
+        <Link href="/download" className="ns-link">
           Download the free trial
         </Link>{" "}
         — record and preview everything at no cost. Exporting to MP4 is the only thing Pro

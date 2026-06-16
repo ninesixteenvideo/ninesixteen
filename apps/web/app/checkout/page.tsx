@@ -97,7 +97,7 @@ function CheckoutInner() {
             Pro · $49 USD · one-time purchase
           </p>
         </div>
-        <Link href="/pricing" className="font-mono text-xs text-bluedeep hover:underline">
+        <Link href="/pricing" className="ns-link">
           ← Back to pricing
         </Link>
       </div>

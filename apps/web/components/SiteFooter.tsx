@@ -3,7 +3,7 @@ import { Wordmark } from "@ninesixteen/brand/Wordmark";
 
 export function SiteFooter() {
   return (
-    <footer className="mt-8 border-t-2 border-ink bg-bgalt">
+    <footer className="mt-8 border-t border-line bg-bgalt">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <Wordmark size={26} showSuffix />

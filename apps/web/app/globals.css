@@ -1,36 +1,49 @@
 @import "tailwindcss";
 
-/* Tailwind utilities → same tokens as desktop (packages/brand/theme.css) */
+/* Tailwind utilities → shared brand tokens (packages/brand/theme.css) */
 @theme {
-  --color-bg: #1b1a18;
-  --color-bgalt: #242220;
-  --color-surface: #2c2a27;
-  --color-surfacesunken: #201f1c;
+  --color-bg: #121110;
+  --color-bgalt: #1a1917;
+  --color-surface: #262421;
+  --color-surfacesunken: #1e1d1b;
+  --color-surfacehi: #2f2d29;
+  --color-hover: #34322d;
 
-  --color-ink: #fafafa;
-  --color-inksoft: #c5c5c0;
-  --color-inkfaint: #91918c;
+  --color-ink: #f4f3f0;
+  --color-inksoft: #a8a6a0;
+  --color-inkfaint: #6f6d67;
 
-  --color-onaccent: #fafafa;
-  --color-onbright: #1b1a18;
-  --color-shadow: #0c0b0a;
+  --color-sel: #f4f3f0;
+  --color-selink: #191816;
 
+  --color-onaccent: #f4f3f0;
+  --color-onbright: #191816;
+  --color-shadow: #0a0908;
+
+  /* Wordmark + Pro accent — not used for general UI chrome */
   --color-white: #ffffff;
   --color-blue: #78ffd4;
   --color-bluedeep: #78ffd4;
   --color-pink: #ff6b58;
   --color-pinkdeep: #ff9e92;
-  --color-yellow: #fafafa;
+  --color-yellow: #f4f3f0;
   --color-mint: #78ffd4;
-  --color-line: #fafafa;
-  --color-linesoft: #38352f;
+  --color-coral: #ff6b58;
+
+  --color-line: rgba(255 255 255 / 0.09);
+  --color-linesoft: rgba(255 255 255 / 0.16);
+  --color-linehi: rgba(255 255 255 / 0.16);
   --color-danger: #e0635f;
 
   --font-display: var(--ns-font-display);
   --font-body: var(--ns-font-body);
   --font-mono: var(--ns-font-mono);
 
-  --radius-retro: 22px;
+  --radius-retro: 12px;
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 html {
@@ -73,8 +86,8 @@ h6 {
 }
 
 ::selection {
-  background: var(--color-yellow);
-  color: var(--color-onbright);
+  background: var(--color-sel);
+  color: var(--color-selink);
 }
 
 @keyframes ns-spin {
@@ -114,7 +127,6 @@ a {
   color: inherit;
 }
 
-/* Match desktop: display = Inter semibold, body = Inter, mono = IBM Plex Mono */
 .font-display {
   font-family: var(--ns-font-display);
   font-weight: 600;
@@ -129,73 +141,128 @@ a {
   font-family: var(--ns-font-mono);
 }
 
-.bg-blue {
-  color: var(--color-onbright);
-}
-.bg-pink {
-  color: var(--color-onbright);
-}
-
-/* Dark mode: bright accents need dark ink on top */
+.bg-blue,
+.bg-pink,
 .bg-yellow,
-.bg-mint {
+.bg-mint,
+.bg-sel {
   color: var(--color-onbright);
 }
 
-/* CTAs — same as desktop .tab / .ns-btn weight */
+/* Inline links */
+.ns-link {
+  font-weight: 600;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.ns-link:hover {
+  text-decoration: underline;
+}
+
+/* CTAs — match desktop .btn / .btn.primary */
 .ns-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--color-ink);
-  border-radius: 999px;
+  border: 1px solid var(--color-linehi);
+  border-radius: var(--radius-sm);
   padding: 0.85rem 1.6rem;
   font-family: var(--ns-font-display);
   font-size: 1.05rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  box-shadow: 5px 5px 0 var(--color-shadow);
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  letter-spacing: -0.01em;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  transition:
+    background 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.1s ease;
 }
 .ns-cta:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 7px 7px 0 var(--color-shadow);
+  background: var(--color-surfacehi);
+}
+.ns-cta:active {
+  transform: scale(0.985);
 }
 .ns-cta--sm {
   padding: 0.45rem 1rem;
   font-size: 0.875rem;
-  box-shadow: 3px 3px 0 var(--color-shadow);
-}
-.ns-cta--sm:hover {
-  box-shadow: 4px 4px 0 var(--color-shadow);
 }
 .ns-cta--primary {
-  background: var(--color-blue);
-  color: var(--color-onbright);
-  border-color: var(--color-blue);
+  background: var(--color-sel);
+  color: var(--color-selink);
+  border-color: var(--color-sel);
+}
+.ns-cta--primary:hover {
+  background: #fff;
+  border-color: #fff;
 }
 .ns-cta--accent {
-  background: var(--color-pink);
+  background: var(--color-coral);
   color: var(--color-onbright);
-  border-color: var(--color-pink);
+  border-color: var(--color-coral);
+}
+.ns-cta--accent:hover {
+  filter: brightness(1.06);
 }
 .ns-cta--ghost {
-  background: var(--color-surface);
+  background: transparent;
+  border-color: var(--color-line);
+  color: var(--color-inksoft);
+}
+.ns-cta--ghost:hover {
+  background: var(--color-hover);
   color: var(--color-ink);
+  border-color: var(--color-linehi);
 }
 
-/* Google sign-in — must stay black on white (global button { color: inherit } otherwise wins). */
+/* Google sign-in — must stay black on white */
 .ns-google-btn {
   color: #000;
+  border: 1px solid var(--color-linehi);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  box-shadow: none;
+  transition:
+    background 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.1s ease;
+}
+.ns-google-btn:hover {
+  transform: none;
+  background: #f8f8f8;
+}
+
+/* Form fields */
+.ns-input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  padding: 0.7rem 0.9rem;
+  font-family: var(--ns-font-body);
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+.ns-input:focus {
+  border-color: var(--color-linehi);
+}
+
+/* Info / success banners */
+.ns-banner {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surfacesunken);
 }
 
 /* Stats row */
 .ns-stats-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  border-top: 2px solid var(--color-ink);
-  border-bottom: 2px solid var(--color-ink);
+  gap: 0;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
 }
 @media (min-width: 768px) {
   .ns-stats-row {
@@ -207,7 +274,7 @@ a {
   flex-direction: column;
   gap: 0.25rem;
   padding: 1.25rem 1rem;
-  border-right: 2px solid var(--color-linesoft);
+  border-right: 1px solid var(--color-line);
 }
 .ns-stat:last-child {
   border-right: none;
@@ -217,7 +284,7 @@ a {
     border-right: none;
   }
   .ns-stat:nth-child(-n + 2) {
-    border-bottom: 2px solid var(--color-linesoft);
+    border-bottom: 1px solid var(--color-line);
   }
 }
 .ns-stat-value {
@@ -252,21 +319,16 @@ a {
   background: linear-gradient(165deg, var(--color-surface) 0%, var(--color-bgalt) 100%);
 }
 
-/* Mobile only: shrink the wordmarks to 70% of their desktop size.
-   The brand component sets font-size inline on its inner spans, so we override
-   with !important (a stylesheet rule beats a non-important inline style). */
 @media (max-width: 767px) {
   .ns-wm-nav span {
-    font-size: 21px !important; /* 70% of 30px */
+    font-size: 21px !important;
   }
   .ns-wm-cta span {
-    font-size: 33.6px !important; /* 70% of 48px */
+    font-size: 33.6px !important;
   }
 }
 
-/* Hero promo player — matches the desktop preview/library playback frame
-   (2px ink border, 14px radius-md, hard-offset shadow, black backdrop).
-   Locked to an exact 9:16 box so it never depends on metadata load timing. */
+/* Hero promo player — matches desktop film frame */
 .ns-hero-video {
   position: relative;
   width: 100%;
@@ -281,20 +343,11 @@ a {
   aspect-ratio: 9 / 16;
   object-fit: cover;
   background: #000;
-  border: 2px solid var(--color-ink);
-  border-radius: 14px;
-  box-shadow: 6px 6px 0 var(--color-shadow);
+  border: 1px solid var(--color-linehi);
+  border-radius: var(--radius-md);
+  box-shadow: var(--ns-shadow-soft, 0 8px 32px -12px rgba(0, 0, 0, 0.55));
 }
-/* Fullscreen (desktop): the element is forced to fill a 16:9 monitor, so switch
-   to `contain` to preserve the 9:16 frame (letterboxed) instead of cropping it.
-   Drop the framed-player chrome that looks out of place edge-to-edge. */
-.ns-hero-video video:fullscreen {
-  aspect-ratio: auto;
-  object-fit: contain;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
+.ns-hero-video video:fullscreen,
 .ns-hero-video video:-webkit-full-screen {
   aspect-ratio: auto;
   object-fit: contain;
@@ -332,12 +385,13 @@ a {
 
 /* Legal pages */
 .legal-section:target h2 {
-  color: var(--color-pinkdeep);
+  color: var(--color-ink);
 }
 .legal-toc a {
   text-decoration: none;
+  color: var(--color-inksoft);
 }
 .legal-toc a:hover {
+  color: var(--color-ink);
   text-decoration: underline;
 }
-
