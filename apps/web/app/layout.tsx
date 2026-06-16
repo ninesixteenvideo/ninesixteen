@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Bungee, Faster_One, IBM_Plex_Mono, Inter } from "next/font/google";
 import "@ninesixteen/brand/theme.css";
 import "./globals.css";
@@ -66,12 +67,20 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const xPixelId = process.env.NEXT_PUBLIC_X_PIXEL_ID?.trim();
+
   return (
     <html
       lang="en"
       className={`${inter.variable} ${ibmPlexMono.variable} ${bungee.variable} ${fasterOne.variable}`}
     >
       <body className="ns-grain min-h-screen font-body antialiased">
+        {xPixelId ? (
+          <Script id="x-conversion-pixel" strategy="afterInteractive">
+            {`!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');
+twq('config','${xPixelId}');`}
+          </Script>
+        ) : null}
         <AuthProvider>
           <div className="relative z-10 flex min-h-screen flex-col">
             <SiteHeader />
