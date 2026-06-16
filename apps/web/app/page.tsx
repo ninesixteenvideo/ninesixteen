@@ -2,16 +2,18 @@ import Link from "next/link";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { FeaturesGrid, StepsGrid, UseCasesGrid } from "@/components/LandingCardSections";
 import { HeroVideo } from "@/components/HeroVideo";
+import { ReleaseNotesLink } from "@/components/ReleaseNotesLink";
+import { ReleaseNotesSection } from "@/components/ReleaseNotes";
 
 export default function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-5">
       {/* HERO */}
-      <section className="grid items-center gap-8 py-16 md:grid-cols-[1.15fr_1fr] md:gap-4 md:py-24">
+      <section className="grid items-center gap-8 pb-12 pt-16 md:grid-cols-[1.15fr_1fr] md:gap-4 md:pb-14 md:pt-24">
         <div>
           <span className="ns-chip inline-block">Windows · vertical screen recorder</span>
           <h1 className="mt-6 font-display text-[2.75rem] leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-[4.25rem]">
-            Your desktop,
+            Your desktop
             <br />
             shot vertical.
           </h1>
@@ -30,13 +32,14 @@ export default function HomePage() {
               Purchase · $49 USD
             </Link>
           </div>
-          <p className="mt-5 font-mono text-xs text-inkfaint">
+          <p className="ns-hero-caption mt-5">
             Record &amp; preview free · $49 one-time purchase · No account to start
           </p>
         </div>
 
-        <div className="flex justify-center md:justify-start md:self-start md:-mt-[46px]">
+        <div className="relative flex justify-center md:justify-start md:self-start md:-mt-[46px]">
           <HeroVideo />
+          <ReleaseNotesLink />
         </div>
       </section>
 
@@ -83,24 +86,7 @@ export default function HomePage() {
         <StepsGrid />
       </section>
 
-      {/* CTA */}
-      <section className="py-16 pb-24">
-        <div className="ns-card ns-cta-panel flex flex-col items-center gap-6 px-6 py-14 text-center md:px-12 md:py-16">
-          <Wordmark size={48} showSuffix className="ns-wm-cta" />
-          <p className="max-w-lg font-body text-lg text-inksoft">
-            Record and preview free, forever. Unlock unlimited MP4 export with a single $49
-            payment — no subscription, no watermark, no catch.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/download" className="ns-cta ns-cta--accent">
-              Download
-            </Link>
-            <Link href="/pricing" className="ns-cta ns-cta--accent">
-              Purchase · $49
-            </Link>
-          </div>
-        </div>
-      </section>
+      <ReleaseNotesSection />
     </div>
   );
 }

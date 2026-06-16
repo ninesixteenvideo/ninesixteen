@@ -269,6 +269,8 @@ pub struct AppState {
     /// Pre-record countdown — user positions the frame before capture starts.
     pub recording_armed: bool,
     pub countdown_seconds: u8,
+    /// True while FFmpeg/encrypt finalize runs after the user stops recording.
+    pub finalizing: bool,
 
     // Active recording session bookkeeping.
     pub current_path: Option<PathBuf>,
@@ -294,6 +296,7 @@ impl Default for AppState {
             camera_connected: false,
             recording_armed: false,
             countdown_seconds: 0,
+            finalizing: false,
             current_path: None,
             session_start: None,
             current_start: None,

@@ -7,8 +7,9 @@ import { Preview } from "./components/Preview";
 import { Settings } from "./components/Settings";
 import { AccountMenu } from "./components/AccountMenu";
 import { HotkeysModal } from "./components/HotkeysModal";
+import { UpdateModal } from "./components/UpdateModal";
 import { isDesktop } from "./lib/bridge";
-import { checkForUpdatesOnStartup } from "./lib/updater";
+import { canAutoUpdate, checkForUpdates, installAvailableUpdate } from "./lib/updater";
 
 const BASE_TABS = [
   { id: "studio", label: "Studio" },
@@ -20,6 +21,9 @@ export function App() {
   const { ready, tab, setTab, init, recording } = useStore();
   const { isPro } = useAuth();
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const [updateOffer, setUpdateOffer] = useState<{ version: string } | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const tabs = BASE_TABS.map((t) =>
     t.id === "preview" ? { ...t, label: isPro ? "Library" : "Preview" } : t
@@ -30,12 +34,26 @@ export function App() {
   }, [init]);
 
   useEffect(() => {
-    if (!ready || !isDesktop) return;
+    if (!ready || !isDesktop || !canAutoUpdate()) return;
     const timer = window.setTimeout(() => {
-      void checkForUpdatesOnStartup();
+      void checkForUpdates().then((result) => {
+        if (result.status === "available") {
+          setUpdateOffer({ version: result.version });
+        }
+      });
     }, 4000);
     return () => window.clearTimeout(timer);
   }, [ready]);
+
+  async function handleInstallUpdate() {
+    setUpdateInstalling(true);
+    setUpdateError(null);
+    const result = await installAvailableUpdate();
+    if (result.status === "error") {
+      setUpdateError(result.message);
+      setUpdateInstalling(false);
+    }
+  }
 
   return (
     <div className="app">
@@ -51,6 +69,16 @@ export function App() {
               {label}
             </button>
           ))}
+        </nav>
+        <div className="topbar-actions">
+          {!isDesktop && (
+            <span className="pill" style={{ background: "var(--ns-yellow)", color: "var(--ns-on-bright)" }}>
+              web preview
+            </span>
+          )}
+          {recording && <span className="pill rec-dot">REC</span>}
+          {/* Virtual camera (CamStatus) deferred to v1.1 — recording-only for v1. */}
+          <AccountMenu />
           {isDesktop && (
             <button
               type="button"
@@ -60,16 +88,6 @@ export function App() {
               Hotkeys
             </button>
           )}
-        </nav>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {!isDesktop && (
-            <span className="pill" style={{ background: "var(--ns-yellow)", color: "var(--ns-on-bright)" }}>
-              web preview
-            </span>
-          )}
-          {recording && <span className="pill rec-dot">REC</span>}
-          {/* Virtual camera (CamStatus) deferred to v1.1 — recording-only for v1. */}
-          <AccountMenu />
         </div>
       </header>
 
@@ -85,6 +103,15 @@ export function App() {
       )}
 
       {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} />}
+      {updateOffer && (
+        <UpdateModal
+          version={updateOffer.version}
+          installing={updateInstalling}
+          error={updateError}
+          onClose={() => setUpdateOffer(null)}
+          onUpdate={() => void handleInstallUpdate()}
+        />
+      )}
     </div>
   );
 }

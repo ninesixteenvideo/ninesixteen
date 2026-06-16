@@ -56,28 +56,35 @@ mod imp {
             return Vec::new();
         }
         let frames = samples.len() / ch;
+        if frames == 0 {
+            return Vec::new();
+        }
+        // Downmix to stereo first (take L/R; duplicate mono into both channels).
         let mut stereo = Vec::with_capacity(frames * 2);
         for i in 0..frames {
             let l = samples[i * ch];
-            let r = if ch > 1 {
-                samples[i * ch + 1]
-            } else {
-                l
-            };
+            let r = if ch > 1 { samples[i * ch + 1] } else { l };
             stereo.push(l);
             stereo.push(r);
         }
         if src_rate == SAMPLE_RATE {
             return stereo;
         }
-        let out_frames = ((stereo.len() as f64 / 2.0) * SAMPLE_RATE as f64 / src_rate as f64)
-            .round() as usize;
+        // Linear interpolation to 48 kHz. `round()` on the output length keeps the
+        // long-run ratio unbiased, so per-packet rounding error cancels out instead
+        // of accumulating into A/V drift (the mux step corrects any tiny residual).
+        let out_frames = (frames as f64 * SAMPLE_RATE as f64 / src_rate as f64).round() as usize;
         let mut out = Vec::with_capacity(out_frames * 2);
+        let step = src_rate as f64 / SAMPLE_RATE as f64;
         for i in 0..out_frames {
-            let src_i = ((i as f64 * src_rate as f64 / SAMPLE_RATE as f64).round() as usize)
-                .min(frames.saturating_sub(1));
-            out.push(stereo[src_i * 2]);
-            out.push(stereo[src_i * 2 + 1]);
+            let pos = i as f64 * step;
+            let i0 = pos.floor() as usize;
+            let frac = (pos - i0 as f64) as f32;
+            let i1 = (i0 + 1).min(frames - 1);
+            let l = stereo[i0 * 2] * (1.0 - frac) + stereo[i1 * 2] * frac;
+            let r = stereo[i0 * 2 + 1] * (1.0 - frac) + stereo[i1 * 2 + 1] * frac;
+            out.push(l);
+            out.push(r);
         }
         out
     }
@@ -89,6 +96,7 @@ mod imp {
         block_align: u32,
         sample_rate: u32,
         channels: u16,
+        is_float: bool,
     }
 
     impl CaptureStream {
@@ -119,28 +127,52 @@ mod imp {
         }
 
         fn open_device(device: Device, loopback: bool) -> Result<Self, String> {
-            let format = output_format();
-
-            // Probe the device for its periods / mix format, then drop the probe
-            // client so we always Initialize on a fresh client.
-            let (default_time, min_time) = {
+            // Probe the device for its periods and (for loopback) its native mix
+            // format, then drop the probe client so we always Initialize a fresh one.
+            let (default_time, min_time, native) = {
                 let probe = device.get_iaudioclient().map_err(|e| e.to_string())?;
-                if loopback {
-                    if let Ok(mix) = probe.get_mixformat() {
-                        capture_log(&format!(
-                            "Loopback device mix: {} Hz, {} ch, {}-bit",
-                            mix.get_samplespersec(),
-                            mix.get_nchannels(),
-                            mix.get_bitspersample()
-                        ));
-                    }
-                }
-                probe.get_periods().map_err(|e| e.to_string())?
+                let native = if loopback { probe.get_mixformat().ok() } else { None };
+                let (d, m) = probe.get_periods().map_err(|e| e.to_string())?;
+                (d, m, native)
             };
 
-            // Initialize a fresh client at the requested buffer size. Shared mode
-            // + auto-convert lets WASAPI deliver our 48 kHz/stereo/float format
-            // regardless of the device's native mix format.
+            // For LOOPBACK we capture at the render endpoint's *native* mix format
+            // and resample to 48 kHz ourselves. WASAPI's AUTOCONVERTPCM is
+            // unreliable in loopback mode: on some interfaces (e.g. a 44.1 kHz
+            // Steinberg UR22) it silently ignores the requested 48 kHz and returns
+            // fewer samples than wall-clock time, so audio drifts out of sync with
+            // video. Capturing native + resampling ourselves is the documented,
+            // device-agnostic path. For microphones, shared-mode AUTOCONVERTPCM is
+            // reliable, so we keep requesting 48 kHz / stereo / float directly.
+            let format = match (loopback, native) {
+                (true, Some(mix)) => {
+                    capture_log(&format!(
+                        "Loopback native capture: {} Hz, {} ch, {}-bit {}",
+                        mix.get_samplespersec(),
+                        mix.get_nchannels(),
+                        mix.get_bitspersample(),
+                        if matches!(mix.get_subformat(), Ok(SampleType::Float)) {
+                            "float"
+                        } else {
+                            "int"
+                        }
+                    ));
+                    mix
+                }
+                _ => output_format(),
+            };
+            // Loopback uses native format (no SRC). Mic requests 48k w/ auto-convert.
+            let convert = !loopback;
+            let is_float = match format.get_subformat() {
+                Ok(SampleType::Float) => true,
+                Ok(SampleType::Int) => false,
+                Err(_) => format.get_bitspersample() == 32,
+            };
+            let sample_rate = format.get_samplespersec();
+            let channels = format.get_nchannels().max(1);
+            let block_align = format.get_blockalign();
+
+            // Initialize a fresh client at the chosen format + buffer size.
             let init = |buffer: i64| -> Result<(AudioClient, Handle), String> {
                 let mut client = device.get_iaudioclient().map_err(|e| e.to_string())?;
                 client
@@ -149,7 +181,7 @@ mod imp {
                         buffer,
                         &Direction::Capture,
                         &ShareMode::Shared,
-                        true,
+                        convert,
                     )
                     .map_err(|e| e.to_string())?;
                 let event = client.set_get_eventhandle().map_err(|e| e.to_string())?;
@@ -174,9 +206,10 @@ mod imp {
                 _client: client,
                 capture,
                 event,
-                block_align: format.get_blockalign(),
-                sample_rate: SAMPLE_RATE,
-                channels: CHANNELS,
+                block_align,
+                sample_rate,
+                channels,
+                is_float,
             })
         }
 
@@ -191,28 +224,59 @@ mod imp {
         fn read_samples_timeout(&mut self, wait_ms: u32) -> Result<Vec<f32>, String> {
             let _ = self.event.wait_for_event(wait_ms);
             let mut bytes: VecDeque<u8> = VecDeque::new();
-            self.capture
+            let flags = self
+                .capture
                 .read_from_device_to_deque(&mut bytes)
                 .map_err(|e| e.to_string())?;
             let block = self.block_align as usize;
             if block == 0 || bytes.len() < block {
                 return Ok(Vec::new());
             }
-            let mut raw = Vec::with_capacity(bytes.len() / 4);
-            while bytes.len() >= block {
-                let mut frame = vec![0u8; block];
-                for b in frame.iter_mut() {
-                    *b = bytes.pop_front().unwrap_or(0);
-                }
-                for chunk in frame.chunks_exact(4) {
-                    raw.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+            let ch = self.channels.max(1) as usize;
+            let bytes_per_sample = (block / ch).max(1);
+            let frames = bytes.len() / block;
+
+            // A SILENT packet still carries valid timing (a real frame count) but
+            // its byte contents are undefined per the WASAPI contract — emit true
+            // zeros so silence keeps A/V aligned without garbage clicks.
+            if flags.silent {
+                let silent = vec![0.0f32; frames * ch];
+                return Ok(resample_to_stereo_48k(&silent, self.sample_rate, self.channels));
+            }
+
+            let raw: Vec<u8> = bytes.into_iter().collect();
+            let mut samples = Vec::with_capacity(frames * ch);
+            for frame in raw.chunks_exact(block) {
+                for s in frame.chunks_exact(bytes_per_sample) {
+                    samples.push(decode_sample(s, self.is_float));
                 }
             }
-            Ok(resample_to_stereo_48k(
-                &raw,
-                self.sample_rate,
-                self.channels,
-            ))
+            Ok(resample_to_stereo_48k(&samples, self.sample_rate, self.channels))
+        }
+    }
+
+    /// Decode one native PCM sample to `f32` in [-1.0, 1.0]. Shared-mode mix
+    /// formats are effectively always 32-bit float, but microphones can be
+    /// 16/24/32-bit int, so handle the common widths defensively.
+    fn decode_sample(bytes: &[u8], is_float: bool) -> f32 {
+        match (is_float, bytes.len()) {
+            (true, 4) => f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+            (true, 8) => f64::from_le_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ]) as f32,
+            (false, 2) => i16::from_le_bytes([bytes[0], bytes[1]]) as f32 / 32_768.0,
+            (false, 3) => {
+                // 24-bit little-endian signed, sign-extended through the top byte.
+                let v = ((bytes[0] as i32) << 8)
+                    | ((bytes[1] as i32) << 16)
+                    | ((bytes[2] as i32) << 24);
+                (v >> 8) as f32 / 8_388_608.0
+            }
+            (false, 4) => {
+                i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f32
+                    / 2_147_483_648.0
+            }
+            _ => 0.0,
         }
     }
 

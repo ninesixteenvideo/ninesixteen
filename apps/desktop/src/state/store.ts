@@ -134,7 +134,7 @@ export const useStore = create<Store>((set, get) => ({
         savePhase: p.finalizing ? get().savePhase : "",
         arming: p.arming ?? (p.recording ? false : get().arming),
         countdownSeconds: p.recording || p.arming === false ? 0 : get().countdownSeconds,
-        overlayVisible: p.recording || p.arming ? true : get().overlayVisible,
+        overlayVisible: p.recording || p.arming ? true : p.finalizing ? false : get().overlayVisible,
         frameFrozen: p.recording || p.arming ? get().frameFrozen : false,
       })
     );

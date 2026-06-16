@@ -724,18 +724,28 @@ fn mux_pcm_audio(video_path: &Path, pcm_path: &Path, duration_secs: f64) -> Resu
     };
     let tempo = if duration_secs > 0.25 && audio_secs > 0.25 {
         let ratio = audio_secs / duration_secs;
-        // Only correct meaningful, physically-plausible drift (>0.1%, <=10%).
-        if (ratio - 1.0).abs() > 0.001 && (0.9..=1.1).contains(&ratio) {
-            capture_log(&format!(
-                "Audio drift correction: {audio_secs:.3}s captured → {duration_secs:.3}s video (atempo {ratio:.5})"
-            ));
-            Some(ratio)
-        } else {
-            if (ratio - 1.0).abs() > 0.1 {
+        if (ratio - 1.0).abs() <= 0.001 {
+            // Already locked — nothing to do.
+            None
+        } else if (0.5..=2.0).contains(&ratio) {
+            // atempo's single-instance range is [0.5, 2.0]. Always correct within
+            // it so we never ship grossly desynced audio. A large value here means
+            // the capture rate was wrong (e.g. a device whose native rate isn't
+            // 48 kHz) — log loudly so it's obvious in bug reports.
+            if (ratio - 1.0).abs() > 0.05 {
                 capture_log(&format!(
-                    "WARN: large audio/video divergence ({audio_secs:.2}s vs {duration_secs:.2}s) — muxing without tempo correction"
+                    "WARN: large audio/video divergence ({audio_secs:.2}s vs {duration_secs:.2}s) — correcting tempo {ratio:.5} (check capture sample rate)"
+                ));
+            } else {
+                capture_log(&format!(
+                    "Audio drift correction: {audio_secs:.3}s captured → {duration_secs:.3}s video (atempo {ratio:.5})"
                 ));
             }
+            Some(ratio)
+        } else {
+            capture_log(&format!(
+                "WARN: audio/video divergence beyond atempo range ({audio_secs:.2}s vs {duration_secs:.2}s) — muxing without tempo correction"
+            ));
             None
         }
     } else {

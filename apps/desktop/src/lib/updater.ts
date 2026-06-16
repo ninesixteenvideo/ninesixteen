@@ -52,19 +52,3 @@ export async function installAvailableUpdate(): Promise<UpdateCheckResult> {
   }
 }
 
-/** Startup check — prompts only when a newer version exists. */
-export async function checkForUpdatesOnStartup(): Promise<void> {
-  if (!canAutoUpdate()) return;
-
-  const result = await checkForUpdates();
-  if (result.status !== "available") return;
-
-  const { ask } = await import("@tauri-apps/plugin-dialog");
-  const yes = await ask(
-    `Version ${result.version} is available. Download and install now?`,
-    { title: "Update available", kind: "info", okLabel: "Update now", cancelLabel: "Later" }
-  );
-  if (!yes) return;
-
-  await installAvailableUpdate();
-}

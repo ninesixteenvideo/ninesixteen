@@ -79,7 +79,7 @@ fn merged_capture_state(handles: &AppHandles) -> CaptureState {
 
 /// Overlay forced on while recording, streaming, or counting down to record.
 fn overlay_force_visible(st: &AppState) -> bool {
-    st.recording || st.streaming || st.recording_armed
+    !st.finalizing && (st.recording || st.streaming || st.recording_armed)
 }
 
 /// True while the on-desktop frame overlay needs live viewport updates.
@@ -104,7 +104,12 @@ fn defer_recording_state(app: &AppHandle, payload: serde_json::Value) {
 fn finish_recording_ui(app: &AppHandle, state: &SharedState, result: Result<Option<RecordingInfo>, String>) {
     let app_main = app.clone();
     let state = state.clone();
-    let _ = app.run_on_main_thread(move || match result {
+    let _ = app.run_on_main_thread(move || {
+        {
+            let mut st = state.lock();
+            st.finalizing = false;
+        }
+        match result {
         Ok(info) => {
             emit_recording_state(
                 &app_main,
@@ -122,6 +127,7 @@ fn finish_recording_ui(app: &AppHandle, state: &SharedState, result: Result<Opti
             );
             let _ = app_main.emit("recording:finished", Option::<RecordingInfo>::None);
             apply_overlay_visibility(&app_main, &state.lock());
+        }
         }
     });
 }
@@ -456,10 +462,12 @@ pub fn stop_recording(
     handles: State<AppHandles>,
 ) -> Result<(), String> {
     {
-        let st = handles.state.lock();
+        let mut st = handles.state.lock();
         if !st.recording {
             return Ok(());
         }
+        st.finalizing = true;
+        st.overlay_visible = false;
     }
     crate::rawinput::reset_frame_follow(&handles.viewport);
     let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
@@ -469,6 +477,12 @@ pub fn stop_recording(
         serde_json::json!({ "recording": false, "finalizing": true }),
     );
     let shared: SharedState = handles.inner().state.clone();
+    let app_ui = app.clone();
+    let state_ui = shared.clone();
+    let _ = app.run_on_main_thread(move || {
+        apply_overlay_visibility(&app_ui, &state_ui.lock());
+        crate::tray::show_main_window(&app_ui);
+    });
     let app_bg = app.clone();
     std::thread::Builder::new()
         .name("stop-recording".into())
@@ -477,7 +491,13 @@ pub fn stop_recording(
                 .map_err(|e| e.to_string());
             finish_recording_ui(&app_bg, &shared, result);
         })
-        .map_err(|e| format!("spawn stop-recording thread: {e}"))?;
+        .map_err(|e| {
+            {
+                let mut st = handles.state.lock();
+                st.finalizing = false;
+            }
+            format!("spawn stop-recording thread: {e}")
+        })?;
     Ok(())
 }
 

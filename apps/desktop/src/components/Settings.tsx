@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { AccountCard } from "./AccountCard";
 import { useStore } from "../state/store";
 import { isDesktop } from "../lib/bridge";
 import { WEB_URL } from "../lib/firebase";
@@ -23,8 +24,6 @@ async function openLegalPage(path: "/terms" | "/privacy") {
 export function Settings() {
   const {
     inputSettings,
-    monitors,
-    monitor,
     setInputSettings,
   } = useStore();
   const { user } = useAuth();
@@ -108,14 +107,10 @@ export function Settings() {
         </div>
       )}
 
+      <AccountCard />
+
       <section className="panel" style={{ marginBottom: 16 }}>
-        <h3>Zoom</h3>
-        <p className="muted" style={{ marginBottom: 12 }}>
-          Hold <span className="kbd">Alt</span> and scroll to zoom — or, on a laptop trackpad, hold{" "}
-          <span className="kbd">Alt</span> and press <span className="kbd">↑</span> /{" "}
-          <span className="kbd">↓</span>. Pauses briefly at full 9×16 so you can land there easily;
-          zoom out further to see the whole desktop letterboxed.
-        </p>
+        <h3>Adjusters</h3>
         <Slider
           label="Scroll sensitivity"
           value={inputSettings.zoomSensitivity}
@@ -126,18 +121,32 @@ export function Settings() {
         />
       </section>
 
-      <section className="panel">
-        <h3>Recording</h3>
-        <p className="muted" style={{ marginBottom: 12 }}>
-          Recordings save as encrypted files you can preview in the app. Pro unlocks MP4 export.
-        </p>
-        <div className="row" style={{ marginBottom: 12 }}>
-          <span className="label">Source display</span>
-          <span className="muted">
-            {monitor?.name ?? monitors[0]?.name ?? "—"} ({monitor?.width}×{monitor?.height})
-          </span>
-        </div>
-      </section>
+      {isDesktop && (
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h3>Updates</h3>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            The app checks for updates on startup. You can also check manually here.
+          </p>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <span className="label">Current version</span>
+            <span className="muted">{appVersion ?? "…"}</span>
+          </div>
+          {updateError && <p className="auth-error" style={{ marginBottom: 12 }}>{updateError}</p>}
+          {updateStatus && (
+            <p className="muted" style={{ marginBottom: 12, color: "var(--ns-blue-deep)" }}>
+              {updateStatus}
+            </p>
+          )}
+          <button
+            type="button"
+            className="btn ghost sm"
+            disabled={updateBusy}
+            onClick={() => void handleCheckForUpdates()}
+          >
+            {updateBusy ? "Checking…" : "Check for updates"}
+          </button>
+        </section>
+      )}
 
       {isDesktop && (
         <section className="panel" style={{ marginTop: 16 }}>
@@ -195,33 +204,6 @@ export function Settings() {
             onClick={() => void handleSendFeedback()}
           >
             {feedbackBusy ? "Sending…" : "Send feedback"}
-          </button>
-        </section>
-      )}
-
-      {isDesktop && (
-        <section className="panel" style={{ marginTop: 16 }}>
-          <h3>Updates</h3>
-          <p className="muted" style={{ marginBottom: 12 }}>
-            The app checks for updates on startup. You can also check manually here.
-          </p>
-          <div className="row" style={{ marginBottom: 12 }}>
-            <span className="label">Current version</span>
-            <span className="muted">{appVersion ?? "…"}</span>
-          </div>
-          {updateError && <p className="auth-error" style={{ marginBottom: 12 }}>{updateError}</p>}
-          {updateStatus && (
-            <p className="muted" style={{ marginBottom: 12, color: "var(--ns-blue-deep)" }}>
-              {updateStatus}
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn ghost sm"
-            disabled={updateBusy}
-            onClick={() => void handleCheckForUpdates()}
-          >
-            {updateBusy ? "Checking…" : "Check for updates"}
           </button>
         </section>
       )}

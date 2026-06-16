@@ -221,7 +221,7 @@ export function Overlay() {
 
       const cd = countdown.current;
       if (cd > 0 && (arming.current || !recording.current)) {
-        drawCountdown(ctx, String(cd), rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr);
+        drawCountdown(ctx, cd, rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr);
       }
     };
 
@@ -236,27 +236,48 @@ export function Overlay() {
   return <canvas ref={canvasRef} style={{ display: "block", width: "100vw", height: "100vh" }} />;
 }
 
+// Brand palette, cycled per digit counting down from 5:
+// 5 coral, 4 mint, 3 white, 2 coral, 1 mint …
+const COUNTDOWN_COLORS = ["#FF6B58", "#78FFD4", "#FFFFFF"];
+const COUNTDOWN_BORDER = "#1B1A18";
+
 function drawCountdown(
   ctx: CanvasRenderingContext2D,
-  text: string,
+  seconds: number,
   cx: number,
   cy: number,
   frameShortEdge: number,
   dpr: number,
 ) {
-  const fontSize = Math.max(36 * dpr, frameShortEdge * 0.36);
-  const lineWidth = Math.max(2.5 * dpr, fontSize * 0.055);
+  const text = String(seconds);
+  // Slightly smaller than before (0.30 vs 0.36 of the frame's short edge).
+  const fontSize = Math.max(32 * dpr, frameShortEdge * 0.3);
+  // Medium-thickness charcoal border that scales with the glyph.
+  const lineWidth = Math.max(3 * dpr, fontSize * 0.08);
+  const fill = COUNTDOWN_COLORS[(5 - seconds) % COUNTDOWN_COLORS.length];
 
   ctx.font = `700 ${fontSize}px "Inter", system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   ctx.miterLimit = 2;
+
+  // Soft drop shadow so the number reads on any desktop content behind it.
+  ctx.shadowColor = "rgba(10, 10, 16, 0.45)";
+  ctx.shadowBlur = fontSize * 0.06;
+  ctx.shadowOffsetY = 2 * dpr;
+
   ctx.lineWidth = lineWidth;
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
-  ctx.fillStyle = "rgba(198, 204, 212, 0.9)";
+  ctx.strokeStyle = COUNTDOWN_BORDER;
   ctx.strokeText(text, cx, cy);
+
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  ctx.fillStyle = fill;
   ctx.fillText(text, cx, cy);
+
   ctx.textAlign = "start";
   ctx.textBaseline = "alphabetic";
 }

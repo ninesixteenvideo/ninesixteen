@@ -37,19 +37,14 @@ const INCLUDED = [
 
 export default function DownloadPage() {
   return (
-    <div className="mx-auto max-w-4xl px-5 py-16">
+    <div className="mx-auto max-w-4xl px-5 py-8 sm:py-10">
       <div className="text-center">
-        <span className="ns-chip">Free trial · no account needed</span>
-        <h1 className="mt-4 font-display text-4xl tracking-tight sm:text-5xl">
+        <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
           Download <Wordmark size={36} showSuffix />
         </h1>
-        <p className="mx-auto mt-4 max-w-lg font-body text-lg text-inksoft">
-          One clean installer — record and preview free, then buy Pro once ($49) when
-          you&apos;re ready to export. No command line, no drivers, no subscription.
-        </p>
       </div>
 
-      <div className="ns-card mt-12 overflow-hidden">
+      <div className="ns-card mt-6 overflow-hidden sm:mt-8">
         <div className="grid gap-0 md:grid-cols-[1fr_auto]">
           <div className="border-b-2 border-ink p-8 md:border-b-0 md:border-r-2">
             <div className="flex items-center gap-4">
@@ -79,7 +74,7 @@ export default function DownloadPage() {
                 download={INSTALLER_FILENAME || undefined}
                 className="ns-cta ns-cta--primary w-full max-w-xs text-center"
               >
-                Free download · .{INSTALLER_EXT}
+                Download .{INSTALLER_EXT}
               </a>
             ) : (
               <button
@@ -91,29 +86,47 @@ export default function DownloadPage() {
                 }}
                 className="ns-cta ns-cta--primary w-full max-w-xs text-center opacity-80"
               >
-                Free download · .exe
+                Download .exe
               </button>
             )}
             <p className="text-center font-mono text-[11px] text-inkfaint">
               {INSTALLER_URL
-                ? `v${VERSION} · signed build`
+                ? `v${VERSION} · Windows x64`
                 : "Set NEXT_PUBLIC_DESKTOP_INSTALLER_URL to go live"}
             </p>
           </div>
         </div>
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      <div className="ns-card ns-card--flat mt-6 border-l-4 border-blue p-5 sm:p-6">
+        <p className="font-display text-lg">A little note from the solo dev</p>
+        <p className="mt-2 font-body text-sm leading-relaxed text-inksoft">
+          Hi — I&apos;m building ninesixteen.video on my own. The Windows installer
+          isn&apos;t code-signed yet (working on it!), so SmartScreen might pop up and
+          say the app is from an unknown publisher. Totally normal for tiny indie
+          software — you&apos;re still getting the real thing from this site.
+        </p>
+        <p className="mt-3 font-body text-sm leading-relaxed text-inksoft">
+          If Windows says{" "}
+          <span className="font-semibold text-ink">&ldquo;Windows protected your PC&rdquo;</span>
+          , click{" "}
+          <span className="font-semibold text-ink">More info</span>, then{" "}
+          <span className="font-semibold text-ink">Run anyway</span>. Same steps if the
+          installer asks again during setup.
+        </p>
+      </div>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <InfoBlock title="Windows requirements" items={REQUIREMENTS} />
         <InfoBlock title="After install" items={AFTER_INSTALL} />
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <PlatformSoon icon="🍎" name="macOS" note="On the roadmap" />
         <PlatformSoon icon="🐧" name="Linux" note="On the roadmap" />
       </div>
 
-      <p className="mt-10 text-center font-body text-sm text-inksoft">
+      <p className="mt-8 text-center font-body text-sm text-inksoft">
         Already on Pro?{" "}
         <Link href="/dashboard" className="font-semibold text-bluedeep hover:underline">
           Open your dashboard
