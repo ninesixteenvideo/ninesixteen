@@ -50,6 +50,7 @@ recordings/
 
 # Deploy tooling
 .vercel/
+UPDATEGUIDE.md
 
 # OS / editor
 .DS_Store
