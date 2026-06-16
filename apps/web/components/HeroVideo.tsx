@@ -7,9 +7,9 @@ import { SpeakerSimpleHigh, SpeakerSimpleSlash } from "@phosphor-icons/react";
  * Landing-page promo player. Houses promo.mp4 (720×1280, exact 9:16) in the same
  * hard-offset, curved frame the desktop app uses for preview/library playback.
  *
- * Paused on the first frame by default — user hits play via native controls (or
- * unmute, which also starts playback). `muted` is set via the DOM property because
- * the React `muted` attribute is unreliable.
+ * Autoplay MUTED on load — the only mode every browser allows unconditionally.
+ * We set `muted` via the DOM property (the React `muted` attribute is unreliable).
+ * A subtle speaker glyph to the left toggles sound on/off.
  */
 export function HeroVideo() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -22,18 +22,19 @@ export function HeroVideo() {
     video.muted = true;
     video.volume = 1;
 
-    const pauseOnFirstFrame = () => {
-      video.currentTime = 0;
-      video.pause();
+    const tryPlay = () => {
+      void video.play().catch(() => {});
     };
-    pauseOnFirstFrame();
-    video.addEventListener("loadeddata", pauseOnFirstFrame, { once: true });
+    tryPlay();
+    video.addEventListener("canplay", tryPlay, { once: true });
+    video.addEventListener("loadeddata", tryPlay, { once: true });
 
     const syncMuted = () => setMuted(video.muted);
     video.addEventListener("volumechange", syncMuted);
 
     return () => {
-      video.removeEventListener("loadeddata", pauseOnFirstFrame);
+      video.removeEventListener("canplay", tryPlay);
+      video.removeEventListener("loadeddata", tryPlay);
       video.removeEventListener("volumechange", syncMuted);
     };
   }, []);
@@ -65,6 +66,7 @@ export function HeroVideo() {
       <video
         ref={videoRef}
         src="/promo.mp4"
+        autoPlay
         loop
         muted
         playsInline

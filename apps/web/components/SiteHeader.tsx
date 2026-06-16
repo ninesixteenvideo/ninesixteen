@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wordmark } from "@ninesixteen/brand";
 import { useAuth } from "@/lib/auth";
-import { EpicIntroButton } from "@/components/EpicIntroButton";
 
 const TICKER = [
   "true 9×16 capture",
@@ -29,7 +28,6 @@ export function SiteHeader() {
         </Link>
 
         <div className="flex items-center gap-2">
-          <EpicIntroButton />
           {!loading && user ? (
             <Link href="/dashboard" className="ns-cta ns-cta--sm ns-cta--primary">
               Dashboard
