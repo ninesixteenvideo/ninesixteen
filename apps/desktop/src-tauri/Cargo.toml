@@ -1,6 +1,6 @@
 [package]
 name = "ninesixteen"
-version = "0.1.1"
+version = "0.1.2"
 description = "ninesixteen.video desktop recorder & live streamer"
 authors = ["ninesixteen.video"]
 edition = "2021"
