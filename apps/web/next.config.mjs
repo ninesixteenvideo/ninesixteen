@@ -12,9 +12,9 @@ const nextConfig = {
 
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://apis.google.com https://www.gstatic.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://apis.google.com https://www.gstatic.com https://static.ads-twitter.com https://ads-twitter.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https: https://lh3.googleusercontent.com",
+      "img-src 'self' data: blob: https: https://lh3.googleusercontent.com https://static.ads-twitter.com https://ads-twitter.com https://ads-api.twitter.com https://analytics.twitter.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       [
         "connect-src 'self'",
@@ -26,6 +26,10 @@ const nextConfig = {
         "https://firebase.googleapis.com",
         "https://www.googleapis.com",
         "https://api.stripe.com",
+        "https://static.ads-twitter.com",
+        "https://ads-twitter.com",
+        "https://ads-api.twitter.com",
+        "https://analytics.twitter.com",
         "wss://*.firebaseio.com",
       ].join(" "),
       [
