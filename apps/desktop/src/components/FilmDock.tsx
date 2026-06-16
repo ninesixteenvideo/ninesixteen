@@ -40,27 +40,46 @@ export function FilmDock({ onExtendedChange }: { onExtendedChange?: (out: boolea
   // Drive the slide-in / swap / slide-out sequence off the selected id.
   useEffect(() => {
     window.clearTimeout(timer.current);
+    let cancelled = false;
+    let raf = 0;
 
     if (!target) {
       setOut(false);
-      timer.current = window.setTimeout(() => setShownId(null), SLIDE_MS);
-      return;
+      timer.current = window.setTimeout(() => {
+        if (!cancelled) setShownId(null);
+      }, SLIDE_MS);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer.current);
+      };
     }
-    if (shownId === target) {
-      // Mounted but tucked away — extend on the next frame so it animates.
-      timer.current = window.setTimeout(() => setOut(true), 24);
-      return;
-    }
-    if (shownId === null) {
-      // Nothing showing yet: load the clip; the re-run extends it.
+
+    if (shownId !== target) {
+      if (shownId !== null) {
+        setOut(false);
+        timer.current = window.setTimeout(() => {
+          if (!cancelled) setShownId(target);
+        }, SLIDE_MS);
+        return () => {
+          cancelled = true;
+          window.clearTimeout(timer.current);
+        };
+      }
       setShownId(target);
       return;
     }
-    // A different clip is showing: retract first, then swap (re-run extends).
-    setOut(false);
-    timer.current = window.setTimeout(() => setShownId(target), SLIDE_MS);
 
-    return () => window.clearTimeout(timer.current);
+    // Window is already wide on the Library tab — animate the strip out.
+    raf = requestAnimationFrame(() => {
+      raf = requestAnimationFrame(() => {
+        if (!cancelled) setOut(true);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [target, shownId]);
 
   // Resolve the playable URL for whatever clip is currently mounted.
@@ -114,27 +133,40 @@ export function FilmDock({ onExtendedChange }: { onExtendedChange?: (out: boolea
   }
 
   return (
-    <div className={`film ${out ? "out" : ""}`} aria-hidden={!out}>
-      {shown && src && (
+    <div
+      className={`film ${shown ? "mounted" : ""} ${out ? "out" : ""}`}
+      aria-hidden={!out}
+    >
+      {shown && (
         <div className="film-inner">
-          <video
-            key={shown.id}
-            ref={videoRef}
-            className="film-player"
-            src={src}
-            controls
-            autoPlay
-            onTimeUpdate={enforcePreviewCap}
-            onSeeking={enforcePreviewCap}
-            onError={() =>
-              setErr(
-                "Could not load this recording. Rebuild the app if playback recently broke — the release CSP must allow https://nsmedia.localhost."
-              )
-            }
-            style={{ aspectRatio: shown.orientation === "portrait" ? "9 / 16" : "16 / 9" }}
-          />
+          {src ? (
+            <div className="film-clip">
+              <video
+                key={shown.id}
+                ref={videoRef}
+                className="film-player"
+                src={src}
+                controls
+                autoPlay
+                onTimeUpdate={enforcePreviewCap}
+                onSeeking={enforcePreviewCap}
+                onError={() =>
+                  setErr(
+                    "Could not load this recording. Rebuild the app if playback recently broke — the release CSP must allow https://nsmedia.localhost."
+                  )
+                }
+                style={{ aspectRatio: shown.orientation === "portrait" ? "9 / 16" : "16 / 9" }}
+              />
+            </div>
+          ) : (
+            <div className="film-clip">
+              <div className="film-loading" aria-label="Loading preview">
+                <span className="film-loading-dot" />
+              </div>
+            </div>
+          )}
 
-          {!isPro && capReached && (
+          {!isPro && capReached && src && (
             <div className="cap-overlay">
               <span className="cap-badge">Free preview</span>
               <p className="cap-title">That&apos;s the first {FREE_PREVIEW_SECONDS} seconds</p>

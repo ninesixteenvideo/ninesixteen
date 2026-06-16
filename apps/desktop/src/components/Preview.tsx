@@ -15,6 +15,7 @@ import {
   PlayIcon,
   TrashIcon,
 } from "./icons";
+import { RecThumb } from "./RecThumb";
 
 type ExportKind = "local" | "drive";
 type CardMode = "default" | "export" | "delete" | "rename";
@@ -235,12 +236,7 @@ export function Preview() {
                 onClick={() => setLibrarySelected(rec.id)}
                 title={rec.filename}
               >
-                <span
-                  className="rec-thumb"
-                  style={{ aspectRatio: rec.orientation === "portrait" ? "9 / 16" : "16 / 9" }}
-                >
-                  {rec.orientation === "portrait" ? "9×16" : "16×9"}
-                </span>
+                <RecThumb id={rec.id} orientation={rec.orientation} />
                 <span className="rec-info">
                   <span className="rec-name">{rec.filename}</span>
                   <span className="rec-spec">
@@ -300,19 +296,24 @@ function Actions({
   if (mode === "rename") {
     return (
       <div className="acts acts-rename">
-        <input
-          ref={renameInputRef}
-          className="act-input"
-          value={renameDraft}
-          onChange={(e) => onRenameDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onConfirmRename();
-          }}
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="Recording name"
-        />
-        <button className="act primary" onClick={onConfirmRename} disabled={busy}>
+        <div className="acts-rename-fields">
+          <input
+            ref={renameInputRef}
+            className="act-input"
+            value={renameDraft}
+            onChange={(e) => onRenameDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onConfirmRename();
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="Recording name"
+          />
+          <button className="act act-sm" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+        <button className="act primary act-save" onClick={onConfirmRename} disabled={busy}>
           Save
         </button>
       </div>

@@ -52,7 +52,10 @@ export function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
 
-  const capturing = recording || arming || finalizing;
+  // Live capture = countdown or recording: the overlay owns the desktop, so the
+  // dock hides entirely. Finalizing is different — we keep the dock on screen and
+  // surface a "Processing" panel so the user knows their take is being saved.
+  const liveCapture = recording || arming;
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const restoreExpanded = useRef(expanded);
@@ -60,20 +63,31 @@ export function App() {
   const { sidebarPx } = useDockLayout({
     ready,
     expanded,
-    capturing,
-    filmOpen: !!librarySelectedId || filmExtended,
+    capturing: liveCapture,
+    libraryTab: tab === "preview",
+    filmSelected: !!librarySelectedId,
     filmVisible: filmExtended,
   });
 
   useEffect(() => {
-    if (capturing) {
+    if (liveCapture) {
       restoreExpanded.current = expandedRef.current;
       setExpanded(false);
       setLibrarySelected(null);
-    } else {
+    }
+  }, [liveCapture, setLibrarySelected]);
+
+  // Pop the panel open so the processing state is visible the moment we stop.
+  useEffect(() => {
+    if (finalizing) setExpanded(true);
+  }, [finalizing]);
+
+  // Everything done — return the dock to however the user left it.
+  useEffect(() => {
+    if (!recording && !arming && !finalizing) {
       setExpanded(restoreExpanded.current);
     }
-  }, [capturing, setLibrarySelected]);
+  }, [recording, arming, finalizing]);
 
   useEffect(() => {
     init();
@@ -147,7 +161,7 @@ export function App() {
   return (
     <div className="shell">
       <aside
-        className={`sidebar ${expanded ? "expanded" : "collapsed"} ${capturing ? "capturing" : ""}`}
+        className={`sidebar ${expanded ? "expanded" : "collapsed"} ${liveCapture ? "capturing" : ""}`}
       >
         <nav className="rail" aria-label="Primary">
           <div className="rail-win">
@@ -187,12 +201,14 @@ export function App() {
         <section className="panel" aria-hidden={!expanded}>
           <header className="panel-head">
             <div className="panel-head-text">
-              <h1 className="panel-title">{headings[tab as TabId].title}</h1>
-              <p className="panel-sub">{headings[tab as TabId].sub}</p>
+              <h1 className="panel-title">{finalizing ? "Processing" : headings[tab as TabId].title}</h1>
+              <p className="panel-sub">
+                {finalizing ? "Saving your recording — hang tight." : headings[tab as TabId].sub}
+              </p>
             </div>
-            {tab === "studio" && <RecordControl />}
+            {tab === "studio" && !finalizing && <RecordControl />}
           </header>
-          <TabbedBody tab={tab as TabId} />
+          {finalizing ? <Processing /> : <TabbedBody tab={tab as TabId} />}
         </section>
 
         <button
@@ -233,13 +249,13 @@ export function App() {
 async function minimizeWindow() {
   if (!isDesktop) return;
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().minimize();
+  await getCurrentWindow().hide();
 }
 
 async function closeWindow() {
   if (!isDesktop) return;
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().close();
+  const { exit } = await import("@tauri-apps/plugin-process");
+  await exit(0);
 }
 
 function WindowButton({
@@ -330,6 +346,35 @@ function RecordControl() {
     >
       REC
     </button>
+  );
+}
+
+const SAVE_PHASE_LABELS: Record<string, string> = {
+  starting: "Preparing…",
+  finalizing: "Finalizing video…",
+  audio: "Mixing audio…",
+  timing: "Aligning audio & video…",
+  encrypting: "Encrypting & saving…",
+};
+
+/** Temporary panel shown while a stopped recording is being saved. */
+function Processing() {
+  const { saveProgress, savePhase } = useStore();
+  const pct = Math.max(0, Math.min(100, Math.round(saveProgress)));
+  const label = SAVE_PHASE_LABELS[savePhase] ?? "Processing…";
+
+  return (
+    <div className="scroll pad">
+      <div className="proc">
+        <div className="proc-spinner" aria-hidden />
+        <div className="proc-label">{label}</div>
+        <div className="proc-bar">
+          <div className="proc-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="proc-pct">{pct}%</div>
+        <p className="proc-hint">Keep this window open — your take will appear in the Library.</p>
+      </div>
+    </div>
   );
 }
 

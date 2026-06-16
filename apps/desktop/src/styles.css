@@ -84,6 +84,7 @@ button {
   align-items: stretch;
   height: 100vh;
   width: 100%;
+  min-width: var(--dock-w, 63px);
   overflow: hidden;
   background: transparent;
 }
@@ -98,13 +99,22 @@ button {
   width: 48px;
   background: var(--d-rail);
   box-shadow: 8px 0 32px -12px rgba(0, 0, 0, 0.55);
-  transition: width var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
-    opacity 0.4s var(--ease), transform 0.4s var(--ease);
+  transition:
+    width var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
   will-change: width;
 }
 .sidebar.expanded {
   width: 520px;
-  box-shadow: 12px 0 40px -16px rgba(0, 0, 0, 0.65);
+  box-shadow: none;
+  transition:
+    width var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.sidebar.collapsed {
+  transition:
+    width var(--dur) var(--ease) 0.06s,
+    box-shadow var(--dur) var(--ease) 0.06s;
 }
 /* During a capture session the bar collapses, then fades out of frame.
    The opacity/transform wait for the width collapse via the transition delay. */
@@ -125,7 +135,7 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0 10px;
+  padding: 8px 0 20px;
   border-right: 1px solid var(--d-line);
   z-index: 2;
 }
@@ -140,7 +150,6 @@ button {
   width: 100%;
   transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
 }
-.sidebar.expanded .rail-win,
 .sidebar.capturing .rail-win {
   opacity: 0;
   transform: translateY(-6px);
@@ -177,22 +186,46 @@ button {
   flex-direction: column;
   gap: 10px;
   margin-top: 2px;
-  transition: opacity 0.28s var(--ease), transform 0.28s var(--ease);
+  max-height: 280px;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  transition:
+    opacity 0.34s var(--ease),
+    transform 0.38s var(--ease),
+    max-height 0.38s var(--ease),
+    margin 0.38s var(--ease),
+    gap 0.38s var(--ease);
 }
 .sidebar.collapsed .rail-tabs,
 .sidebar.capturing .rail-tabs {
   opacity: 0;
-  transform: translateX(-6px);
+  transform: translateX(-8px);
   pointer-events: none;
   max-height: 0;
-  overflow: hidden;
   margin-top: 0;
   gap: 0;
+  transition:
+    opacity 0.26s var(--ease),
+    transform 0.3s var(--ease),
+    max-height 0.34s var(--ease) 0.04s,
+    margin 0.34s var(--ease) 0.04s,
+    gap 0.34s var(--ease) 0.04s;
 }
 .sidebar.expanded:not(.capturing) .rail-tabs {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
+  max-height: 280px;
+  margin-top: 2px;
+  gap: 10px;
+  transition:
+    opacity 0.36s var(--ease) 0.1s,
+    transform 0.4s var(--ease) 0.08s,
+    max-height 0.38s var(--ease) 0.04s,
+    margin 0.38s var(--ease) 0.04s,
+    gap 0.38s var(--ease) 0.04s;
 }
 .rail-tab {
   position: relative;
@@ -273,7 +306,7 @@ button {
   border-left: none;
   border-radius: 0 9px 9px 0;
   color: var(--d-soft);
-  z-index: 5;
+  z-index: 20;
   transition: color 0.2s var(--ease);
 }
 .handle:hover {
@@ -291,14 +324,23 @@ button {
   background: var(--d-panel);
   overflow: hidden;
   opacity: 0;
-  transition: opacity 0.3s var(--ease);
+  visibility: hidden;
+  transition:
+    opacity 0.3s var(--ease),
+    visibility 0s linear 0.3s;
 }
 .sidebar.expanded .panel {
   opacity: 1;
-  transition: opacity 0.4s var(--ease) 0.12s;
+  visibility: visible;
+  transition:
+    opacity 0.38s var(--ease) 0.12s,
+    visibility 0s linear 0s;
 }
 .sidebar.collapsed .panel {
   pointer-events: none;
+  transition:
+    opacity 0.24s var(--ease) 0s,
+    visibility 0s linear 0.24s;
 }
 
 .panel-head {
@@ -932,13 +974,22 @@ input[type="range"]::-webkit-slider-thumb {
   width: 32px;
   aspect-ratio: 9 / 16;
   border-radius: var(--r-xs);
+  background: #141312;
+  display: block;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--d-line);
+}
+.rec-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.rec-thumb-ph {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(160deg, #2c2a27, #1c1b19);
-  display: grid;
-  place-items: center;
-  font-family: var(--mono);
-  font-size: 0.48rem;
-  letter-spacing: 0.04em;
-  color: var(--d-faint);
 }
 .rec-info {
   min-width: 0;
@@ -973,46 +1024,148 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--d-ink);
 }
 
-/* The 9×16 player that slides out beside the dock into transparent space. */
-.film {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
+/* Processing panel (shown while a stopped recording is saved) */
+.proc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 48px 8px 8px;
+}
+.proc-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 3px solid var(--d-line-hi);
+  border-top-color: var(--d-ink);
+  animation: procSpin 0.8s linear infinite;
+}
+@keyframes procSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.proc-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--d-ink);
+}
+.proc-bar {
+  width: min(100%, 320px);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--d-hover);
+  overflow: hidden;
+}
+.proc-bar-fill {
   height: 100%;
-  width: 0;
+  background: var(--d-ink);
+  border-radius: inherit;
+  transition: width 0.3s var(--ease);
+}
+.proc-pct {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--d-soft);
+}
+.proc-hint {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--d-faint);
+  max-width: 280px;
+}
+
+/* The 9×16 player — full-size card that slides out from behind the sidebar. */
+.film {
+  position: absolute;
+  left: var(--sidebar-w, 48px);
+  top: 0;
+  z-index: 1;
+  height: 100%;
+  width: var(--film-w, 0px);
   display: grid;
   place-items: center;
-  padding: 0;
+  padding: 36px 42px;
+  box-sizing: border-box;
   background: transparent;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(-28px);
+  overflow: visible;
   pointer-events: none;
-  transition: width 0.52s var(--ease), opacity 0.32s var(--ease), transform 0.52s var(--ease);
+  transform: translateX(-100%);
+  transition: transform 0.52s var(--ease);
+  will-change: transform;
 }
 .film.out {
-  width: var(--film-w, 0px);
-  padding: 32px 38px;
-  opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
 }
 .film-inner {
   position: relative;
-  display: inline-flex;
+  display: inline-block;
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 128px);
+  --film-r: var(--r-md);
+  border-radius: var(--film-r);
+  overflow: hidden;
+  border: none;
+  background: #000;
+  box-shadow: 0 24px 64px -26px rgba(0, 0, 0, 0.88);
+  line-height: 0;
+}
+/* Drawn on top so WebView2 video can't bleed past the rounded frame. */
+.film-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  z-index: 3;
+}
+/* WebView2 renders <video> on its own layer — clip-path is required for rounded corners. */
+.film-clip {
+  overflow: hidden;
+  border-radius: var(--film-r);
+  clip-path: inset(0 round var(--film-r));
+  contain: paint;
+}
+.film-loading {
+  width: min(calc((100vh - 128px) * 9 / 16), 100%);
+  aspect-ratio: 9 / 16;
+  max-height: calc(100vh - 128px);
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+.film-loading-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--d-soft);
+  animation: film-pulse 1s ease-in-out infinite;
+}
+@keyframes film-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .film-player {
-  max-height: calc(100vh - 64px);
-  max-width: 100%;
+  display: block;
+  max-height: calc(100vh - 128px);
+  max-width: min(100%, calc((100vh - 128px) * 9 / 16));
   width: auto;
   height: auto;
   object-fit: contain;
-  border: 1px solid var(--d-line-hi);
-  border-radius: var(--r-md);
-  background: #000;
-  box-shadow: 0 30px 70px -28px rgba(0, 0, 0, 0.85);
+  vertical-align: top;
+  border-radius: var(--film-r, var(--r-md));
+  clip-path: inset(0 round var(--film-r, var(--r-md)));
 }
 .film-err {
   position: absolute;
@@ -1026,6 +1179,7 @@ input[type="range"]::-webkit-slider-thumb {
 .cap-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1130,6 +1284,25 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .acts-rename {
   gap: 8px;
+  align-items: stretch;
+}
+.acts-rename-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.acts-rename-fields .act-input {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+.act-sm {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 0.72rem;
 }
 .act-input {
   flex: 1;
@@ -1146,6 +1319,10 @@ input[type="range"]::-webkit-slider-thumb {
 .act-input:focus {
   outline: none;
   border-color: var(--d-ink);
+}
+.acts-rename .act-save {
+  flex: 0 0 88px;
+  align-self: stretch;
 }
 @keyframes actIn {
   from {

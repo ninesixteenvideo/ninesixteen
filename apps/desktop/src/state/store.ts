@@ -342,6 +342,8 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   deleteRecording: async (id) => {
+    const { dropRecordingThumb } = await import("../lib/recordingThumb");
+    dropRecordingThumb(id);
     await invoke("delete_recording", { id });
     set((s) => ({
       recordings: s.recordings.filter((r) => r.id !== id),

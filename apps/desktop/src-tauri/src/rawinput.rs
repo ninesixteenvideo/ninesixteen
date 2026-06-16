@@ -231,13 +231,8 @@ mod imp {
         }
     }
 
-    /// Queue a keyboard zoom step through the same accumulator the mouse wheel
-    /// uses. Returns true if the key was consumed (Alt held) and should be
-    /// swallowed so it doesn't reach the focused app.
-    fn handle_zoom_key(dir: f64) -> bool {
-        if !alt_held() {
-            return false;
-        }
+    /// Queue a zoom step (shared by the low-level hook and global shortcuts).
+    fn queue_zoom_step(dir: f64) -> bool {
         if dir < 0.0 && ZOOM_AT_MIN.load(Ordering::Acquire) {
             alt_log_throttled("key zoom-out dropped — already at min zoom (full desktop)", 600);
             return true;
@@ -257,6 +252,10 @@ mod imp {
         };
         alt_log(&format!("key zoom step {step:.2} (total pending {queued:.3})"));
         true
+    }
+
+    pub fn queue_keyboard_zoom(dir: f64) -> bool {
+        queue_zoom_step(dir)
     }
 
     fn wheel_delta_from_hook(mouse_data: u32) -> f64 {
@@ -290,10 +289,14 @@ mod imp {
                     }
                 } else if matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
                     // Keyboard zoom fallback (works on trackpads, which never
-                    // deliver wheel events to global hooks). Only swallowed
-                    // while Alt is held.
+                    // deliver wheel events to global hooks). WM_SYSKEYDOWN means
+                    // Alt is held — don't rely on GetAsyncKeyState alone.
                     if let Some(dir) = zoom_key_dir(kb.vkCode) {
-                        if handle_zoom_key(dir) {
+                        let sys = msg == WM_SYSKEYDOWN;
+                        if sys {
+                            ALT_HELD.store(true, Ordering::Release);
+                        }
+                        if (sys || alt_held()) && queue_zoom_step(dir) {
                             return LRESULT(1);
                         }
                     }
@@ -510,51 +513,48 @@ mod imp {
 
         let mut vp = viewport.lock();
 
-        let (origin_x, origin_y, width, height) = match vp.monitor.as_ref() {
-            Some(m) => (
-                m.origin_x,
-                m.origin_y,
-                m.width as f64,
-                m.height as f64,
-            ),
-            None => return false,
-        };
-
-        let Some((tx, ty)) = cursor_pos_for_monitor(origin_x, origin_y, width, height) else {
-            alt_log_throttled("cursor read failed — pan paused", 2000);
-            return false;
-        };
-
         let ox = vp.viewport.x;
         let oy = vp.viewport.y;
         let oz = vp.viewport.zoom;
 
-        if !vp.frame_frozen {
-            let pan_hz = if let Some(at) = vp.frame_unfreeze_at {
-                if Instant::now().duration_since(at) < UNFREEZE_EASE_DURATION {
-                    PAN_SMOOTH_HZ_UNFREEZE
-                } else {
-                    vp.frame_unfreeze_at = None;
-                    if alt_held() {
+        if let Some(m) = vp.monitor.as_ref() {
+            if !vp.frame_frozen {
+                if let Some((tx, ty)) = cursor_pos_for_monitor(
+                    m.origin_x,
+                    m.origin_y,
+                    m.width as f64,
+                    m.height as f64,
+                ) {
+                    let pan_hz = if let Some(at) = vp.frame_unfreeze_at {
+                        if Instant::now().duration_since(at) < UNFREEZE_EASE_DURATION {
+                            PAN_SMOOTH_HZ_UNFREEZE
+                        } else {
+                            vp.frame_unfreeze_at = None;
+                            if alt_held() {
+                                PAN_SMOOTH_HZ_ALT
+                            } else {
+                                PAN_SMOOTH_HZ
+                            }
+                        }
+                    } else if alt_held() {
                         PAN_SMOOTH_HZ_ALT
                     } else {
                         PAN_SMOOTH_HZ
+                    };
+
+                    vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
+                    vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
+
+                    let dist = (vp.viewport.x - tx).abs() + (vp.viewport.y - ty).abs();
+                    if dist <= UNFREEZE_ARRIVED_PX {
+                        vp.frame_unfreeze_at = None;
                     }
+                } else {
+                    alt_log_throttled("cursor read failed — pan paused", 2000);
                 }
-            } else if alt_held() {
-                PAN_SMOOTH_HZ_ALT
-            } else {
-                PAN_SMOOTH_HZ
-            };
-
-            vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
-            vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
-
-            let dist = (vp.viewport.x - tx).abs() + (vp.viewport.y - ty).abs();
-            if dist <= UNFREEZE_ARRIVED_PX {
-                vp.frame_unfreeze_at = None;
             }
         }
+
         sync_zoom_at_min(vp.zoom_target);
 
         if hold {
@@ -693,8 +693,14 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{
-    reset_for_new_recording, reset_frame_follow, start, start_cursor_follow, toggle_frame_frozen,
+    queue_keyboard_zoom, reset_for_new_recording, reset_frame_follow, start, start_cursor_follow,
+    toggle_frame_frozen,
 };
+
+#[cfg(not(windows))]
+pub fn queue_keyboard_zoom(_dir: f64) -> bool {
+    false
+}
 
 #[cfg(not(windows))]
 pub fn take_viewport_dirty() -> bool {

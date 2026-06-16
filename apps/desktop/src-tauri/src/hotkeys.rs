@@ -13,5 +13,9 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
         let _ = app.emit("hotkey:toggle-overlay", ());
     } else if shortcut.matches(Modifiers::ALT, Code::KeyF) {
         let _ = crate::rawinput::toggle_frame_frozen();
+    } else if shortcut.matches(Modifiers::ALT, Code::ArrowUp) {
+        let _ = crate::rawinput::queue_keyboard_zoom(1.0);
+    } else if shortcut.matches(Modifiers::ALT, Code::ArrowDown) {
+        let _ = crate::rawinput::queue_keyboard_zoom(-1.0);
     }
 }

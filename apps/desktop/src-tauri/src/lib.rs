@@ -34,7 +34,7 @@ mod tray;
 mod watchdog;
 
 use state::new_app_handles;
-use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, Theme};
+use tauri::{Emitter, Manager, Theme};
 
 /// Parse a `Range: bytes=…` header value into an inclusive `(start, end)` range.
 fn parse_range(header: Option<&str>, total: u64) -> Option<(u64, u64)> {
@@ -223,6 +223,8 @@ fn install_alt_menu_guard(_app: &tauri::AppHandle, _label: &str) {}
 
 /// Pin the main window to the left work-area edge at `width` logical px × full height.
 pub fn sync_dock_window(app: &tauri::AppHandle, width: f64) {
+    use tauri::{PhysicalPosition, PhysicalSize};
+
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
@@ -231,19 +233,27 @@ pub fn sync_dock_window(app: &tauri::AppHandle, width: f64) {
     };
     let scale = mon.scale_factor();
     let area = mon.work_area();
-    let x = area.position.x as f64 / scale;
-    let y = area.position.y as f64 / scale;
-    let height = area.size.height as f64 / scale;
     let w = width.max(48.0).round();
-    let _ = win.set_size(LogicalSize::new(w, height));
-    let _ = win.set_position(LogicalPosition::new(x, y));
+    let phys_w = (w * scale).round().max(48.0) as u32;
+    let phys_h = area.size.height as u32;
+    let phys_x = area.position.x;
+    let phys_y = area.position.y;
+
+    let _ = win.set_resizable(true);
+    if win
+        .set_size(PhysicalSize::new(phys_w, phys_h))
+        .is_err()
+    {
+        log::capture_log(&format!("sync_dock_window: set_size failed for width={w}"));
+    }
+    let _ = win.set_position(PhysicalPosition::new(phys_x, phys_y));
 }
 
 fn dock_main_window(app: &tauri::AppHandle) {
     apply_main_window_theme(app);
     install_alt_menu_guard(app, "main");
     install_alt_menu_guard(app, "overlay");
-    sync_dock_window(app, 520.0);
+    sync_dock_window(app, 535.0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -350,6 +360,8 @@ pub fn run() {
                 (Modifiers::ALT, Code::KeyR, "Alt+R (record)"),
                 (Modifiers::ALT, Code::KeyV, "Alt+V (frame)"),
                 (Modifiers::ALT, Code::KeyF, "Alt+F (freeze frame)"),
+                (Modifiers::ALT, Code::ArrowUp, "Alt+↑ (zoom in)"),
+                (Modifiers::ALT, Code::ArrowDown, "Alt+↓ (zoom out)"),
             ] {
                 let shortcut = Shortcut::new(Some(mods), code);
                 if let Err(e) = app.global_shortcut().register(shortcut) {
