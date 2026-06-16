@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { AuthPanel } from "./AuthPanel";
+import { CheckIcon, CloseIcon } from "./icons";
 
 const PRO_FEATURES = [
   "Export & save unlimited videos",
@@ -25,48 +26,50 @@ export function Paywall({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal paywall" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose} aria-label="Close">
-          ✕
+    <div className="scrim" onClick={onClose}>
+      <div className="dialog" onClick={(e) => e.stopPropagation()}>
+        <button className="dialog-close" onClick={onClose} aria-label="Close">
+          <CloseIcon size={16} />
         </button>
 
-        <span className="chip-pro">Pro</span>
-        <h2 className="paywall-title">
+        <span className="badge">Pro</span>
+        <h2 className="dialog-title">
           {signedIn ? "Unlock export" : "Create an account to export"}
         </h2>
-        <p className="muted paywall-sub">
-          Record and preview free, forever. Buy Pro once to export and save your
-          videos without a watermark — no subscription.
+        <p className="dialog-sub">
+          Record and preview free, forever. Buy Pro once to export and save your videos without a
+          watermark — no subscription.
         </p>
 
         {!signedIn ? (
           <AuthPanel />
         ) : (
           <>
-            <div className="price-big">
+            <div className="price">
               <b>$49</b>
               <span className="muted">USD · one-time</span>
             </div>
-            <p className="muted paywall-sub" style={{ marginTop: 4 }}>
+            <p className="dialog-sub" style={{ marginTop: 4 }}>
               Lifetime license · pay once, no recurring fees
             </p>
 
-            <ul className="paywall-features">
+            <ul className="feature-list">
               {PRO_FEATURES.map((f) => (
-                <li key={f}>
-                  <span className="tick">✓</span>
+                <li key={f} className="feature">
+                  <span className="feature-tick">
+                    <CheckIcon size={13} />
+                  </span>
                   {f}
                 </li>
               ))}
             </ul>
 
-            <button className="btn pink paywall-cta" onClick={buy} disabled={opening}>
+            <button className="btn primary block" style={{ marginTop: 20 }} onClick={buy} disabled={opening}>
               {opening ? "Opening browser…" : "Buy Pro in browser"}
             </button>
-            <p className="muted paywall-foot">
-              Checkout opens in your browser. Once your purchase completes, export
-              unlocks here automatically — no need to restart.
+            <p className="dialog-sub" style={{ marginTop: 12 }}>
+              Checkout opens in your browser. Once your purchase completes, export unlocks here
+              automatically — no need to restart.
             </p>
           </>
         )}

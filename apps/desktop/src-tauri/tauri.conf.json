@@ -14,13 +14,18 @@
       {
         "label": "main",
         "title": "ninesixteen.video",
-        "width": 1080,
-        "height": 960,
+        "width": 520,
+        "height": 900,
+        "x": 0,
+        "y": 0,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
         "resizable": false,
         "maximizable": false,
         "fullscreen": false,
+        "alwaysOnTop": false,
         "theme": "Dark",
-        "backgroundColor": "#1B1A18",
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWindowOcclusion --autoplay-policy=no-user-gesture-required --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling"
       },
       {

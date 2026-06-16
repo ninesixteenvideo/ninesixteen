@@ -7,44 +7,40 @@ export function AccountCard() {
   if (loading) return null;
 
   return (
-    <section className="panel account-card" style={{ marginBottom: 16 }}>
+    <section className="card">
       {!user ? (
         <>
-          <h3>Sign in</h3>
-          <p className="muted" style={{ marginBottom: 12 }}>
+          <h3 className="card-title">Sign in</h3>
+          <p className="card-sub">
             Free to record &amp; preview. Sign in to sync your account and unlock export with Pro.
           </p>
           <AuthPanel />
         </>
       ) : (
         <>
-          <h3>Account</h3>
-          <div className="account-row">
+          <h3 className="card-title">Account</h3>
+          <div className="acct-row">
             <div>
-              <b>{user.displayName || user.email.split("@")[0]}</b>
-              <div className="muted">{user.email}</div>
+              <div className="acct-name">{user.displayName || user.email.split("@")[0]}</div>
+              <div className="acct-mail">{user.email}</div>
             </div>
-            <span className={`plan-badge ${isPro ? "pro" : ""}`}>{isPro ? "Pro" : "Free"}</span>
+            <span className={`acct-plan ${isPro ? "pro" : ""}`}>{isPro ? "Pro" : "Free"}</span>
           </div>
 
-          {isPro && (
-            <p className="muted" style={{ marginTop: 12 }}>
-              Pro unlocked — lifetime license on this account.
-            </p>
-          )}
+          {isPro && <p className="muted">Pro unlocked — lifetime license on this account.</p>}
 
           {!isPro && (
-            <button className="btn pink account-upgrade" onClick={() => openCheckout()}>
+            <button className="btn primary block" onClick={() => openCheckout()}>
               Buy Pro · $49
             </button>
           )}
 
-          <button className="btn account-signout" onClick={() => signOut()}>
+          <button className="btn block" style={{ marginTop: 10 }} onClick={() => signOut()}>
             Sign out
           </button>
 
           {user.demo && (
-            <p className="muted paywall-foot" style={{ marginTop: 12 }}>
+            <p className="muted" style={{ marginTop: 12 }}>
               Demo session stored on this device. Configure Firebase to persist real accounts.
             </p>
           )}

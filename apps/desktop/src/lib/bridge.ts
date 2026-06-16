@@ -241,6 +241,16 @@ const mock = (() => {
           if (i >= 0) recordings.splice(i, 1);
           return null as unknown as T;
         }
+        case "rename_recording": {
+          const i = recordings.findIndex((r) => r.id === args.id);
+          if (i >= 0) {
+            const raw = String(args.filename ?? "");
+            const base = raw.replace(/\.(mp4|ns)$/i, "").trim() || recordings[i].filename;
+            recordings[i] = { ...recordings[i], filename: `${base}.mp4` };
+            return recordings[i] as unknown as T;
+          }
+          throw new Error("Recording not found");
+        }
         case "export_recording":
           return null as unknown as T;
         case "list_audio_devices":

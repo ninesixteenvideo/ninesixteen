@@ -34,7 +34,7 @@ mod tray;
 mod watchdog;
 
 use state::new_app_handles;
-use tauri::{Emitter, LogicalSize, Manager, Theme};
+use tauri::{Emitter, LogicalPosition, LogicalSize, Manager, Theme};
 
 /// Parse a `Range: bytes=…` header value into an inclusive `(start, end)` range.
 fn parse_range(header: Option<&str>, total: u64) -> Option<(u64, u64)> {
@@ -221,27 +221,29 @@ fn install_alt_menu_guard(app: &tauri::AppHandle, label: &str) {
 #[cfg(not(windows))]
 fn install_alt_menu_guard(_app: &tauri::AppHandle, _label: &str) {}
 
-fn fit_main_window_portrait(app: &tauri::AppHandle) {
+/// Pin the main window to the left work-area edge at `width` logical px × full height.
+pub fn sync_dock_window(app: &tauri::AppHandle, width: f64) {
     let Some(win) = app.get_webview_window("main") else {
         return;
     };
-    apply_main_window_theme(app);
-    install_alt_menu_guard(app, "main");
-    install_alt_menu_guard(app, "overlay");
     let Ok(Some(mon)) = win.primary_monitor() else {
         return;
     };
     let scale = mon.scale_factor();
-    let mon_w = mon.size().width as f64 / scale;
-    let mon_h = mon.size().height as f64 / scale;
-    let margin = 0.94;
-    let height = mon_h * margin;
-    let mut width = height * 9.0 / 16.0 * 2.0;
-    if width > mon_w * margin {
-        width = mon_w * margin;
-    }
-    let _ = win.set_size(LogicalSize::new(width.round(), height.round()));
-    let _ = win.center();
+    let area = mon.work_area();
+    let x = area.position.x as f64 / scale;
+    let y = area.position.y as f64 / scale;
+    let height = area.size.height as f64 / scale;
+    let w = width.max(48.0).round();
+    let _ = win.set_size(LogicalSize::new(w, height));
+    let _ = win.set_position(LogicalPosition::new(x, y));
+}
+
+fn dock_main_window(app: &tauri::AppHandle) {
+    apply_main_window_theme(app);
+    install_alt_menu_guard(app, "main");
+    install_alt_menu_guard(app, "overlay");
+    sync_dock_window(app, 520.0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -334,7 +336,7 @@ pub fn run() {
                 }
             }
 
-            fit_main_window_portrait(app.handle());
+            dock_main_window(app.handle());
 
             #[cfg(desktop)]
             {
@@ -467,6 +469,7 @@ pub fn run() {
             commands::set_stream_settings,
             commands::list_recordings,
             commands::delete_recording,
+            commands::rename_recording,
             commands::export_recording,
             commands::export_recording_local,
             commands::export_recording_to_drive,
@@ -475,6 +478,7 @@ pub fn run() {
             commands::clear_entitlement,
             commands::open_recordings_folder,
             commands::notify_app_ready,
+            commands::sync_dock_window,
             commands::set_input_settings,
             commands::set_recording_settings,
             commands::list_audio_devices,

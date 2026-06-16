@@ -668,6 +668,11 @@ pub fn delete_recording(id: String) {
 }
 
 #[tauri::command]
+pub fn rename_recording(id: String, filename: String) -> Result<RecordingInfo, String> {
+    recordings::rename_recording(&id, &filename)
+}
+
+#[tauri::command]
 pub fn sync_entitlement(
     handles: State<'_, AppHandles>,
     id_token: String,
@@ -928,4 +933,11 @@ fn exclude_from_capture(win: &tauri::WebviewWindow) {
             let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
         }
     }
+}
+
+/// Resize and pin the main window to the left screen edge (dock / taskbar layout).
+#[tauri::command]
+pub fn sync_dock_window(app: AppHandle, width: f64) -> Result<(), String> {
+    crate::sync_dock_window(&app, width);
+    Ok(())
 }

@@ -15,8 +15,8 @@ async function openLegalPage(path: "/terms" | "/privacy") {
 }
 
 /**
- * Compact sign-in / sign-up panel used inside the account modal and the
- * paywall. Google-first, with email/password as a fallback.
+ * Compact sign-in / sign-up panel used inside the account card and the paywall.
+ * Google-first, with email/password as a fallback.
  */
 export function AuthPanel({ onDone }: { onDone?: () => void }) {
   const { signIn, signUp, signInWithGoogle, firebaseEnabled } = useAuth();
@@ -46,26 +46,24 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
   }
 
   return (
-    <div className="auth-panel">
+    <div className="auth">
       <button
-        className="btn google-btn"
+        className="gbtn"
         disabled={busy}
         onClick={() => run(() => signInWithGoogle(setVerifierCode))}
       >
         <GoogleGlyph /> Continue with Google
       </button>
       {isDesktop && firebaseEnabled && !verifierCode && (
-        <p className="auth-google-note muted">
+        <p className="auth-note">
           Opens your browser to sign in with Google, then links your account back here
           automatically.
         </p>
       )}
       {verifierCode && (
-        <div className="auth-verifier">
-          <p className="muted">
-            In your browser, enter this code to finish signing in:
-          </p>
-          <p className="auth-verifier-code">{verifierCode}</p>
+        <div className="verifier">
+          <p className="muted">In your browser, enter this code to finish signing in:</p>
+          <p className="verifier-code">{verifierCode}</p>
         </div>
       )}
 
@@ -76,26 +74,24 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       </div>
 
       {!firebaseEnabled && (
-        <p className="auth-demo-note">
-          Demo mode — Firebase isn’t configured, so this account lives only on this
-          device. Add VITE_FIREBASE_* keys to go live.
+        <p className="demo-note">
+          Demo mode — Firebase isn’t configured, so this account lives only on this device. Add
+          VITE_FIREBASE_* keys to go live.
         </p>
       )}
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          run(() =>
-            isSignUp ? signUp(email, password, name) : signIn(email, password)
-          );
+          run(() => (isSignUp ? signUp(email, password, name) : signIn(email, password)));
         }}
         className="auth-form"
       >
         {isSignUp && (
           <label className="field">
-            <span className="muted">Name</span>
+            <span className="label">Name</span>
             <input
-              className="auth-input"
+              className="input"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Ada Lovelace"
@@ -104,9 +100,9 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           </label>
         )}
         <label className="field">
-          <span className="muted">Email</span>
+          <span className="label">Email</span>
           <input
-            className="auth-input"
+            className="input"
             type="email"
             required
             value={email}
@@ -116,9 +112,9 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           />
         </label>
         <label className="field">
-          <span className="muted">Password</span>
+          <span className="label">Password</span>
           <input
-            className="auth-input"
+            className="input"
             type="password"
             required
             minLength={6}
@@ -129,18 +125,18 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           />
         </label>
 
-        {error && <p className="auth-error">{error}</p>}
+        {error && <p className="auth-err">{error}</p>}
 
-        <button type="submit" className="btn blue auth-submit" disabled={busy}>
+        <button type="submit" className="btn primary block" disabled={busy} style={{ marginTop: 4 }}>
           {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
         </button>
       </form>
 
-      <p className="auth-switch muted">
+      <p className="auth-switch">
         {isSignUp ? "Already have an account?" : "New here?"}{" "}
         <button
           type="button"
-          className="link-btn"
+          className="link"
           onClick={() => setMode(isSignUp ? "sign-in" : "sign-up")}
         >
           {isSignUp ? "Sign in" : "Create one"}
@@ -148,13 +144,13 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       </p>
 
       {isSignUp && (
-        <p className="auth-legal muted">
+        <p className="auth-legal">
           By creating an account, you agree to our{" "}
-          <button type="button" className="link-btn" onClick={() => openLegalPage("/terms")}>
+          <button type="button" className="link" onClick={() => openLegalPage("/terms")}>
             Terms of Use
           </button>{" "}
           and{" "}
-          <button type="button" className="link-btn" onClick={() => openLegalPage("/privacy")}>
+          <button type="button" className="link" onClick={() => openLegalPage("/privacy")}>
             Privacy Policy
           </button>
           .

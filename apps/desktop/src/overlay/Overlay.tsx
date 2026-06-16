@@ -20,6 +20,8 @@ export function Overlay() {
   const recordingStartedAt = useRef<number | null>(null);
   const captureCursor = useRef(true);
   const frameFrozen = useRef(false);
+  const prevCountdown = useRef(0);
+  const countdownChangedAt = useRef(0);
 
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -220,8 +222,13 @@ export function Overlay() {
       }
 
       const cd = countdown.current;
+      if (cd !== prevCountdown.current) {
+        prevCountdown.current = cd;
+        countdownChangedAt.current = performance.now();
+      }
       if (cd > 0 && (arming.current || !recording.current)) {
-        drawCountdown(ctx, cd, rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr);
+        const since = (performance.now() - countdownChangedAt.current) / 1000;
+        drawCountdown(ctx, cd, rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr, since);
       }
     };
 
@@ -236,11 +243,11 @@ export function Overlay() {
   return <canvas ref={canvasRef} style={{ display: "block", width: "100vw", height: "100vh" }} />;
 }
 
-// Brand palette, cycled per digit counting down from 5:
-// 5 coral, 4 mint, 3 white, 2 coral, 1 mint …
-const COUNTDOWN_COLORS = ["#FF6B58", "#78FFD4", "#FFFFFF"];
-const COUNTDOWN_BORDER = "#1B1A18";
-
+/**
+ * Sleek monochrome countdown: a clean white numeral inside a thin ring that
+ * depletes over each second, with a soft dark scrim for legibility. No colour,
+ * no heavy outline — it matches the new desktop design language.
+ */
 function drawCountdown(
   ctx: CanvasRenderingContext2D,
   seconds: number,
@@ -248,38 +255,62 @@ function drawCountdown(
   cy: number,
   frameShortEdge: number,
   dpr: number,
+  since: number,
 ) {
   const text = String(seconds);
-  // Slightly smaller than before (0.30 vs 0.36 of the frame's short edge).
-  const fontSize = Math.max(32 * dpr, frameShortEdge * 0.3);
-  // Medium-thickness charcoal border that scales with the glyph.
-  const lineWidth = Math.max(3 * dpr, fontSize * 0.08);
-  const fill = COUNTDOWN_COLORS[(5 - seconds) % COUNTDOWN_COLORS.length];
+  const fontSize = Math.max(26 * dpr, frameShortEdge * 0.16);
+  const ringR = fontSize * 1.25;
+  const ringW = Math.max(2 * dpr, fontSize * 0.045);
 
-  ctx.font = `700 ${fontSize}px "Inter", system-ui, sans-serif`;
+  // Fraction of the current second already elapsed (drives the ring + entrance).
+  const p = Math.min(Math.max(since, 0), 1);
+  const enter = easeOutCubic(Math.min(since / 0.18, 1));
+
+  ctx.save();
+
+  // Soft dark scrim behind the glyph so it reads on any desktop content.
+  const scrimR = ringR * 1.5;
+  const scrim = ctx.createRadialGradient(cx, cy, 0, cx, cy, scrimR);
+  scrim.addColorStop(0, "rgba(10, 10, 12, 0.42)");
+  scrim.addColorStop(1, "rgba(10, 10, 12, 0)");
+  ctx.fillStyle = scrim;
+  ctx.beginPath();
+  ctx.arc(cx, cy, scrimR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Base track ring.
+  ctx.lineWidth = ringW;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Depleting progress arc (starts full at the top, empties over the second).
+  const start = -Math.PI / 2;
+  const end = start + (1 - p) * Math.PI * 2;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, start, end);
+  ctx.stroke();
+
+  // The numeral, with a subtle scale + fade entrance each second.
+  ctx.translate(cx, cy);
+  ctx.scale(0.9 + 0.1 * enter, 0.9 + 0.1 * enter);
+  ctx.globalAlpha = enter;
+  ctx.font = `600 ${fontSize}px "Inter", system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.miterLimit = 2;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, 0, fontSize * 0.04);
 
-  // Soft drop shadow so the number reads on any desktop content behind it.
-  ctx.shadowColor = "rgba(10, 10, 16, 0.45)";
-  ctx.shadowBlur = fontSize * 0.06;
-  ctx.shadowOffsetY = 2 * dpr;
-
-  ctx.lineWidth = lineWidth;
-  ctx.strokeStyle = COUNTDOWN_BORDER;
-  ctx.strokeText(text, cx, cy);
-
-  ctx.shadowColor = "transparent";
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
-
-  ctx.fillStyle = fill;
-  ctx.fillText(text, cx, cy);
-
+  ctx.restore();
   ctx.textAlign = "start";
   ctx.textBaseline = "alphabetic";
+}
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 function tick(ctx: CanvasRenderingContext2D, x: number, y: number, L: number, sx: number, sy: number) {

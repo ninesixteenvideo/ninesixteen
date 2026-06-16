@@ -1,56 +1,31 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../state/store";
-import { useRecordingElapsed } from "../lib/useRecordingElapsed";
 import type { AudioSourceMode } from "../lib/types";
 
-const SOURCE_OPTIONS: { id: AudioSourceMode; label: string; hint: string }[] = [
-  { id: "none", label: "No audio", hint: "Video only" },
-  { id: "system", label: "System audio", hint: "Games, browser & apps" },
-  { id: "microphone", label: "Microphone", hint: "Your voice or external mic" },
-  { id: "system_and_microphone", label: "System + mic", hint: "Desktop audio and voice" },
+const SOURCE_OPTIONS: { id: AudioSourceMode; label: string }[] = [
+  { id: "none", label: "No audio" },
+  { id: "system", label: "System audio" },
+  { id: "microphone", label: "Microphone" },
+  { id: "system_and_microphone", label: "System + mic" },
 ];
 
-const SAVE_PHASE_LABELS: Record<string, string> = {
-  starting: "Preparing",
-  finalizing: "Finishing video",
-  timing: "Syncing timing",
-  audio: "Adding audio",
-  encrypting: "Encrypting",
-};
-
-const QUALITY_PRESETS = [
-  { quality: 1080 as const, fps: 30, label: "1080p · 30fps (Recommended)" },
-  { quality: 1080 as const, fps: 60, label: "1080p · 60fps" },
-  { quality: 720 as const, fps: 30, label: "720p · 30fps" },
-  { quality: 720 as const, fps: 60, label: "720p · 60fps" },
-];
-
-function qualityPresetValue(quality: number, fps: number) {
-  return `${quality}-${fps}`;
-}
+const RESOLUTIONS = [720, 1080] as const;
+const FRAME_RATES = [30, 60] as const;
 
 export function Studio() {
   const {
     recording,
     finalizing,
-    saveProgress,
-    savePhase,
     arming,
-    countdownSeconds,
-    elapsed,
     error,
-    startRecording,
-    cancelRecordingCountdown,
-    stopRecording,
     audioSettings,
     audioDevices,
     audioLevels,
     setAudioSettings,
-    markAudioCalibrated,
-    canRecord,
     recordingSettings,
     setRecordingSettings,
-    frameFrozen,
+    inputSettings,
+    setInputSettings,
   } = useStore();
 
   const sessionActive = recording || finalizing || arming;
@@ -60,220 +35,150 @@ export function Studio() {
     audioSettings.source === "microphone" || audioSettings.source === "system_and_microphone";
   const micDevices = audioDevices.filter((d) => d.kind === "microphone");
   const hasAudio = audioSettings.source !== "none";
-  const needsCalibration = hasAudio && !audioSettings.calibrated;
-
-  const displayElapsed = useRecordingElapsed(recording, elapsed);
-
-  const statusTitle = arming
-    ? `Get ready — ${countdownSeconds || "…"}`
-    : finalizing
-      ? "Saving recording…"
-      : recording
-        ? "Recording"
-        : "Ready to record";
-
-  const statusBody = arming
-    ? frameFrozen
-      ? "Frame frozen — Alt + F to follow your cursor again. Alt + scroll (or Alt + ↑/↓) still adjusts zoom."
-      : "Frame is on your desktop — Alt + scroll (or Alt + ↑/↓) to zoom, move the mouse to position. Alt + F freezes the frame."
-    : finalizing
-      ? "Writing and securing your file — this can take a minute on long clips."
-      : recording
-        ? frameFrozen
-          ? `Recording ${formatDuration(displayElapsed)} · frame frozen (Alt + F to follow cursor)`
-          : `Recording ${formatDuration(displayElapsed)}`
-        : "Press Record — you'll get 5 seconds to frame your shot first.";
 
   return (
-    <div className="content scroll studio-panel">
-      <section className={`panel status-card ${sessionActive ? "armed" : "idle"}`}>
-        <div className="live-dot" />
-        <div className="status-text">
-          <b>{statusTitle}</b>
-          <p className="muted">{statusBody}</p>
-          {finalizing && (
-            <div className="save-progress" role="progressbar" aria-valuenow={saveProgress} aria-valuemin={0} aria-valuemax={100}>
-              <div className="save-progress-track">
-                <div className="save-progress-fill" style={{ width: `${saveProgress}%` }} />
-              </div>
-              <span className="save-progress-label">
-                {saveProgress}% · {SAVE_PHASE_LABELS[savePhase] ?? "Saving"}
-              </span>
-            </div>
-          )}
-          {error && <p className="stream-error">{error}</p>}
-        </div>
-        <span className="ratio-pill">9×16</span>
-      </section>
+    <div className="scroll pad">
+      <div className="studio">
+        {error && <p className="err">{error}</p>}
 
-      {!sessionActive && (
-        <div className="studio-output-row">
-          <section className="panel studio-output-card">
-            <span className="label">Quality</span>
-            <select
-              className="quality-select"
-              value={qualityPresetValue(recordingSettings.quality, recordingSettings.fps)}
-              onChange={(e) => {
-                const preset = QUALITY_PRESETS.find(
-                  (p) => qualityPresetValue(p.quality, p.fps) === e.target.value
-                );
-                if (preset) {
-                  setRecordingSettings({ quality: preset.quality, fps: preset.fps });
-                }
-              }}
-            >
-              {QUALITY_PRESETS.map((preset) => (
-                <option
-                  key={qualityPresetValue(preset.quality, preset.fps)}
-                  value={qualityPresetValue(preset.quality, preset.fps)}
-                >
-                  {preset.label}
-                </option>
-              ))}
-            </select>
-          </section>
-
-          <section className="panel studio-output-card">
-            <span className="label">Hide cursor in video</span>
-            <div className="cursor-choice" role="group" aria-label="Hide cursor in video">
-              {(["no", "yes"] as const).map((choice) => {
-                const hide = choice === "yes";
-                const active = hide === !recordingSettings.captureCursor;
-                return (
+        {!sessionActive && (
+          <>
+            <section className="field-card">
+              <span className="field-label">Quality</span>
+              <div className="toggle toggle--slim" role="group" aria-label="Resolution">
+                {RESOLUTIONS.map((q) => (
                   <button
-                    key={choice}
+                    key={q}
                     type="button"
-                    className={`cursor-choice-btn ${active ? "active" : ""}`}
-                    aria-pressed={active}
-                    onClick={() => setRecordingSettings({ captureCursor: !hide })}
+                    className={`toggle-opt ${recordingSettings.quality === q ? "active" : ""}`}
+                    aria-pressed={recordingSettings.quality === q}
+                    onClick={() => setRecordingSettings({ quality: q })}
                   >
-                    {choice === "no" ? "No" : "Yes"}
+                    {q}p
                   </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      )}
-
-      {!sessionActive && (
-        <section className="panel audio-card">
-          <div className="card-head">
-            <h3>Audio</h3>
-            {hasAudio && (
-              <span className={`status-chip ${audioSettings.calibrated ? "ok" : "todo"}`}>
-                {audioSettings.calibrated ? "Levels ready" : "Set levels"}
-              </span>
-            )}
-          </div>
-
-          <div className="src-grid">
-            {SOURCE_OPTIONS.map((opt) => {
-              const active = audioSettings.source === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`src-card ${active ? "active" : ""}`}
-                  onClick={() =>
-                    setAudioSettings({ source: opt.id, calibrated: opt.id === "none" })
-                  }
-                >
-                  <span className="src-radio" aria-hidden />
-                  <span className="src-text">
-                    <b>{opt.label}</b>
-                    <span className="muted">{opt.hint}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <AutoHeight trigger={`${audioSettings.source}:${audioSettings.calibrated}:${micDevices.length}`}>
-            {hasAudio && (
-            <div className="audio-config">
-              {wantsMic && micDevices.length > 0 && (
-                <label className="select-field">
-                  <span className="select-label">Microphone</span>
-                  <select
-                    value={audioSettings.microphoneId ?? ""}
-                    onChange={(e) =>
-                      setAudioSettings({
-                        microphoneId: e.target.value || null,
-                        calibrated: false,
-                      })
-                    }
+                ))}
+              </div>
+              <div className="toggle toggle--slim" role="group" aria-label="Frame rate">
+                {FRAME_RATES.map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    className={`toggle-opt ${recordingSettings.fps === f ? "active" : ""}`}
+                    aria-pressed={recordingSettings.fps === f}
+                    onClick={() => setRecordingSettings({ fps: f })}
                   >
-                    <option value="">Default microphone</option>
-                    {micDevices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <div className="chan-row">
-                {wantsSystem && (
-                  <Channel
-                    name="System"
-                    level={audioLevels.system}
-                    gain={audioSettings.systemGain}
-                    onGain={(systemGain) => setAudioSettings({ systemGain, calibrated: false })}
-                  />
-                )}
-                {wantsMic && (
-                  <Channel
-                    name="Microphone"
-                    level={audioLevels.mic}
-                    gain={audioSettings.micGain}
-                    onGain={(micGain) => setAudioSettings({ micGain, calibrated: false })}
-                  />
-                )}
+                    {f}fps
+                  </button>
+                ))}
               </div>
+            </section>
 
-              <div className={`calib-bar ${audioSettings.calibrated ? "ok" : ""}`}>
-                <div className="calib-text">
-                  <b>{audioSettings.calibrated ? "Levels confirmed" : "Set your levels"}</b>
-                  <span className="muted">
-                    {audioSettings.calibrated
-                      ? "You're good to record."
-                      : "Play audio or speak, tune the gain, then confirm."}
-                  </span>
+            <div className="grid2">
+              <section className="field-card">
+                <span className="field-label">Hide cursor in video</span>
+                <div className="toggle" role="group" aria-label="Hide cursor in video">
+                  {(["no", "yes"] as const).map((choice) => {
+                    const hide = choice === "yes";
+                    const active = hide === !recordingSettings.captureCursor;
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        className={`toggle-opt ${active ? "active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => setRecordingSettings({ captureCursor: !hide })}
+                      >
+                        {choice === "no" ? "No" : "Yes"}
+                      </button>
+                    );
+                  })}
                 </div>
-                <button
-                  type="button"
-                  className={`btn sm ${audioSettings.calibrated ? "blue" : "pink"}`}
-                  onClick={() => markAudioCalibrated()}
-                >
-                  {audioSettings.calibrated ? "✓ Confirmed" : "Confirm levels"}
-                </button>
-              </div>
-            </div>
-            )}
-          </AutoHeight>
-        </section>
-      )}
+              </section>
 
-      <div className="studio-actions studio-actions-stack">
-        {arming ? (
-          <button className="btn stop" onClick={() => cancelRecordingCountdown()}>
-            Cancel countdown
-          </button>
-        ) : recording || finalizing ? (
-          <button className="btn stop" disabled={finalizing} onClick={() => stopRecording()}>
-            {finalizing ? "Saving…" : "◼ Stop recording"}
-          </button>
-        ) : (
-          <button
-            className="btn rec"
-            disabled={!canRecord()}
-            title={needsCalibration ? "Confirm your audio levels before recording" : undefined}
-            onClick={() => startRecording()}
-          >
-            ● Record
-          </button>
+              <section className="field-card">
+                <div className="row">
+                  <span className="field-label">Zoom sensitivity</span>
+                  <span className="muted">{inputSettings.zoomSensitivity.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={3}
+                  step={0.05}
+                  value={inputSettings.zoomSensitivity}
+                  onChange={(e) => setInputSettings({ zoomSensitivity: parseFloat(e.target.value) })}
+                />
+              </section>
+            </div>
+
+            <section className="audio">
+              <span className="field-label">Audio</span>
+
+              <div className="src-grid">
+                {SOURCE_OPTIONS.map((opt) => {
+                  const active = audioSettings.source === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`src ${active ? "active" : ""}`}
+                      onClick={() => setAudioSettings({ source: opt.id })}
+                    >
+                      <span className="src-radio" aria-hidden />
+                      <span className="src-main">
+                        <span className="src-name">{opt.label}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <AutoHeight trigger={`${audioSettings.source}:${micDevices.length}`}>
+                {hasAudio && (
+                  <div className="audio-config">
+                    {wantsMic && micDevices.length > 0 && (
+                      <label className="select-field">
+                        <span className="label">Microphone</span>
+                        <select
+                          className="select"
+                          value={audioSettings.microphoneId ?? ""}
+                          onChange={(e) =>
+                            setAudioSettings({ microphoneId: e.target.value || null })
+                          }
+                        >
+                          <option value="">Default microphone</option>
+                          {micDevices.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    <div className="chan-row">
+                      {wantsSystem && (
+                        <Channel
+                          name="System"
+                          level={audioLevels.system}
+                          gain={audioSettings.systemGain}
+                          onGain={(systemGain) => setAudioSettings({ systemGain })}
+                        />
+                      )}
+                      {wantsMic && (
+                        <Channel
+                          name="Microphone"
+                          level={audioLevels.mic}
+                          gain={audioSettings.micGain}
+                          onGain={(micGain) => setAudioSettings({ micGain })}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </AutoHeight>
+            </section>
+          </>
         )}
       </div>
     </div>
@@ -282,8 +187,7 @@ export function Studio() {
 
 /**
  * Animates its own height whenever `trigger` changes, so the audio card grows
- * and shrinks with a buttery transition instead of snapping. Measures the
- * inner content after layout and sets an explicit height the CSS can ease to.
+ * and shrinks with a buttery transition instead of snapping.
  */
 function AutoHeight({ children, trigger }: { children: ReactNode; trigger: string }) {
   const inner = useRef<HTMLDivElement>(null);
@@ -330,13 +234,13 @@ function Channel({
     <div className="chan">
       <div className="chan-head">
         <span className="chan-name">{name}</span>
-        <span className="chan-pct muted">{pct}%</span>
+        <span className="chan-pct">{pct}%</span>
       </div>
       <div className="meter">
         <div className="meter-fill" style={{ width: `${pct}%` }} />
       </div>
       <div className="chan-gain">
-        <span className="chan-gain-label muted">Gain</span>
+        <span className="chan-gain-label">Gain</span>
         <input
           type="range"
           min={0}
@@ -364,10 +268,4 @@ function Channel({
       </div>
     </div>
   );
-}
-
-function formatDuration(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
 }

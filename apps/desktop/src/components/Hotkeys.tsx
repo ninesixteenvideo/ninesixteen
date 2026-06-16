@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-
 type HotkeyEntry = {
   keys: string[];
   title: string;
@@ -24,7 +22,8 @@ const HOTKEYS: HotkeyEntry[] = [
     group: "framing",
     keys: ["Alt", "F"],
     title: "Freeze / unfreeze frame",
-    detail: "Lock the crop in place during the countdown or while recording. Unfreeze to ease back to your cursor.",
+    detail:
+      "Lock the crop in place during the countdown or while recording. Unfreeze to ease back to your cursor.",
   },
   {
     group: "framing",
@@ -46,51 +45,30 @@ const HOTKEYS: HotkeyEntry[] = [
   },
 ];
 
-export function HotkeysModal({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
+export function Hotkeys() {
   const globalKeys = HOTKEYS.filter((h) => h.group === "global");
   const framingKeys = HOTKEYS.filter((h) => h.group === "framing");
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal hotkeys-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="hotkeys-title">
-        <button className="modal-close" onClick={onClose} aria-label="Close">
-          ✕
-        </button>
-
-        <h2 id="hotkeys-title" className="hotkeys-title">
-          Keyboard shortcuts
-        </h2>
-        <p className="muted hotkeys-sub">
-          Global shortcuts work even when ninesixteen.video is minimized during capture.
-        </p>
-
-        <HotkeyGroup heading="Global" items={globalKeys} />
-        <HotkeyGroup heading="Framing" items={framingKeys} />
-
-        <p className="hotkeys-foot muted">
-          Snap to full 9×16 with Alt + scroll or Alt + ↓ — the frame pauses briefly when you land there.
-        </p>
-      </div>
+    <div className="scroll pad">
+      <HotkeyGroup heading="Global" items={globalKeys} />
+      <HotkeyGroup heading="Framing" items={framingKeys} />
+      <p className="hk-foot">
+        Snap to full 9×16 with Alt + scroll or Alt + ↓ — the frame pauses briefly when you land
+        there.
+      </p>
     </div>
   );
 }
 
 function HotkeyGroup({ heading, items }: { heading: string; items: HotkeyEntry[] }) {
   return (
-    <section className="hotkeys-group">
-      <h3 className="hotkeys-group-head">{heading}</h3>
-      <ul className="hotkeys-list">
+    <section className="hk-group">
+      <h3 className="hk-head">{heading}</h3>
+      <ul className="hk-list">
         {items.map((item) => (
-          <li key={item.title} className="hotkeys-row">
-            <div className="hotkeys-row-text">
+          <li key={item.title} className="hk-row">
+            <div className="hk-text">
               <b>{item.title}</b>
               <span className="muted">{item.detail}</span>
             </div>
@@ -104,10 +82,10 @@ function HotkeyGroup({ heading, items }: { heading: string; items: HotkeyEntry[]
 
 function KeyCombo({ keys }: { keys: string[] }) {
   return (
-    <span className="hotkeys-combo" aria-hidden>
+    <span className="combo" aria-hidden>
       {keys.map((key, i) => (
-        <span key={key} className="hotkeys-combo-part">
-          {i > 0 && <span className="hotkeys-combo-sep">+</span>}
+        <span key={key} className="combo-part">
+          {i > 0 && <span className="combo-sep">+</span>}
           <kbd className="kbd">{key}</kbd>
         </span>
       ))}

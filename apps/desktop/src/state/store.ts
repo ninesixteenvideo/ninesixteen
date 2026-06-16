@@ -54,13 +54,17 @@ interface Store {
   inputSettings: InputSettings;
   recordingSettings: RecordingSettings;
   overlayVisible: boolean;
-  tab: "studio" | "preview" | "settings";
+  tab: "studio" | "preview" | "hotkeys" | "account" | "info";
+  librarySelectedId: string | null;
+  paywallOpen: boolean;
   audioSettings: AudioSettings;
   audioDevices: AudioDeviceInfo[];
   audioLevels: AudioLevels;
 
   init: () => Promise<void>;
   setTab: (t: Store["tab"]) => void;
+  setLibrarySelected: (id: string | null) => void;
+  setPaywallOpen: (open: boolean) => void;
   setViewport: (v: Partial<Viewport>) => Promise<void>;
   setZoom: (z: number) => Promise<void>;
   startRecording: () => Promise<void>;
@@ -70,6 +74,7 @@ interface Store {
   stopCamera: () => Promise<void>;
   refreshRecordings: () => Promise<void>;
   deleteRecording: (id: string) => Promise<void>;
+  renameRecording: (id: string, filename: string) => Promise<void>;
   openFolder: () => Promise<void>;
   setInputSettings: (s: Partial<InputSettings>) => Promise<void>;
   setRecordingSettings: (s: Partial<RecordingSettings>) => Promise<void>;
@@ -100,12 +105,14 @@ export const useStore = create<Store>((set, get) => ({
   inputSettings: { zoomSensitivity: 1 },
   recordingSettings: {
     orientation: "portrait",
-    fps: 30,
+    fps: 60,
     quality: 1080,
     captureCursor: true,
   },
   overlayVisible: false,
   tab: "studio",
+  librarySelectedId: null,
+  paywallOpen: false,
   audioSettings: DEFAULT_AUDIO,
   audioDevices: [],
   audioLevels: { system: 0, mic: 0 },
@@ -207,6 +214,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setTab: (tab) => set({ tab }),
 
+  setLibrarySelected: (id) => set({ librarySelectedId: id }),
+
+  setPaywallOpen: (open) => set({ paywallOpen: open }),
+
   setViewport: async (v) => {
     const next = { ...get().viewport, ...v };
     set({ viewport: next });
@@ -220,11 +231,6 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   startRecording: async () => {
-    if (!get().canRecord()) {
-      const err = "Calibrate audio in Studio before recording.";
-      set({ error: err });
-      throw new Error(err);
-    }
     set({
       error: null,
       elapsed: 0,
@@ -337,7 +343,17 @@ export const useStore = create<Store>((set, get) => ({
 
   deleteRecording: async (id) => {
     await invoke("delete_recording", { id });
-    set((s) => ({ recordings: s.recordings.filter((r) => r.id !== id) }));
+    set((s) => ({
+      recordings: s.recordings.filter((r) => r.id !== id),
+      librarySelectedId: s.librarySelectedId === id ? null : s.librarySelectedId,
+    }));
+  },
+
+  renameRecording: async (id, filename) => {
+    const updated = await invoke<RecordingInfo>("rename_recording", { id, filename });
+    set((s) => ({
+      recordings: s.recordings.map((r) => (r.id === id ? updated : r)),
+    }));
   },
 
   openFolder: async () => {
@@ -385,9 +401,5 @@ export const useStore = create<Store>((set, get) => ({
     await get().setAudioSettings({ calibrated: true });
   },
 
-  canRecord: () => {
-    const { audioSettings } = get();
-    if (audioSettings.source === "none") return true;
-    return audioSettings.calibrated;
-  },
+  canRecord: () => true,
 }));

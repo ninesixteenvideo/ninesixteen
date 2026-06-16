@@ -1,15 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <rect x="0" y="0" width="1024" height="1024" rx="200" ry="200" fill="#1B1A18"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="120">
-    <!-- "9" (mint) — identical glyph to the "6", rotated 180° for exact size/style match -->
-    <g transform="translate(340,512) rotate(180)" stroke="#78FFD4">
-      <circle cx="0" cy="150" r="138"/>
-      <path d="M118 -282 C -46 -176, -138 -34, -138 150"/>
-    </g>
-    <!-- "6" (coral) -->
-    <g transform="translate(684,512)" stroke="#FF6B58">
-      <circle cx="0" cy="150" r="138"/>
-      <path d="M118 -282 C -46 -176, -138 -34, -138 150"/>
-    </g>
-  </g>
+  <rect width="1024" height="1024" rx="200" ry="200" fill="#1B1A18"/>
+  <rect x="336.5" y="200" width="351" height="624" rx="32" ry="32" fill="#FAFAFA"/>
 </svg>

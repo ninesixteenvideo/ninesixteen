@@ -119,6 +119,65 @@ pub fn delete_recording(id: &str) {
     }
 }
 
+fn normalize_display_filename(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("Name cannot be empty".into());
+    }
+    if trimmed.contains(['/', '\\', '\0']) {
+        return Err("Name cannot contain path separators".into());
+    }
+    let base = trimmed
+        .strip_suffix(".mp4")
+        .or_else(|| trimmed.strip_suffix(".MP4"))
+        .or_else(|| trimmed.strip_suffix(".ns"))
+        .or_else(|| trimmed.strip_suffix(".NS"))
+        .unwrap_or(trimmed);
+    if base.is_empty() {
+        return Err("Name cannot be empty".into());
+    }
+    Ok(format!("{base}.mp4"))
+}
+
+/// Update the display filename stored in a take's sidecar metadata.
+pub fn rename_recording(id: &str, filename: &str) -> Result<RecordingInfo, String> {
+    let filename = normalize_display_filename(filename)?;
+    let ns = recordings_dir().join(format!("{id}.ns"));
+    if !ns.exists() {
+        return Err("Recording not found".into());
+    }
+
+    let json_path = recordings_dir().join(format!("{id}.json"));
+    let mut info = if json_path.exists() {
+        let txt = std::fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<RecordingInfo>(&txt).map_err(|e| e.to_string())?
+    } else {
+        let meta = std::fs::metadata(&ns).map_err(|e| e.to_string())?;
+        RecordingInfo {
+            id: id.to_string(),
+            path: ns.to_string_lossy().into_owned(),
+            filename: format!("{id}.mp4"),
+            created_at: meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64)
+                .unwrap_or(0),
+            duration: 0.0,
+            size_bytes: meta.len(),
+            width: 0,
+            height: 0,
+            orientation: Orientation::Portrait,
+        }
+    };
+
+    info.path = ns.to_string_lossy().into_owned();
+    info.id = id.to_string();
+    info.filename = filename;
+    save_metadata(&info);
+    Ok(info)
+}
+
 /// Recording duration in seconds from sidecar metadata (0 if unknown).
 pub fn recording_duration(id: &str) -> f64 {
     let json = recordings_dir().join(format!("{id}.json"));
