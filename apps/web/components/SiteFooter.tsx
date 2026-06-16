@@ -39,7 +39,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-linesoft">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-5 font-mono text-xs text-inkfaint sm:flex-row">
-          <span>© {new Date().getFullYear()} ninesixteen.video</span>
+          <span className="text-[0.8em]">© {new Date().getFullYear()} ninesixteen.video</span>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <Link href="/terms" className="hover:text-inksoft">Terms</Link>
             <Link href="/privacy" className="hover:text-inksoft">Privacy</Link>

@@ -31,7 +31,7 @@ export default function HomePage() {
             </Link>
           </div>
           <p className="mt-5 font-mono text-xs text-inkfaint">
-            Record &amp; preview free · $49 one-time to export · No account to start
+            Record &amp; preview free · $49 one-time purchase · No account to start
           </p>
         </div>
 
@@ -69,7 +69,7 @@ export default function HomePage() {
       <section id="features" className="py-16">
         <SectionHeading
           kicker="What you get"
-          title="Everything to shoot vertical. Nothing you don't."
+          title="Everything to shoot vertical, faster than ever."
         />
         <FeaturesGrid />
       </section>

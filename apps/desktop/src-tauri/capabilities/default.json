@@ -11,6 +11,9 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-is-registered",
     "opener:default",
-    "dialog:default"
+    "dialog:default",
+    "updater:default",
+    "process:allow-restart",
+    "process:allow-exit"
   ]
 }

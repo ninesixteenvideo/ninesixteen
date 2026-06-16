@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
 const FEATURES = [
-  "Unlimited MP4 export — no watermark",
+  "All feautures, present and future",
   "Save locally or straight to Google Drive",
   "Up to 1080p · 60fps encoding",
-  "One account across desktop and web",
+  "Account links to desktop app",
   "Free updates, forever",
   "Priority support from the developer",
 ];
@@ -26,7 +26,7 @@ export function PricingPlans() {
   }
 
   return (
-    <div className="mx-auto mt-12 max-w-md">
+    <div className="mx-auto mt-8 max-w-md">
       <div
         className="ns-card relative flex flex-col p-7"
         style={{ boxShadow: "7px 7px 0 var(--color-pinkdeep)" }}

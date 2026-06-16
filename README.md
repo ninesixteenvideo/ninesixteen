@@ -73,6 +73,8 @@ pnpm desktop:build  # produce an installer (.msi / .nsis)
 
 The installer lands in `apps/desktop/src-tauri/target/release/bundle/`.
 
+**Releasing updates:** see [UPDATEGUIDE.md](./UPDATEGUIDE.md) for signing keys, GitHub Actions, and auto-update.
+
 ### How the two-handed framing works
 
 | Control            | Action                                   |

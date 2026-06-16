@@ -4,6 +4,11 @@ import { isDesktop } from "../lib/bridge";
 import { WEB_URL } from "../lib/firebase";
 import { useAuth } from "../lib/auth";
 import { submitFeedback } from "../lib/feedback";
+import {
+  canAutoUpdate,
+  checkForUpdates,
+  installAvailableUpdate,
+} from "../lib/updater";
 
 async function openLegalPage(path: "/terms" | "/privacy") {
   const url = `${WEB_URL}${path}`;
@@ -29,12 +34,56 @@ export function Settings() {
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch(() => setAppVersion(null));
+  }, []);
 
   useEffect(() => {
     if (user?.email) {
       setFeedbackEmail((prev) => (prev.trim() ? prev : user.email));
     }
   }, [user?.email]);
+
+  const handleCheckForUpdates = async () => {
+    setUpdateBusy(true);
+    setUpdateStatus(null);
+    setUpdateError(null);
+    try {
+      if (!canAutoUpdate()) {
+        setUpdateStatus("Updates are checked automatically in release builds.");
+        return;
+      }
+      const result = await checkForUpdates();
+      if (result.status === "latest") {
+        setUpdateStatus("You're on the latest version.");
+        return;
+      }
+      if (result.status === "available") {
+        setUpdateStatus(`Downloading v${result.version}…`);
+        const install = await installAvailableUpdate();
+        if (install.status === "error") {
+          setUpdateError(install.message);
+        }
+        return;
+      }
+      if (result.status === "error") {
+        setUpdateError(result.message);
+        return;
+      }
+      setUpdateStatus("Auto-update is not available in this build.");
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
 
   const handleSendFeedback = async () => {
     setFeedbackBusy(true);
@@ -146,6 +195,33 @@ export function Settings() {
             onClick={() => void handleSendFeedback()}
           >
             {feedbackBusy ? "Sending…" : "Send feedback"}
+          </button>
+        </section>
+      )}
+
+      {isDesktop && (
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h3>Updates</h3>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            The app checks for updates on startup. You can also check manually here.
+          </p>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <span className="label">Current version</span>
+            <span className="muted">{appVersion ?? "…"}</span>
+          </div>
+          {updateError && <p className="auth-error" style={{ marginBottom: 12 }}>{updateError}</p>}
+          {updateStatus && (
+            <p className="muted" style={{ marginBottom: 12, color: "var(--ns-blue-deep)" }}>
+              {updateStatus}
+            </p>
+          )}
+          <button
+            type="button"
+            className="btn ghost sm"
+            disabled={updateBusy}
+            onClick={() => void handleCheckForUpdates()}
+          >
+            {updateBusy ? "Checking…" : "Check for updates"}
           </button>
         </section>
       )}

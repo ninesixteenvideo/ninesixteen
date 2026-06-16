@@ -8,6 +8,7 @@ import { Settings } from "./components/Settings";
 import { AccountMenu } from "./components/AccountMenu";
 import { HotkeysModal } from "./components/HotkeysModal";
 import { isDesktop } from "./lib/bridge";
+import { checkForUpdatesOnStartup } from "./lib/updater";
 
 const BASE_TABS = [
   { id: "studio", label: "Studio" },
@@ -27,6 +28,14 @@ export function App() {
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    if (!ready || !isDesktop) return;
+    const timer = window.setTimeout(() => {
+      void checkForUpdatesOnStartup();
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [ready]);
 
   return (
     <div className="app">

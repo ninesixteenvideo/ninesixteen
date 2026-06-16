@@ -1,0 +1,68 @@
+name: Desktop release
+
+# Push a tag like `desktop-v0.1.1` to build a signed Windows installer
+# and publish updater artifacts to GitHub Releases.
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch bundled binaries
+        run: |
+          node scripts/fetch-ffmpeg.mjs
+          node scripts/fetch-softcam.mjs
+
+      - name: Build & release desktop app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_WEB_URL: https://ninesixteen.video
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: ninesixteen.video ${{ github.ref_name }}
+          releaseBody: |
+            Windows desktop release.
+
+            - **New installs:** download the NSIS `.exe` or `.msi` installer below.
+            - **Existing installs:** the app checks GitHub on startup and offers a one-click update.
+
+            See [UPDATEGUIDE.md](https://github.com/ninesixteenvideo/ninesixteen/blob/main/UPDATEGUIDE.md) for maintainer notes.
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc

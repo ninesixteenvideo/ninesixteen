@@ -4,10 +4,9 @@ export const metadata = { title: "Pricing · ninesixteen.video" };
 
 export default function PricingPage() {
   return (
-    <div className="mx-auto max-w-5xl px-5 py-16">
+    <div className="mx-auto max-w-5xl px-5 pb-16 pt-8">
       <div className="mx-auto max-w-2xl text-center">
-        <span className="ns-chip">Pricing</span>
-        <h1 className="mt-4 font-display text-4xl tracking-tight sm:text-5xl">
+        <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
           One price. Yours for good.
         </h1>
         <p className="mt-4 font-body text-lg text-inksoft">

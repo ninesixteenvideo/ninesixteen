@@ -36,6 +36,8 @@ apps/desktop/src-tauri/resources/interception/*
 **/.env.*.local
 **/serviceAccount*.json
 *.pem
+.ninesixteen-signing.key
+*.signing.key
 
 # Recordings & media (local capture output during dev)
 recordings/
