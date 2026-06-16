@@ -223,33 +223,47 @@ mod imp {
 
         fn read_samples_timeout(&mut self, wait_ms: u32) -> Result<Vec<f32>, String> {
             let _ = self.event.wait_for_event(wait_ms);
-            let mut bytes: VecDeque<u8> = VecDeque::new();
-            let flags = self
-                .capture
-                .read_from_device_to_deque(&mut bytes)
-                .map_err(|e| e.to_string())?;
             let block = self.block_align as usize;
-            if block == 0 || bytes.len() < block {
+            if block == 0 {
                 return Ok(Vec::new());
             }
             let ch = self.channels.max(1) as usize;
             let bytes_per_sample = (block / ch).max(1);
-            let frames = bytes.len() / block;
 
-            // A SILENT packet still carries valid timing (a real frame count) but
-            // its byte contents are undefined per the WASAPI contract — emit true
-            // zeros so silence keeps A/V aligned without garbage clicks.
-            if flags.silent {
-                let silent = vec![0.0f32; frames * ch];
-                return Ok(resample_to_stereo_48k(&silent, self.sample_rate, self.channels));
+            // Drain EVERY packet WASAPI currently has queued before going back to
+            // the event wait. Reading a single packet per wakeup (the old behavior)
+            // lets the capture buffer overflow on devices that deliver several
+            // periods between wakeups — WASAPI then silently DROPS the surplus, so
+            // the recording captures fewer samples than wall-clock time and the
+            // audio ends up short (then stretched/desynced at mux). Looping until
+            // GetBuffer reports empty keeps every sample on every device.
+            let mut samples: Vec<f32> = Vec::new();
+            loop {
+                let mut pkt: VecDeque<u8> = VecDeque::new();
+                let flags = self
+                    .capture
+                    .read_from_device_to_deque(&mut pkt)
+                    .map_err(|e| e.to_string())?;
+                if pkt.len() < block {
+                    break;
+                }
+                let frames = pkt.len() / block;
+                if flags.silent {
+                    // Silent packets carry valid timing but undefined contents —
+                    // emit true zeros so silence keeps A/V aligned without garbage.
+                    samples.extend(std::iter::repeat(0.0f32).take(frames * ch));
+                } else {
+                    let raw: Vec<u8> = pkt.into_iter().collect();
+                    for frame in raw.chunks_exact(block) {
+                        for s in frame.chunks_exact(bytes_per_sample) {
+                            samples.push(decode_sample(s, self.is_float));
+                        }
+                    }
+                }
             }
 
-            let raw: Vec<u8> = bytes.into_iter().collect();
-            let mut samples = Vec::with_capacity(frames * ch);
-            for frame in raw.chunks_exact(block) {
-                for s in frame.chunks_exact(bytes_per_sample) {
-                    samples.push(decode_sample(s, self.is_float));
-                }
+            if samples.is_empty() {
+                return Ok(Vec::new());
             }
             Ok(resample_to_stereo_48k(&samples, self.sample_rate, self.channels))
         }
@@ -704,6 +718,34 @@ mod imp {
         Ok((written, peak_max))
     }
 
+    /// Write `frames` of stereo digital silence (zero PCM) to the sidecar, reusing
+    /// `buf` in `max_block`-sized chunks. Used to bridge real-time gaps where a
+    /// loopback endpoint delivered no packets, keeping audio locked to the wall
+    /// clock without a mux-time tempo stretch.
+    fn write_silence<W: Write>(
+        writer: &mut W,
+        frames: usize,
+        buf: &mut [u8],
+    ) -> Result<(), String> {
+        if frames == 0 {
+            return Ok(());
+        }
+        let frames_per_chunk = (buf.len() / BYTES_PER_FRAME).max(1);
+        let mut remaining = frames;
+        while remaining > 0 {
+            let chunk = remaining.min(frames_per_chunk);
+            let bytes = chunk * BYTES_PER_FRAME;
+            for b in buf[..bytes].iter_mut() {
+                *b = 0;
+            }
+            writer
+                .write_all(&buf[..bytes])
+                .map_err(|e| format!("write PCM silence: {e}"))?;
+            remaining -= chunk;
+        }
+        Ok(())
+    }
+
     fn run_recording_pcm(
         pcm_path: PathBuf,
         settings: AudioSettings,
@@ -770,16 +812,50 @@ mod imp {
         let max_block = WRITE_BLOCK_FRAMES;
         let mut buf = vec![0u8; max_block * BYTES_PER_FRAME];
         let mut frames_written = 0u64;
+        let mut silence_frames = 0u64;
         let mut mix_peak_max = 0.0f32;
+        let mut in_gap = false;
 
-        // Faithful capture: write every sample the device delivers, in order, at
-        // the device's own clock. No wall-clock gating, no zero-fill, no drops —
-        // drift vs. the video timeline is corrected once, at mux time.
+        // Wall-clock locked capture. We write every real sample the device hands
+        // us, in order — but some endpoints (notably WASAPI loopback on audio
+        // interfaces like the Steinberg UR22) deliver NO packets at all during
+        // silent stretches, so the captured stream runs short of real time and
+        // drifts. We close that gap by inserting silence in real time against the
+        // same wall clock the video uses, so the silence lands exactly where the
+        // device went quiet instead of being smeared across the whole take by a
+        // mux-time tempo stretch.
+        //
+        // GRACE absorbs normal capture latency (buffer depth, scheduling jitter)
+        // so well-behaved devices — e.g. a 48 kHz default endpoint that already
+        // stays in sync — never trip the gap filler and behave exactly as before.
+        // It exceeds the capture buffer depth, so by the time we're this far
+        // behind, any missing audio was genuinely never delivered (or already
+        // dropped by WASAPI), making silence the correct reconstruction.
+        const GRACE_FRAMES: u64 = (SAMPLE_RATE as u64) * 150 / 1000; // 150 ms
         while !stop.load(Ordering::Relaxed) {
             let (written, peak) =
                 drain_available(&mut writer, &settings, &system_q, &mic_q, max_block, &mut buf)?;
             frames_written += written;
             mix_peak_max = mix_peak_max.max(peak);
+            if written > 0 {
+                in_gap = false;
+            }
+
+            // Compare what we've written to where the wall clock says we should
+            // be. Only open a gap once we're more than GRACE behind (a real
+            // silence gap, not ordinary latency); once open, top up to the wall
+            // clock every pass so audio resumes tightly aligned.
+            let target = (session_start.elapsed().as_secs_f64() * SAMPLE_RATE as f64) as u64;
+            if !in_gap && frames_written + GRACE_FRAMES < target {
+                in_gap = true;
+            }
+            if in_gap && frames_written < target {
+                let deficit = (target - frames_written) as usize;
+                write_silence(&mut writer, deficit, &mut buf)?;
+                frames_written += deficit as u64;
+                silence_frames += deficit as u64;
+            }
+
             if written == 0 {
                 std::thread::sleep(Duration::from_millis(2));
             }
@@ -799,9 +875,10 @@ mod imp {
             .map_err(|e| format!("flush PCM sidecar: {e}"))?;
 
         let secs = frames_written as f64 / SAMPLE_RATE as f64;
+        let silence_secs = silence_frames as f64 / SAMPLE_RATE as f64;
         let wall = session_start.elapsed().as_secs_f64();
         capture_log(&format!(
-            "Audio PCM wrote {} bytes ({secs:.2}s captured / {wall:.2}s wall, device clock); mix peak {:.3}",
+            "Audio PCM wrote {} bytes ({secs:.2}s total / {silence_secs:.2}s gap-filled / {wall:.2}s wall, wall-locked); mix peak {:.3}",
             frames_written * BYTES_PER_FRAME as u64,
             mix_peak_max
         ));

@@ -1,5 +1,13 @@
 const RELEASES = [
   {
+    version: "0.1.2",
+    date: "June 2026",
+    items: [
+      "Audio sync fixed for good across every audio device \u2014 interfaces and outputs that stay silent between sounds (e.g. Steinberg UR22) now stay perfectly in time",
+      "Recordings are locked to the wall clock in real time instead of being stretched to fit afterwards",
+    ],
+  },
+  {
     version: "0.1.1",
     date: "June 2026",
     items: [
