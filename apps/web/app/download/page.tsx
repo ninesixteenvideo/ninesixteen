@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 
 const INSTALLER_URL = process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL?.trim() ?? "";
@@ -36,6 +37,25 @@ const INCLUDED = [
 ];
 
 export default function DownloadPage() {
+  const [downloads, setDownloads] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/stats/downloads")
+      .then((res) => res.json())
+      .then((data: { downloads?: number }) => {
+        if (!cancelled && typeof data.downloads === "number") {
+          setDownloads(data.downloads);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDownloads(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 sm:py-10">
       <div className="text-center">
@@ -70,8 +90,7 @@ export default function DownloadPage() {
           <div className="flex flex-col items-center justify-center gap-4 bg-bgalt p-8">
             {INSTALLER_URL ? (
               <a
-                href={INSTALLER_URL}
-                download={INSTALLER_FILENAME || undefined}
+                href="/api/download"
                 className="ns-cta ns-cta--primary w-full max-w-xs text-center"
               >
                 Download .{INSTALLER_EXT}
@@ -94,6 +113,11 @@ export default function DownloadPage() {
                 ? `v${VERSION} · Windows x64`
                 : "Set NEXT_PUBLIC_DESKTOP_INSTALLER_URL to go live"}
             </p>
+            {INSTALLER_URL && downloads !== null ? (
+              <p className="text-center font-mono text-[10px] text-inkfaint">
+                {downloads.toLocaleString()} download{downloads === 1 ? "" : "s"}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

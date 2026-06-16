@@ -7,6 +7,7 @@ import {
   STRIPE_WEBHOOK_SECRET,
 } from "@/lib/stripe";
 import { setUserEntitlement } from "@/lib/firebaseAdmin";
+import { sendPurchaseAlertEmail } from "@/lib/purchaseAlertEmail";
 import { productionConfigRequired } from "@/lib/serverEnv";
 
 export const runtime = "nodejs";
@@ -87,6 +88,18 @@ export async function POST(req: Request) {
           stripeCustomerId: customerId,
           stripePaymentIntentId: paymentIntentId,
         });
+
+        try {
+          await sendPurchaseAlertEmail({
+            uid,
+            email: session.customer_details?.email ?? session.customer_email,
+            amountCents: session.amount_total ?? 0,
+            currency: session.currency ?? "usd",
+            stripeSessionId: session.id,
+          });
+        } catch (err) {
+          console.error("[stripe webhook] purchase alert email failed:", err);
+        }
         break;
       }
 
