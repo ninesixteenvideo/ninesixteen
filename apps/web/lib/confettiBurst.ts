@@ -32,6 +32,7 @@ export function confettiBurst(origin: { x: number; y: number }) {
     canvas.remove();
     return;
   }
+  const drawCtx = ctx;
 
   const colors = [CORAL, MINT];
   const particles: Particle[] = Array.from({ length: 72 }, () => {
@@ -61,7 +62,7 @@ export function confettiBurst(origin: { x: number; y: number }) {
       return;
     }
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawCtx.clearRect(0, 0, canvas.width, canvas.height);
 
     for (const p of particles) {
       p.x += p.vx;
@@ -71,13 +72,13 @@ export function confettiBurst(origin: { x: number; y: number }) {
       p.rotation += p.spin;
       p.life = 1 - t;
 
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rotation);
-      ctx.globalAlpha = Math.max(0, p.life);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      ctx.restore();
+      drawCtx.save();
+      drawCtx.translate(p.x, p.y);
+      drawCtx.rotate(p.rotation);
+      drawCtx.globalAlpha = Math.max(0, p.life);
+      drawCtx.fillStyle = p.color;
+      drawCtx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      drawCtx.restore();
     }
 
     requestAnimationFrame(frame);
