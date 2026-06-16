@@ -81,7 +81,13 @@ type EntitlementUpdate = {
 };
 
 function entitlementPayload(update: EntitlementUpdate): Record<string, unknown> {
-  return { ...update, updatedAt: Date.now() };
+  const payload: Record<string, unknown> = { updatedAt: Date.now() };
+  for (const [key, value] of Object.entries(update)) {
+    if (value !== undefined) {
+      payload[key] = value;
+    }
+  }
+  return payload;
 }
 
 /** Upsert a user's entitlement document. No-op in mock mode. */
