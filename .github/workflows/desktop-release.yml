@@ -63,7 +63,7 @@ jobs:
             - **New installs:** download the NSIS `.exe` or `.msi` installer below.
             - **Existing installs:** the app checks GitHub on startup and offers a one-click update.
 
-            See [UPDATEGUIDE.md](https://github.com/ninesixteenvideo/ninesixteen/blob/main/UPDATEGUIDE.md) for maintainer notes.
+            See [UPDATEGUIDE.md](https://github.com/ninesixteenvideo/ninesixteen/blob/master/UPDATEGUIDE.md) for maintainer notes.
           releaseDraft: true
           prerelease: false
           args: --target x86_64-pc-windows-msvc

@@ -1,263 +1,219 @@
-# How to release a new desktop version
+# How to release the desktop app
 
-This guide walks you through **every step** to ship a new `ninesixteen.video` desktop build with **automatic in-app updates**.
+This is the **only release path we use**: push a tag → GitHub Actions builds the signed `.exe` → you publish the draft release → update the website download URL.
 
-You only do the **one-time setup** once. After that, each release is mostly: bump version → tag → publish → update download link.
+While you're developing, use **`pnpm desktop:dev`** (iterate) or **`pnpm desktop:build`** (optional local installer test). You do **not** upload installers by hand.
 
 ---
 
-## How auto-update works (simple version)
+## The big picture
 
-1. Your app is installed on a user's PC.
-2. On startup (and from **Settings → Updates**), the app fetches a small file from GitHub:
+| What | How |
+|------|-----|
+| **Iterate locally** | `pnpm desktop:dev` or `pnpm desktop:build` |
+| **Ship to users** | Tag → GitHub Actions → Publish release → Vercel URL |
+| **Installer hosting** | GitHub Releases (free) |
+| **In-app auto-update** | App reads `latest.json` from GitHub Releases |
+| **Website download button** | Vercel env var pointing at the release `.exe` |
+
+---
+
+## How auto-update works
+
+1. A user has the app installed.
+2. On startup (and in **Settings → Updates**), the app checks:
    `https://github.com/ninesixteenvideo/ninesixteen/releases/latest/download/latest.json`
-3. If that file says a **newer signed version** exists, the app asks to update.
-4. The user clicks **Update now** → download → install → restart.
+3. If a **newer signed version** exists, the app offers **Update now**.
+4. User accepts → download → install → restart.
 
-GitHub Releases hosts the installers **for free**. Signing keys prove the update really came from you.
+Updates only work after you **Publish** the GitHub release (draft is not enough).
 
 ---
 
-## One-time setup (do this once)
+## One-time setup (already done if you followed along)
 
-### Step 1 — Generate updater signing keys
-
-Open **PowerShell** in the project folder (`c:\ninesixteen`):
+### 1. Signing keys
 
 ```powershell
 cd c:\ninesixteen\apps\desktop
 pnpm tauri signer generate -w "$env:USERPROFILE\.ninesixteen-signing.key"
 ```
 
-- Choose a **password** when asked (remember it).
-- This creates a **private key file** on your PC. **Never commit it. Never share it.**
+- Remember the password.
+- **Never commit** `.ninesixteen-signing.key` (it's in `.gitignore`).
+- Paste the **public** key from `.ninesixteen-signing.key.pub` into `apps/desktop/src-tauri/tauri.conf.json` → `"pubkey"`.
+- Commit and push the public key only.
 
-The command prints a **public key** (a long string). Copy it.
+### 2. GitHub Actions secrets
 
-### Step 2 — Paste the public key into the app config
+**GitHub → ninesixteenvideo/ninesixteen → Settings → Secrets and variables → Actions**
 
-Open:
+| Secret | Value |
+|--------|--------|
+| `TAURI_SIGNING_PRIVATE_KEY` | Entire contents of `%USERPROFILE%\.ninesixteen-signing.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Your key password |
+| `VITE_FIREBASE_API_KEY` | Same **value** as `NEXT_PUBLIC_FIREBASE_API_KEY` in web `.env.local` |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Same value as `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` |
+| `VITE_FIREBASE_PROJECT_ID` | Same value as `NEXT_PUBLIC_FIREBASE_PROJECT_ID` |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Same value as `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Same value as `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` |
+| `VITE_FIREBASE_APP_ID` | Same value as `NEXT_PUBLIC_FIREBASE_APP_ID` |
 
-`apps/desktop/src-tauri/tauri.conf.json`
+Same Firebase project, different env var **names** (web uses `NEXT_PUBLIC_*`, the CI build uses `VITE_*`).
 
-Find:
+### 3. Workflow on GitHub
 
-```json
-"pubkey": "PASTE_YOUR_TAURI_UPDATER_PUBLIC_KEY_HERE"
-```
-
-Replace that value with your **public key** string from Step 1.
-
-Commit and push this change (public key is safe to commit).
-
-### Step 3 — Add GitHub secrets
-
-Go to: **GitHub → ninesixteenvideo/ninesixteen → Settings → Secrets and variables → Actions → New repository secret**
-
-Add these secrets:
-
-| Secret name | What to put there |
-|-------------|-------------------|
-| `TAURI_SIGNING_PRIVATE_KEY` | Open your key file (`%USERPROFILE%\.ninesixteen-signing.key`) in Notepad. Copy **the entire contents** and paste as the secret value. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password you chose in Step 1 (leave blank if you didn't set one). |
-| `VITE_FIREBASE_API_KEY` | Same value as in your web `.env.local` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Same |
-| `VITE_FIREBASE_PROJECT_ID` | Same |
-| `VITE_FIREBASE_STORAGE_BUCKET` | Same |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Same |
-| `VITE_FIREBASE_APP_ID` | Same |
-
-These Firebase secrets are required so the **release build** can sign in and verify Pro licenses.
-
-### Step 4 — Push the workflow file
-
-Make sure `.github/workflows/desktop-release.yml` is on your `main` branch (commit + push if you haven't already).
-
-### Step 5 — Create your first GitHub Release manually (v0.1.0 only)
-
-The auto-updater needs **at least one** published release with `latest.json` on GitHub.
-
-For your **very first** public release you can either:
-
-**Option A — Tag and let GitHub Actions build it (recommended)**
-
-Skip to [Every release checklist](#every-release-checklist) below and tag `desktop-v0.1.0`.
-
-**Option B — Build locally and upload by hand**
-
-```powershell
-cd c:\ninesixteen
-pnpm install
-node scripts/fetch-ffmpeg.mjs
-node scripts/fetch-softcam.mjs
-# Ensure apps/desktop/.env has your VITE_FIREBASE_* values
-pnpm desktop:build
-```
-
-Upload the files from:
-
-`apps/desktop/src-tauri/target/release/bundle/`
-
-to a new GitHub Release (see Step 6 in the release checklist).
+The file `.github/workflows/desktop-release.yml` must be on the **`master`** branch. Pushing a tag `desktop-v*` triggers it automatically.
 
 ---
 
-## Every release checklist
+## Every release (step by step)
 
-Use this **every time** you ship a new desktop version.
+### Step 1 — Develop and test locally
 
-### Step 1 — Decide the new version number
+```powershell
+pnpm desktop:dev
+```
 
-Use [semantic versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
+When you're happy, optionally sanity-check a local release build:
 
-Examples:
+```powershell
+pnpm desktop:build
+```
 
-- `0.1.0` → `0.1.1` (small fix)
-- `0.1.1` → `0.2.0` (new feature)
-- `0.2.0` → `1.0.0` (big launch)
+Installer output (local only): `apps/desktop/src-tauri/target/release/bundle/`
 
-### Step 2 — Bump the version in these 4 files
+This local build is **not** what you upload — GitHub Actions builds the real release.
 
-All four must match:
+---
 
-| File | Field |
-|------|--------|
+### Step 2 — Bump the version
+
+Pick a version (`0.1.0`, `0.1.1`, …). Update **all four** to the same number:
+
+| File | What to change |
+|------|----------------|
 | `apps/desktop/src-tauri/tauri.conf.json` | `"version": "0.1.1"` |
 | `apps/desktop/src-tauri/Cargo.toml` | `version = "0.1.1"` |
 | `apps/desktop/package.json` | `"version": "0.1.1"` |
 | `apps/web/.env.example` | `NEXT_PUBLIC_DESKTOP_VERSION=0.1.1` |
 
-Also update **Vercel** env var `NEXT_PUBLIC_DESKTOP_VERSION` to the same number (Step 6 below).
+---
 
-### Step 3 — Commit the version bump
-
-In GitHub Desktop or terminal:
+### Step 3 — Commit and push to `master`
 
 ```powershell
 cd c:\ninesixteen
 git add apps/desktop/src-tauri/tauri.conf.json apps/desktop/src-tauri/Cargo.toml apps/desktop/package.json apps/web/.env.example
 git commit -m "Release desktop v0.1.1"
-git push
+git push origin master
 ```
 
-(Replace `0.1.1` with your real version.)
+**Important:** Push to `master` **before** you tag. The tag must point at a commit that includes your latest code and workflow fixes.
 
-### Step 4 — Create and push a release tag
+---
 
-The tag **must** start with `desktop-v`:
+### Step 4 — Tag and push (starts the build)
+
+Tag format **must** be `desktop-v` + version:
 
 ```powershell
 git tag desktop-v0.1.1
 git push origin desktop-v0.1.1
 ```
 
-This triggers the **Desktop release** GitHub Action.
+This automatically starts **Actions → Desktop release**. You do **not** need to click "Re-run all jobs".
 
-### Step 5 — Wait for the build & publish the draft release
+A successful build takes about **20–30 minutes**.
 
-1. Open **GitHub → Actions** tab.
-2. Click the running **Desktop release** workflow.
-3. Wait until it finishes green (usually 15–30 minutes).
-4. Go to **GitHub → Releases**.
-5. You should see a **Draft** release named `ninesixteen.video desktop-v0.1.1`.
-6. Check the attached files include at least:
-   - `latest.json` (required for auto-update)
-   - `*.exe` or `*.msi` installer
+---
+
+### Step 5 — Watch Actions, then publish the release
+
+1. **GitHub → Actions** → open the **newest** Desktop release run (triggered by your tag push).
+2. Wait for a **green** checkmark.
+3. **GitHub → Releases** → open the **Draft** (e.g. `ninesixteen.video desktop-v0.1.1`).
+4. Confirm **Assets** include:
+   - `ninesixteen.video_0.1.1_x64-setup.exe` (or similar NSIS `.exe`)
+   - `latest.json`
    - `.sig` signature files
-7. Edit release notes if you want, then click **Publish release**.
+5. Click **Publish release**.
 
-> **Important:** Auto-update only works for users after the release is **Published**, not while it's still a draft.
+---
 
-### Step 6 — Update the website download link (Vercel)
+### Step 6 — Update the website (Vercel)
 
-The landing page `/download` button uses an env var, not auto-update.
+The `/download` page does not auto-update — you set the URL manually.
 
-1. On the published GitHub Release, right-click the **NSIS `.exe` installer** (filename like `ninesixteen.video_0.1.1_x64-setup.exe`) → **Copy link address**.
-2. In **Vercel → Project → Settings → Environment Variables**, set:
-   - `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` = that copied URL
-   - `NEXT_PUBLIC_DESKTOP_VERSION` = `0.1.1` (same as release)
-3. **Redeploy** the web app (Deployments → … → Redeploy).
+1. On the **published** release, right-click the **`.exe` installer** → **Copy link address**.
+2. **Vercel → Settings → Environment Variables:**
+   - `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` = that URL
+   - `NEXT_PUBLIC_DESKTOP_VERSION` = `0.1.1`
+3. **Redeploy** the web app.
 
-New visitors download the latest installer. Existing users get prompted in-app.
+---
 
 ### Step 7 — Smoke test
 
-1. Install the **previous** version on a test PC (or keep your current install).
-2. Launch the app → after a few seconds you should see **Update available**.
-3. Or go to **Settings → Updates → Check for updates**.
-4. Confirm update installs and the app restarts on the new version.
+- **New users:** `/download` installs the new `.exe`.
+- **Existing users:** app prompts for update on launch, or **Settings → Updates → Check for updates**.
 
 ---
 
-## What users experience
+## If a release build failed
 
-| Situation | What happens |
-|-----------|----------------|
-| Fresh install from website | Downloads installer from `/download` |
-| Already installed, new release published | Prompt on startup or via Settings |
-| Dev build (`pnpm desktop:dev`) | No auto-update (expected) |
-| Release build, already latest | Settings says "You're on the latest version." |
+### Read the failed run
+
+**Actions** → click the red run → expand the failed step → read the log.
+
+Do **not** rely on **Re-run all jobs** on an old failed run if you fixed something on `master` afterward — re-runs still use the **commit the tag points at**.
+
+### Fix on `master`, then move the tag
+
+After pushing a fix to `master`:
+
+```powershell
+cd c:\ninesixteen
+git tag -d desktop-v0.1.0
+git push origin :refs/tags/desktop-v0.1.0
+git tag desktop-v0.1.0
+git push origin desktop-v0.1.0
+```
+
+Or bump to a new version and tag `desktop-v0.1.1` instead.
+
+### Common failures
+
+| Error | Fix |
+|-------|-----|
+| `Multiple versions of pnpm specified` | Workflow must **not** set `version:` on `pnpm/action-setup` — it reads `packageManager` from root `package.json`. Tag must include that fix (re-tag on latest `master`). |
+| `MSBuild not found` during fetch-softcam | Fixed in repo via `setup-msbuild` + Enterprise MSBuild paths. Re-tag on latest `master`. |
+| Missing Firebase / signing secrets | Add or fix secrets under GitHub Actions settings. |
+| Build still running | Normal — wait 20–30 min. Failures in the first ~30 seconds are setup issues; long runs that fail are compile/signing issues. |
 
 ---
 
-## Troubleshooting
+## What users see
 
-### "Update check failed" / pubkey error
-
-- Public key in `tauri.conf.json` doesn't match the private key in GitHub secrets.
-- Re-run `pnpm tauri signer generate` or verify you pasted the correct public key.
-
-### GitHub Action failed
-
-- Open the failed job log in **Actions**.
-- Common causes: missing Firebase secrets, missing signing secrets, Rust/Windows build error.
-
-### Users don't get update prompts
-
-- Release must be **Published** (not draft).
-- Release must include `latest.json` (the workflow adds this when signing is configured).
-- User's installed version must be **older** than the release version.
-- User must be on a **release** build, not an old unsigned local build.
-
-### Website still offers old installer
-
-- Update `NEXT_PUBLIC_DESKTOP_INSTALLER_URL` on Vercel and redeploy.
+| Situation | Result |
+|-----------|--------|
+| Download from website | Gets `.exe` from your Vercel URL (GitHub Releases link) |
+| Already installed, newer release published | In-app update prompt |
+| `pnpm desktop:dev` | No auto-update (dev build) |
+| Already on latest version | Settings → "You're on the latest version." |
 
 ---
 
 ## Quick reference
 
-| Item | Location |
-|------|----------|
-| Version source of truth | `apps/desktop/src-tauri/tauri.conf.json` |
-| Release tag format | `desktop-v0.1.1` |
-| GitHub repo | https://github.com/ninesixteenvideo/ninesixteen |
-| Updater manifest | `releases/latest/download/latest.json` |
-| Local signing key (keep secret) | `%USERPROFILE%\.ninesixteen-signing.key` |
+| Item | Value |
+|------|--------|
+| Repo | https://github.com/ninesixteenvideo/ninesixteen |
+| Branch | `master` |
+| Release tag | `desktop-v0.1.1` (must start with `desktop-v`) |
 | CI workflow | `.github/workflows/desktop-release.yml` |
-| User-facing update UI | Settings → Updates |
-
----
-
-## Optional: build a release on your PC (without GitHub Actions)
-
-Same as first-time Option B:
-
-```powershell
-cd c:\ninesixteen
-pnpm install
-node scripts/fetch-ffmpeg.mjs
-node scripts/fetch-softcam.mjs
-pnpm desktop:build
-```
-
-Set signing env vars before building if you want updater artifacts locally:
-
-```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.ninesixteen-signing.key" -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "your-password"
-```
-
-Output: `apps/desktop/src-tauri/target/release/bundle/`
-
-Upload those files to a GitHub Release manually if needed.
+| Version source of truth | `apps/desktop/src-tauri/tauri.conf.json` |
+| Updater manifest | `releases/latest/download/latest.json` |
+| Private signing key (local only) | `%USERPROFILE%\.ninesixteen-signing.key` |
+| Local dev | `pnpm desktop:dev` |
+| Local test build (optional) | `pnpm desktop:build` |
