@@ -1,6 +1,9 @@
+import { useState, useEffect } from "react";
 import { useStore } from "../state/store";
 import { isDesktop } from "../lib/bridge";
 import { WEB_URL } from "../lib/firebase";
+import { useAuth } from "../lib/auth";
+import { submitFeedback } from "../lib/feedback";
 
 async function openLegalPage(path: "/terms" | "/privacy") {
   const url = `${WEB_URL}${path}`;
@@ -19,6 +22,34 @@ export function Settings() {
     monitor,
     setInputSettings,
   } = useStore();
+  const { user } = useAuth();
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState(user?.email ?? "");
+  const [sendLogs, setSendLogs] = useState(true);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.email) {
+      setFeedbackEmail((prev) => (prev.trim() ? prev : user.email));
+    }
+  }, [user?.email]);
+
+  const handleSendFeedback = async () => {
+    setFeedbackBusy(true);
+    setFeedbackStatus(null);
+    setFeedbackError(null);
+    try {
+      await submitFeedback(feedbackMessage, feedbackEmail || undefined, sendLogs);
+      setFeedbackMessage("");
+      setFeedbackStatus("Thanks — your feedback was sent.");
+    } catch (e) {
+      setFeedbackError(String(e));
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
 
   return (
     <div className="content scroll" style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -58,6 +89,66 @@ export function Settings() {
           </span>
         </div>
       </section>
+
+      {isDesktop && (
+        <section className="panel" style={{ marginTop: 16 }}>
+          <h3>Bug report &amp; feedback</h3>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            Tell us what went wrong or what we could improve. Messages go to{" "}
+            <a href="mailto:dev@ninesixteen.video">dev@ninesixteen.video</a>.
+          </p>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <span className="label">Your email (optional)</span>
+            <input
+              type="email"
+              className="auth-input"
+              placeholder="you@example.com"
+              value={feedbackEmail}
+              onChange={(e) => setFeedbackEmail(e.target.value)}
+              disabled={feedbackBusy}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <span className="label">Message</span>
+            <textarea
+              className="auth-input feedback-textarea"
+              rows={5}
+              placeholder="Describe the issue or share your feedback…"
+              value={feedbackMessage}
+              onChange={(e) => setFeedbackMessage(e.target.value)}
+              disabled={feedbackBusy}
+            />
+          </div>
+          <label className="feedback-check">
+            <input
+              type="checkbox"
+              checked={sendLogs}
+              onChange={(e) => setSendLogs(e.target.checked)}
+              disabled={feedbackBusy}
+            />
+            <span>
+              Send logs — includes technical diagnostics from this device (no recording
+              content). Saved at{" "}
+              <span className="kbd">Videos\ninesixteen\ninesixteen.log</span>.
+            </span>
+          </label>
+          {feedbackError && <p className="auth-error" style={{ marginTop: 12 }}>{feedbackError}</p>}
+          {feedbackStatus && (
+            <p className="muted" style={{ marginTop: 12, color: "var(--ns-blue-deep)" }}>
+              {feedbackStatus}
+            </p>
+          )}
+          <button
+            type="button"
+            className="btn primary sm"
+            style={{ marginTop: 14 }}
+            disabled={feedbackBusy || feedbackMessage.trim().length < 10}
+            onClick={() => void handleSendFeedback()}
+          >
+            {feedbackBusy ? "Sending…" : "Send feedback"}
+          </button>
+        </section>
+      )}
 
       <section className="panel" style={{ marginTop: 16 }}>
         <h3>Legal</h3>

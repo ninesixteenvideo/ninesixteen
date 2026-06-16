@@ -5,6 +5,7 @@ mod crypto;
 mod entitlement;
 mod entitlement_store;
 mod export;
+mod feedback;
 mod geometry;
 mod hotkeys;
 #[cfg(windows)]
@@ -484,6 +485,7 @@ pub fn run() {
             commands::hide_overlay,
             commands::set_overlay,
             commands::set_overlay_visible,
+            feedback::submit_feedback,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ninesixteen.video");

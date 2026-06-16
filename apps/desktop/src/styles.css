@@ -1690,6 +1690,24 @@ button.cam-pill.off:not(:disabled):hover {
   outline: none;
   box-shadow: 3px 3px 0 var(--ns-shadow-color);
 }
+.feedback-textarea {
+  resize: vertical;
+  min-height: 110px;
+  line-height: 1.45;
+}
+.feedback-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ns-ink-soft);
+  cursor: pointer;
+}
+.feedback-check input {
+  margin-top: 3px;
+  accent-color: var(--ns-blue-deep);
+}
 .auth-error {
   font-family: var(--ns-font-mono);
   font-size: 0.72rem;
