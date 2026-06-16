@@ -285,6 +285,26 @@ a {
   border-radius: 14px;
   box-shadow: 6px 6px 0 var(--color-shadow);
 }
+/* Fullscreen (desktop): the element is forced to fill a 16:9 monitor, so switch
+   to `contain` to preserve the 9:16 frame (letterboxed) instead of cropping it.
+   Drop the framed-player chrome that looks out of place edge-to-edge. */
+.ns-hero-video video:fullscreen {
+  aspect-ratio: auto;
+  object-fit: contain;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.ns-hero-video video:-webkit-full-screen {
+  aspect-ratio: auto;
+  object-fit: contain;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.ns-hero-video video::backdrop {
+  background: #000;
+}
 .ns-hero-video__sound {
   position: absolute;
   top: 2px;
