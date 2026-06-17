@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { invoke, listen } from "../lib/bridge";
-import { cropRect, zoomLabel } from "../lib/geometry";
-import type { CaptureState, OverlayFrame, Viewport } from "../lib/types";
+import { cropRect, formatLabel, zoomLabel } from "../lib/geometry";
+import type { CaptureState, Orientation, OverlayFrame, Viewport } from "../lib/types";
 
 /**
  * The on-desktop overlay. A transparent, click-through, always-on-top window
@@ -14,6 +14,7 @@ export function Overlay() {
   const monitor = useRef({ w: 1920, h: 1080 });
   const shortEdge = useRef(1080);
   const frame = useRef<OverlayFrame>({ x: 0, y: 0, w: 607, h: 1080, zoom: 1 });
+  const orientation = useRef<Orientation>("portrait");
   const recording = useRef(false);
   const arming = useRef(false);
   const countdown = useRef(0);
@@ -31,6 +32,7 @@ export function Overlay() {
         if (st.monitor) monitor.current = { w: st.monitor.width, h: st.monitor.height };
         shortEdge.current = st.outputWidth <= 720 ? 720 : 1080;
         if (st.overlayFrame) frame.current = st.overlayFrame;
+        orientation.current = st.viewport?.orientation ?? "portrait";
         recording.current = st.recording;
         arming.current = st.recordingArmed ?? false;
         countdown.current = st.countdownSeconds ?? 0;
@@ -60,6 +62,7 @@ export function Overlay() {
           }
           const m = monitor.current;
           if (m.w <= 0 || m.h <= 0) return;
+          orientation.current = vp.orientation ?? "portrait";
           const crop = cropRect(vp, m.w, m.h, shortEdge.current);
           frame.current = { x: crop.x, y: crop.y, w: crop.w, h: crop.h, zoom: vp.zoom };
         }),
@@ -154,7 +157,7 @@ export function Overlay() {
       tick(ctx, rx, ry + rh, L, 1, -1);
       tick(ctx, rx + rw, ry + rh, L, -1, -1);
 
-      const label = `9×16 · ${zoomLabel(f.zoom)}`;
+      const label = `${formatLabel(orientation.current)} · ${zoomLabel(f.zoom, orientation.current)}`;
       ctx.font = `${13 * dpr}px "IBM Plex Mono", monospace`;
       const padX = 8 * dpr;
       const tw = ctx.measureText(label).width;

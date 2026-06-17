@@ -89,6 +89,11 @@ pub fn list_recordings() -> Vec<RecordingInfo> {
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
+            let orientation = if stem.contains("_16x9") {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            };
             out.push(RecordingInfo {
                 path: path.to_string_lossy().into_owned(),
                 filename: format!("{stem}.mp4"),
@@ -98,7 +103,7 @@ pub fn list_recordings() -> Vec<RecordingInfo> {
                 size_bytes: size,
                 width: 0,
                 height: 0,
-                orientation: Orientation::Landscape,
+                orientation,
             });
         }
     }

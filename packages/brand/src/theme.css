@@ -125,6 +125,10 @@
   color: var(--ns-on-bright);
   border-color: var(--ns-coral);
 }
+.ns-btn--pink:hover {
+  background: #ff806e;
+  border-color: #ff806e;
+}
 .ns-btn--yellow {
   background: var(--ns-surface-hi);
   color: var(--ns-ink);

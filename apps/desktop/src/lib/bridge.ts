@@ -126,7 +126,7 @@ const mock = (() => {
         e.preventDefault();
         const delta = e.deltaY / 120;
         const factor = 1.0 + delta * 0.12;
-        viewport.zoom = normalizeZoom(viewport.zoom * factor);
+        viewport.zoom = normalizeZoom(viewport.zoom * factor, viewport.orientation);
         viewport.x = (e.clientX / window.innerWidth) * monitor.width;
         viewport.y = (e.clientY / window.innerHeight) * monitor.height;
         emit("viewport:update", { ...viewport });
@@ -168,7 +168,7 @@ const mock = (() => {
           return state() as unknown as T;
         }
         case "set_zoom": {
-          viewport.zoom = normalizeZoom(args.zoom as number);
+          viewport.zoom = normalizeZoom(args.zoom as number, viewport.orientation);
           emit("viewport:update", { ...viewport });
           return state() as unknown as T;
         }

@@ -22,8 +22,8 @@ type CardMode = "default" | "export" | "delete" | "rename";
 
 /**
  * The Library tab is a pure vertical file browser. Selecting a take drives the
- * shared store; the actual 9×16 player lives in <FilmDock /> at the shell level
- * so it can slide out from behind the sidebar.
+ * shared store; the film player lives in <FilmDock /> at the shell level
+ * so it can slide out from behind the sidebar (9×16 or 16×9).
  */
 export function Preview() {
   const {

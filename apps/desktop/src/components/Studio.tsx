@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../state/store";
-import type { AudioSourceMode } from "../lib/types";
+import type { AudioSourceMode, Orientation } from "../lib/types";
 
 const SOURCE_OPTIONS: { id: AudioSourceMode; label: string }[] = [
   { id: "none", label: "No audio" },
@@ -11,6 +11,10 @@ const SOURCE_OPTIONS: { id: AudioSourceMode; label: string }[] = [
 
 const RESOLUTIONS = [720, 1080] as const;
 const FRAME_RATES = [30, 60] as const;
+const FORMATS: { id: Orientation; label: string }[] = [
+  { id: "portrait", label: "9×16" },
+  { id: "landscape", label: "16×9" },
+];
 
 export function Studio() {
   const {
@@ -43,6 +47,23 @@ export function Studio() {
 
         {!sessionActive && (
           <>
+            <section className="field-card">
+              <span className="field-label">Format</span>
+              <div className="toggle toggle--slim" role="group" aria-label="Recording format">
+                {FORMATS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`toggle-opt ${recordingSettings.orientation === f.id ? "active" : ""}`}
+                    aria-pressed={recordingSettings.orientation === f.id}
+                    onClick={() => setRecordingSettings({ orientation: f.id })}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
             <section className="field-card">
               <span className="field-label">Quality</span>
               <div className="toggle toggle--slim" role="group" aria-label="Resolution">

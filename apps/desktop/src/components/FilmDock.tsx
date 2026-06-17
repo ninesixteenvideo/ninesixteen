@@ -9,10 +9,10 @@ const FREE_PREVIEW_SECONDS = 15;
 const SLIDE_MS = 520;
 
 /**
- * The 9×16 player. It lives in the shell behind the sidebar and slides out
+ * The film player. It lives in the shell behind the sidebar and slides out
  * into the stage when a take is selected in the Library. Selecting a different
  * take retracts the current clip, swaps it, then slides the new one out — like
- * feeding a fresh strip of film.
+ * feeding a fresh strip of film (portrait or landscape).
  */
 export function FilmDock({ onExtendedChange }: { onExtendedChange?: (out: boolean) => void }) {
   const { librarySelectedId, recordings, setPaywallOpen } = useStore();
@@ -134,7 +134,9 @@ export function FilmDock({ onExtendedChange }: { onExtendedChange?: (out: boolea
 
   return (
     <div
-      className={`film ${shown ? "mounted" : ""} ${out ? "out" : ""}`}
+      className={`film ${shown ? "mounted" : ""} ${out ? "out" : ""} ${
+        shown?.orientation === "landscape" ? "film--landscape" : "film--portrait"
+      }`}
       aria-hidden={!out}
     >
       {shown && (
@@ -160,7 +162,13 @@ export function FilmDock({ onExtendedChange }: { onExtendedChange?: (out: boolea
             </div>
           ) : (
             <div className="film-clip">
-              <div className="film-loading" aria-label="Loading preview">
+              <div
+                className="film-loading"
+                aria-label="Loading preview"
+                style={{
+                  aspectRatio: shown.orientation === "portrait" ? "9 / 16" : "16 / 9",
+                }}
+              >
                 <span className="film-loading-dot" />
               </div>
             </div>

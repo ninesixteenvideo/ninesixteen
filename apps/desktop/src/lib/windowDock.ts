@@ -1,4 +1,5 @@
 import { isDesktop } from "./bridge";
+import type { Orientation } from "./types";
 
 /** Must stay in sync with styles.css sidebar widths and .handle overhang. */
 export const DOCK = {
@@ -9,28 +10,39 @@ export const DOCK = {
   FILM_PAD_Y: 128,
 } as const;
 
+/** Match .sidebar.collapsed width transition (0.06s delay + 0.42s duration). */
+export const SIDEBAR_COLLAPSE_MS = 480;
+
+/** Landscape library player width — kept compact so the dock window does not overflow. */
+export const LANDSCAPE_FILM_MAX_W = 360;
+
 export function sidebarWidth(expanded: boolean) {
   return expanded ? DOCK.EXPANDED : DOCK.RAIL;
 }
 
-export function filmPlayerWidth(viewportHeight: number) {
+export function filmPlayerWidth(viewportHeight: number, orientation: Orientation = "portrait") {
   const innerH = Math.max(320, viewportHeight - DOCK.FILM_PAD_Y);
+  if (orientation === "landscape") {
+    return LANDSCAPE_FILM_MAX_W;
+  }
   return Math.ceil((innerH * 9) / 16);
 }
 
-export function filmStripWidth(viewportHeight: number) {
-  return filmPlayerWidth(viewportHeight) + DOCK.FILM_PAD_X;
+export function filmStripWidth(viewportHeight: number, orientation: Orientation = "portrait") {
+  return filmPlayerWidth(viewportHeight, orientation) + DOCK.FILM_PAD_X;
 }
 
 export function dockWidth(opts: {
   expanded: boolean;
   filmExtended: boolean;
   viewportHeight: number;
+  filmOrientation?: Orientation;
 }) {
   const side = sidebarWidth(opts.expanded);
   const handle = DOCK.HANDLE;
+  const orientation = opts.filmOrientation ?? "portrait";
   if (!opts.filmExtended) return side + handle;
-  return side + filmStripWidth(opts.viewportHeight) + handle;
+  return side + filmStripWidth(opts.viewportHeight, orientation) + handle;
 }
 
 export async function monitorWorkArea(): Promise<{
@@ -61,16 +73,23 @@ export async function syncDockWindow(opts: {
   expanded: boolean;
   filmExtended: boolean;
   hide?: boolean;
+  filmOrientation?: Orientation;
 }): Promise<number> {
   if (!isDesktop) return window.innerWidth;
 
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
   const { LogicalSize, LogicalPosition } = await import("@tauri-apps/api/dpi");
   const win = getCurrentWindow();
+  const orientation = opts.filmOrientation ?? "portrait";
 
   if (opts.hide) {
     await win.hide();
-    return dockWidth({ expanded: opts.expanded, filmExtended: false, viewportHeight: window.innerHeight });
+    return dockWidth({
+      expanded: opts.expanded,
+      filmExtended: false,
+      viewportHeight: window.innerHeight,
+      filmOrientation: orientation,
+    });
   }
 
   await win.show();
@@ -79,6 +98,7 @@ export async function syncDockWindow(opts: {
     expanded: opts.expanded,
     filmExtended: opts.filmExtended,
     viewportHeight: height,
+    filmOrientation: orientation,
   });
 
   await win.setResizable(true);

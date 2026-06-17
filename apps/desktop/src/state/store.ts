@@ -120,9 +120,7 @@ export const useStore = create<Store>((set, get) => ({
   init: async () => {
     void invoke("notify_app_ready").catch(() => {});
 
-    listen("viewport:update", (p: Viewport) =>
-      set({ viewport: { ...p, orientation: "portrait" } })
-    );
+    listen("viewport:update", (p: Viewport) => set({ viewport: p }));
     listen("recording:tick", (p: { elapsed: number; size_bytes: number }) =>
       set({ elapsed: p.elapsed, sizeBytes: p.size_bytes, error: null })
     );
@@ -189,7 +187,7 @@ export const useStore = create<Store>((set, get) => ({
     set({
       monitors,
       monitor: state.monitor ?? monitors[0] ?? null,
-      viewport: { ...state.viewport, orientation: "portrait" },
+      viewport: state.viewport,
       recording: state.recording,
       arming: state.recordingArmed ?? false,
       countdownSeconds: state.countdownSeconds ?? 0,
@@ -207,6 +205,9 @@ export const useStore = create<Store>((set, get) => ({
 
     if (audioSettings.source !== "none") {
       await invoke("start_audio_monitor").catch(() => {});
+      set((s) => ({
+        audioSettings: { ...s.audioSettings, calibrated: true },
+      }));
     }
 
     void get().refreshRecordings();
@@ -225,7 +226,7 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setZoom: async (z) => {
-    const zoom = normalizeZoom(z);
+    const zoom = normalizeZoom(z, get().viewport.orientation);
     set({ viewport: { ...get().viewport, zoom } });
     await invoke("set_zoom", { zoom });
   },
@@ -369,10 +370,21 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setRecordingSettings: async (s) => {
-    const merged = { ...get().recordingSettings, ...s, orientation: "portrait" as const };
+    const merged = { ...get().recordingSettings, ...s };
     const quality: 720 | 1080 = merged.quality <= 720 ? 720 : 1080;
     const next = { ...merged, quality };
     set({ recordingSettings: next });
+
+    if (s.orientation && s.orientation !== get().viewport.orientation) {
+      const viewport = {
+        ...get().viewport,
+        orientation: s.orientation,
+        zoom: normalizeZoom(get().viewport.zoom, s.orientation),
+      };
+      set({ viewport });
+      await invoke("set_viewport", { viewport });
+    }
+
     await invoke("set_recording_settings", { settings: next });
   },
 
@@ -388,6 +400,9 @@ export const useStore = create<Store>((set, get) => ({
   setAudioSettings: async (partial) => {
     const req = ++audioSettingsRequest;
     const next = { ...get().audioSettings, ...partial };
+    if (next.source !== "none") {
+      next.calibrated = true;
+    }
     set({ audioSettings: next });
     try {
       const saved = await invoke<AudioSettings>("set_audio_settings", { settings: next });

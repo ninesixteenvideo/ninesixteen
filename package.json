@@ -16,7 +16,8 @@
     "web:start": "pnpm --filter @ninesixteen/web start",
     "web:lint": "pnpm --filter @ninesixteen/web lint",
     "desktop:dev": "pnpm --filter @ninesixteen/desktop tauri:dev",
-    "desktop:build": "pnpm --filter @ninesixteen/desktop tauri:build",
-    "desktop:web": "pnpm --filter @ninesixteen/desktop dev"
+    "desktop:build": "pnpm icon:gen && pnpm --filter @ninesixteen/desktop tauri:build",
+    "desktop:web": "pnpm --filter @ninesixteen/desktop dev",
+    "icon:gen": "node scripts/gen-icon.mjs"
   }
 }

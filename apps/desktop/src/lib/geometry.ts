@@ -12,20 +12,25 @@ export interface Rect {
 }
 
 export const ZOOM_MIN = 0.45;
+export const ZOOM_MIN_LANDSCAPE = 1;
 export const ZOOM_MAX = 4;
 export const ZOOM_SNAP_EPS = 0.035;
+
+export function zoomMinFor(orientation: Orientation): number {
+  return orientation === "landscape" ? ZOOM_MIN_LANDSCAPE : ZOOM_MIN;
+}
 
 export function clamp(v: number, lo: number, hi: number): number {
   if (hi < lo) return (lo + hi) / 2;
   return Math.max(lo, Math.min(hi, v));
 }
 
-export function clampZoom(z: number): number {
-  return clamp(z, ZOOM_MIN, ZOOM_MAX);
+export function clampZoom(z: number, orientation: Orientation = "portrait"): number {
+  return clamp(z, zoomMinFor(orientation), ZOOM_MAX);
 }
 
-export function normalizeZoom(z: number): number {
-  const clamped = clampZoom(z);
+export function normalizeZoom(z: number, orientation: Orientation = "portrait"): number {
+  const clamped = clampZoom(z, orientation);
   return Math.abs(clamped - 1) <= ZOOM_SNAP_EPS ? 1 : clamped;
 }
 
@@ -69,7 +74,7 @@ export function cropRect(
   const aspect = aspectOf(vp.orientation);
   const sw = srcW;
   const sh = srcH;
-  const zoom = clampZoom(vp.zoom);
+  const zoom = clampZoom(vp.zoom, vp.orientation);
   const { w: baseW, h: baseH } = baseCrop(sw, sh, aspect);
 
   if (zoom >= 1) {
@@ -78,7 +83,7 @@ export function cropRect(
     return centeredCrop(vp.x, vp.y, w, h, sw, sh);
   }
 
-  const t = smoothstep(ZOOM_MIN, 1, zoom);
+  const t = smoothstep(zoomMinFor(vp.orientation), 1, zoom);
   const { w: outW, h: outH } = outputDims(vp.orientation, outShortEdge);
   const destFill = { x: 0, y: 0, w: outW, h: outH };
   const destLb = letterboxDest(sw, sh, outW, outH);
@@ -116,9 +121,16 @@ export function outputDims(o: Orientation, shortEdge: number): { w: number; h: n
 }
 
 /** Human-readable zoom label for the overlay chip. */
-export function zoomLabel(zoom: number): string {
-  const z = normalizeZoom(zoom);
-  if (z <= ZOOM_MIN + 0.001) return "Full desktop";
-  if (z === 1) return "Full 9×16";
+export function zoomLabel(zoom: number, orientation: Orientation = "portrait"): string {
+  const z = normalizeZoom(zoom, orientation);
+  const min = zoomMinFor(orientation);
+  if (z <= min + 0.001) {
+    return orientation === "landscape" ? "Full 16×9" : "Full desktop";
+  }
+  if (z === 1) return orientation === "landscape" ? "Full 16×9" : "Full 9×16";
   return `${Math.round(z * 100)}%`;
+}
+
+export function formatLabel(orientation: Orientation): string {
+  return orientation === "landscape" ? "16×9" : "9×16";
 }

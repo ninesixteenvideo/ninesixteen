@@ -3,7 +3,11 @@ use crate::state::{SharedState, SharedViewport};
 #[cfg(windows)]
 mod imp {
     use super::*;
-    use crate::geometry::{clamp, normalize_zoom, smooth_toward, ZOOM_SNAP_EPS};
+    use crate::geometry::{
+        advance_pan_follow, clamp, normalize_zoom, pan_max_speed_for_zoom, smooth_toward_capped,
+        zoom_max_vel_for_level, zoom_min_for, ZOOM_SNAP_EPS,
+    };
+    use crate::state::Orientation;
     use crate::log::capture_log;
     use crate::state::ViewportState;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -46,16 +50,26 @@ mod imp {
     static VIEWPORT_DIRTY: AtomicBool = AtomicBool::new(false);
 
     const CURSOR_TICK_MS: u64 = 8;
-    const PAN_SMOOTH_HZ: f64 = 11.0;
-    // While Alt is held (zooming) keep the follow at the same lazy character as
-    // idle instead of speeding it up — a consistent lead reads far smoother than
-    // the box lurching faster the moment you start to zoom.
-    const PAN_SMOOTH_HZ_ALT: f64 = 12.0;
-    const PAN_SMOOTH_HZ_UNFREEZE: f64 = 6.5;
+    // Lower Hz = longer ease-in before the velocity cap engages (cinematic ramp).
+    const PAN_SMOOTH_HZ: f64 = 6.2;
+    const PAN_SMOOTH_HZ_ALT: f64 = 7.0;
+    const PAN_SMOOTH_HZ_UNFREEZE: f64 = 4.2;
     const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(2500);
     const UNFREEZE_ARRIVED_PX: f64 = 10.0;
     // Lower = creamier zoom glide toward the target.
     const ZOOM_SMOOTH_HZ: f64 = 3.0;
+    /// Base max zoom change per second at zoom 1.0; scaled by level below.
+    const ZOOM_MAX_VEL_BASE: f64 = 0.55;
+    const ZOOM_VEL_MIN_SCALE: f64 = 0.82;
+    const ZOOM_VEL_MAX_SCALE: f64 = 2.6;
+    // Soft zone: crawl while the cursor is near the current frame center.
+    const PAN_SOFT_INNER_PX: f64 = 42.0;
+    const PAN_SOFT_OUTER_PX: f64 = 265.0;
+    const PAN_SOFT_INNER_SCALE: f64 = 0.16;
+    /// Base pan cap at zoom 1.0 (monitor px/s); scaled down when wide, up when tight.
+    const PAN_MAX_SPEED_BASE: f64 = 860.0;
+    const PAN_MAX_SPEED_WIDE_SCALE: f64 = 0.72;
+    const PAN_MAX_SPEED_TIGHT_SCALE: f64 = 1.28;
     // Gentler per-notch magnitude so each scroll step eases rather than jumps.
     const WHEEL_ZOOM_STEP: f64 = 0.075;
     const FULL_FRAME_SETTLE: f64 = 0.012;
@@ -90,9 +104,9 @@ mod imp {
         }
     }
 
-    fn sync_zoom_at_min(zoom_target: f64) {
+    fn sync_zoom_at_min(zoom_target: f64, orientation: Orientation) {
         ZOOM_AT_MIN.store(
-            zoom_target <= crate::geometry::ZOOM_MIN + 0.001,
+            zoom_target <= zoom_min_for(orientation) + 0.001,
             Ordering::Release,
         );
     }
@@ -172,7 +186,7 @@ mod imp {
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = None;
         let _ = alt_held();
-        sync_zoom_at_min(viewport.lock().zoom_target);
+        sync_zoom_at_min(viewport.lock().zoom_target, viewport.lock().viewport.orientation);
         alt_log("capture input reset");
     }
 
@@ -413,17 +427,26 @@ mod imp {
         let prev = vp.zoom_target;
         let raw_next = prev * factor;
 
+        let orientation = vp.viewport.orientation;
+
         if hits_full_frame_snap(prev, raw_next) {
             aim_full_frame(&mut vp);
-            sync_zoom_at_min(vp.zoom_target);
+            sync_zoom_at_min(vp.zoom_target, orientation);
             mark_viewport_dirty();
             return true;
         }
 
-        let next = normalize_zoom(raw_next);
+        let next = normalize_zoom(raw_next, orientation);
         if (next - prev).abs() <= f64::EPSILON {
-            if prev <= crate::geometry::ZOOM_MIN + 0.001 && delta < 0.0 {
-                alt_log_throttled("wheel ignored — already at min zoom (full desktop)", 600);
+            if prev <= zoom_min_for(orientation) + 0.001 && delta < 0.0 {
+                alt_log_throttled(
+                    if orientation == Orientation::Landscape {
+                        "wheel ignored — already at min zoom (full 16×9)"
+                    } else {
+                        "wheel ignored — already at min zoom (full desktop)"
+                    },
+                    600,
+                );
             } else if prev >= crate::geometry::ZOOM_MAX - 0.001 && delta > 0.0 {
                 alt_log_throttled("wheel ignored — already at max zoom", 600);
             } else {
@@ -434,7 +457,7 @@ mod imp {
 
         set_pending_full_lock(false);
         vp.zoom_target = next;
-        sync_zoom_at_min(next);
+        sync_zoom_at_min(next, orientation);
         let (x, y, z) = (vp.viewport.x, vp.viewport.y, vp.viewport.zoom);
         alt_log(&format!("zoom target {prev:.2} → {next:.2} (viewport @ {x:.0},{y:.0} zoom {z:.2})"));
         mark_viewport_dirty();
@@ -447,7 +470,7 @@ mod imp {
             state,
             app,
         });
-        sync_zoom_at_min(viewport.lock().zoom_target);
+        sync_zoom_at_min(viewport.lock().zoom_target, viewport.lock().viewport.orientation);
         std::thread::spawn(|| unsafe {
             run_message_loop();
         });
@@ -542,8 +565,27 @@ mod imp {
                         PAN_SMOOTH_HZ
                     };
 
-                    vp.viewport.x = smooth_toward(vp.viewport.x, tx, pan_hz, dt_secs);
-                    vp.viewport.y = smooth_toward(vp.viewport.y, ty, pan_hz, dt_secs);
+                    let max_pan_speed = pan_max_speed_for_zoom(
+                        vp.viewport.zoom,
+                        PAN_MAX_SPEED_BASE,
+                        PAN_MAX_SPEED_WIDE_SCALE,
+                        PAN_MAX_SPEED_TIGHT_SCALE,
+                    );
+
+                    let (nx, ny) = advance_pan_follow(
+                        vp.viewport.x,
+                        vp.viewport.y,
+                        tx,
+                        ty,
+                        pan_hz,
+                        dt_secs,
+                        PAN_SOFT_INNER_PX,
+                        PAN_SOFT_OUTER_PX,
+                        PAN_SOFT_INNER_SCALE,
+                        max_pan_speed,
+                    );
+                    vp.viewport.x = nx;
+                    vp.viewport.y = ny;
 
                     let dist = (vp.viewport.x - tx).abs() + (vp.viewport.y - ty).abs();
                     if dist <= UNFREEZE_ARRIVED_PX {
@@ -555,14 +597,24 @@ mod imp {
             }
         }
 
-        sync_zoom_at_min(vp.zoom_target);
+        sync_zoom_at_min(vp.zoom_target, vp.viewport.orientation);
 
         if hold {
             vp.zoom_target = 1.0;
             vp.viewport.zoom = 1.0;
         } else {
-            vp.viewport.zoom =
-                smooth_toward(vp.viewport.zoom, vp.zoom_target, ZOOM_SMOOTH_HZ, dt_secs);
+            vp.viewport.zoom = smooth_toward_capped(
+                vp.viewport.zoom,
+                vp.zoom_target,
+                ZOOM_SMOOTH_HZ,
+                dt_secs,
+                zoom_max_vel_for_level(
+                    vp.viewport.zoom,
+                    ZOOM_MAX_VEL_BASE,
+                    ZOOM_VEL_MIN_SCALE,
+                    ZOOM_VEL_MAX_SCALE,
+                ),
+            );
 
             if pending && (vp.viewport.zoom - 1.0).abs() <= FULL_FRAME_SETTLE {
                 vp.viewport.zoom = 1.0;
@@ -685,7 +737,7 @@ mod imp {
         }
 
         // zoom_target is 1.0 now, so the at-min latch must read false.
-        sync_zoom_at_min(1.0);
+        sync_zoom_at_min(1.0, viewport.lock().viewport.orientation);
         mark_viewport_dirty();
         alt_log("new recording — frame reset to full 9×16, input latches cleared");
     }

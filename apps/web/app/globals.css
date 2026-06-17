@@ -179,7 +179,7 @@ a {
     color 0.18s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.1s ease;
 }
-.ns-cta:hover {
+.ns-cta:not(.ns-cta--primary):not(.ns-cta--accent):hover {
   background: var(--color-surfacehi);
 }
 .ns-cta:active {
@@ -197,6 +197,7 @@ a {
 .ns-cta--primary:hover {
   background: #fff;
   border-color: #fff;
+  color: var(--color-selink);
 }
 .ns-cta--accent {
   background: var(--color-coral);
@@ -204,7 +205,9 @@ a {
   border-color: var(--color-coral);
 }
 .ns-cta--accent:hover {
-  filter: brightness(1.06);
+  background: #ff806e;
+  border-color: #ff806e;
+  color: var(--color-onbright);
 }
 .ns-cta--ghost {
   background: transparent;

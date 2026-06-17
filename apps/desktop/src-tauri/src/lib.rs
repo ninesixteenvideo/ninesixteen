@@ -251,9 +251,24 @@ pub fn sync_dock_window(app: &tauri::AppHandle, width: f64) {
 
 fn dock_main_window(app: &tauri::AppHandle) {
     apply_main_window_theme(app);
+    apply_window_icons(app);
     install_alt_menu_guard(app, "main");
     install_alt_menu_guard(app, "overlay");
     sync_dock_window(app, 535.0);
+}
+
+fn apply_window_icons(app: &tauri::AppHandle) {
+    let Some(icon) = app.default_window_icon().cloned() else {
+        log::capture_log("App icon missing — run: pnpm icon:gen");
+        return;
+    };
+    for label in ["main", "overlay"] {
+        if let Some(win) = app.get_webview_window(label) {
+            if let Err(e) = win.set_icon(icon.clone()) {
+                log::capture_log(&format!("Could not set {label} window icon: {e}"));
+            }
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

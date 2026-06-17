@@ -251,7 +251,9 @@ pub fn set_viewport(
     {
         let mut vp = handles.viewport.lock();
         vp.viewport = viewport;
-        vp.zoom_target = viewport.zoom;
+        let z = normalize_zoom(viewport.zoom, viewport.orientation);
+        vp.viewport.zoom = z;
+        vp.zoom_target = z;
     }
     let cs = merged_capture_state(handles.inner());
     emit_viewport_from_handles(&app, handles.inner());
@@ -280,7 +282,8 @@ pub fn set_zoom(
 ) -> CaptureState {
     let _viewport = {
         let mut vp = handles.viewport.lock();
-        vp.zoom_target = normalize_zoom(zoom);
+        let orientation = vp.viewport.orientation;
+        vp.zoom_target = normalize_zoom(zoom, orientation);
         vp.viewport.zoom = vp.zoom_target;
         vp.viewport
     };
@@ -380,7 +383,9 @@ pub fn start_recording(
         let st = handles.state.lock();
         let audio = &st.audio_settings;
         if crate::audio::source_active(audio.source) && !audio.calibrated {
-            return Err("Calibrate audio in Studio before recording.".into());
+            return Err(
+                "Audio is not ready — re-select your audio source in Studio.".into(),
+            );
         }
         if st.recording || st.recording_armed {
             return Err("Already recording or counting down.".into());
@@ -389,13 +394,16 @@ pub fn start_recording(
     {
         let mut st = handles.state.lock();
         st.recording_settings = settings;
-        st.recording_settings.orientation = Orientation::Portrait;
+        st.recording_settings.quality = if st.recording_settings.quality <= 720 {
+            720
+        } else {
+            1080
+        };
         st.recording_armed = true;
         st.countdown_seconds = RECORD_COUNTDOWN_SECS;
-    }
-    {
-        let mut vp = handles.viewport.lock();
-        vp.viewport.orientation = Orientation::Portrait;
+        let orientation = st.recording_settings.orientation;
+        drop(st);
+        handles.viewport.lock().viewport.orientation = orientation;
     }
     // Every new recording starts from full 9×16, centered — and with all zoom/pan
     // input latches cleared, so Alt+↑/↓ is always live (the user can still reframe
@@ -512,11 +520,6 @@ pub fn start_streaming(
         if let Some(s) = settings {
             st.stream_settings = s;
         }
-        st.recording_settings.orientation = Orientation::Portrait;
-    }
-    {
-        let mut vp = handles.viewport.lock();
-        vp.viewport.orientation = Orientation::Portrait;
     }
     {
         let st = handles.state.lock();
@@ -541,15 +544,18 @@ pub fn start_both(
     {
         let mut st = handles.state.lock();
         st.recording_settings = recording_settings;
-        st.recording_settings.orientation = Orientation::Portrait;
+        st.recording_settings.quality = if st.recording_settings.quality <= 720 {
+            720
+        } else {
+            1080
+        };
         st.stream_settings = stream_settings;
         if st.stream_settings.stream_key.trim().is_empty() {
             return Err("Add your stream key in Settings before going live.".into());
         }
-    }
-    {
-        let mut vp = handles.viewport.lock();
-        vp.viewport.orientation = Orientation::Portrait;
+        let orientation = st.recording_settings.orientation;
+        drop(st);
+        handles.viewport.lock().viewport.orientation = orientation;
     }
     let shared: SharedState = handles.inner().state.clone();
     capture::start_both(shared).map_err(|e| e.to_string())?;
@@ -779,14 +785,21 @@ pub fn set_recording_settings(
     } else {
         1080
     };
-    st.recording_settings.orientation = Orientation::Portrait;
+    let orientation = st.recording_settings.orientation;
     let capture_cursor = st.recording_settings.capture_cursor;
-    handles.viewport.lock().viewport.orientation = Orientation::Portrait;
+    {
+        let mut vp = handles.viewport.lock();
+        vp.viewport.orientation = orientation;
+        let z = normalize_zoom(vp.viewport.zoom, orientation);
+        vp.viewport.zoom = z;
+        vp.zoom_target = z;
+    }
     drop(st);
     emit_cursor_capture(&app, capture_cursor);
     if let Err(e) = capture::sync_output_dimensions(handles.state.clone()) {
         crate::log::capture_log(&format!("WARN: output dimension sync failed: {e}"));
     }
+    emit_viewport_from_handles(&app, handles.inner());
 }
 
 /// Tell the overlay window whether the cursor will be baked into the recording,
@@ -818,20 +831,23 @@ pub fn set_audio_settings(
     settings.system_gain = settings.system_gain.clamp(0.0, 2.0);
     settings.mic_gain = settings.mic_gain.clamp(0.0, 2.0);
     settings.mic_delay_ms = settings.mic_delay_ms.clamp(-500, 500);
-    if settings.source == crate::state::AudioSourceMode::None {
-        settings.calibrated = true;
-    } else if !settings.calibrated {
-        settings.calibrated = false;
-    }
     let prev = handles.state.lock().audio_settings.clone();
     let monitor_needs_restart =
         prev.source != settings.source || prev.microphone_id != settings.microphone_id;
-    handles.state.lock().audio_settings = settings.clone();
+
     if settings.source == crate::state::AudioSourceMode::None {
+        settings.calibrated = true;
         audio::stop_monitor();
-    } else if monitor_needs_restart {
-        audio::start_monitor(settings.clone())?;
+    } else {
+        if monitor_needs_restart {
+            audio::start_monitor(settings.clone())?;
+        }
+        // Gain sliders in Studio are the calibration UI — once a source is active
+        // and monitoring is running, recording is allowed.
+        settings.calibrated = true;
     }
+
+    handles.state.lock().audio_settings = settings.clone();
     let _ = app.emit("audio:settings", &settings);
     Ok(settings)
 }
@@ -843,7 +859,9 @@ pub fn start_audio_monitor(handles: State<AppHandles>) -> Result<(), String> {
         audio::stop_monitor();
         return Ok(());
     }
-    audio::start_monitor(settings)
+    audio::start_monitor(settings)?;
+    handles.state.lock().audio_settings.calibrated = true;
+    Ok(())
 }
 
 #[tauri::command]

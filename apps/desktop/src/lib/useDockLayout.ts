@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { isDesktop } from "./bridge";
-import { DOCK, dockWidth, filmStripWidth, syncDockWindow, waitForDockWidth } from "./windowDock";
+import type { Orientation } from "./types";
+import {
+  DOCK,
+  SIDEBAR_COLLAPSE_MS,
+  dockWidth,
+  filmStripWidth,
+  syncDockWindow,
+  waitForDockWidth,
+} from "./windowDock";
 
 /** Keeps the native window pinned to the left edge and sized to the dock + film strip. */
 export function useDockLayout(opts: {
@@ -13,16 +21,32 @@ export function useDockLayout(opts: {
   filmSelected: boolean;
   /** The film strip is visually extended (player slid out). */
   filmVisible: boolean;
+  /** Aspect of the selected take, or the Studio format when browsing the library. */
+  filmOrientation: Orientation;
 }) {
-  const { ready, expanded, capturing, libraryTab, filmSelected, filmVisible } = opts;
+  const { ready, expanded, capturing, libraryTab, filmSelected, filmVisible, filmOrientation } =
+    opts;
   const [viewportHeight, setViewportHeight] = useState(
     typeof window !== "undefined" ? window.innerHeight : 900
   );
 
-  // While the Library is open and expanded, keep the window wide enough for the
-  // player *before* a take is selected — avoids a resize race on first click.
+  /**
+   * Lags `expanded` on collapse so the native window and film strip stay wide
+   * while the sidebar CSS width transition runs. Updates immediately on expand.
+   */
+  const [layoutExpanded, setLayoutExpanded] = useState(expanded);
+
+  useEffect(() => {
+    if (expanded) {
+      setLayoutExpanded(true);
+      return;
+    }
+    const t = window.setTimeout(() => setLayoutExpanded(false), SIDEBAR_COLLAPSE_MS);
+    return () => window.clearTimeout(t);
+  }, [expanded]);
+
   const filmSpace =
-    expanded && (libraryTab || filmSelected || filmVisible);
+    layoutExpanded && (libraryTab || filmSelected || filmVisible);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -31,34 +55,62 @@ export function useDockLayout(opts: {
       const { height } = await monitorWorkArea();
       setViewportHeight(height);
     })();
-  }, [ready, expanded, libraryTab, filmSelected, filmVisible, capturing]);
+  }, [ready, layoutExpanded, libraryTab, filmSelected, filmVisible, capturing, filmOrientation]);
 
   useEffect(() => {
     if (!ready || !isDesktop) return;
     void (async () => {
       const targetW = await syncDockWindow({
-        expanded,
+        expanded: layoutExpanded,
         filmExtended: filmSpace,
         hide: capturing,
+        filmOrientation,
       });
       if (filmSpace) await waitForDockWidth(targetW);
     })();
-  }, [ready, expanded, filmSpace, capturing]);
+  }, [ready, layoutExpanded, filmSpace, capturing, filmOrientation, viewportHeight]);
+
+  // Track the sidebar's animated width so the film strip stays glued to its edge.
+  useEffect(() => {
+    if (!ready) return;
+    const el = document.querySelector(".sidebar");
+    if (!el) return;
+
+    const syncSidebarWidth = (width: number) => {
+      if (width > 0) {
+        document.documentElement.style.setProperty("--sidebar-w", `${Math.round(width)}px`);
+      }
+    };
+
+    syncSidebarWidth(el.getBoundingClientRect().width);
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) syncSidebarWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ready]);
 
   useEffect(() => {
     document.documentElement.style.setProperty(
-      "--sidebar-w",
-      `${expanded ? DOCK.EXPANDED : DOCK.RAIL}px`
+      "--film-w",
+      `${filmSpace ? filmStripWidth(viewportHeight, filmOrientation) : 0}px`
     );
     document.documentElement.style.setProperty(
-      "--film-w",
-      `${filmSpace ? filmStripWidth(viewportHeight) : 0}px`
+      "--film-aspect",
+      filmOrientation === "landscape" ? "landscape" : "portrait"
     );
     document.documentElement.style.setProperty(
       "--dock-w",
-      `${dockWidth({ expanded, filmExtended: filmSpace, viewportHeight })}px`
+      `${dockWidth({
+        expanded: layoutExpanded,
+        filmExtended: filmSpace,
+        viewportHeight,
+        filmOrientation,
+      })}px`
     );
-  }, [filmSpace, viewportHeight, expanded]);
+  }, [filmSpace, viewportHeight, layoutExpanded, filmOrientation]);
 
   return { sidebarPx: expanded ? DOCK.EXPANDED : DOCK.RAIL, viewportHeight };
 }

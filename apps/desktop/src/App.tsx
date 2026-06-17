@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { RailWordmark } from "./components/RailWordmark";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 import { useStore } from "./state/store";
 import { useAuth } from "./lib/auth";
@@ -44,6 +45,8 @@ export function App() {
     setLibrarySelected,
     paywallOpen,
     setPaywallOpen,
+    recordingSettings,
+    recordings,
   } = useStore();
   const { isPro } = useAuth();
   const [expanded, setExpanded] = useState(true);
@@ -60,6 +63,10 @@ export function App() {
   expandedRef.current = expanded;
   const restoreExpanded = useRef(expanded);
 
+  const selectedRecording = recordings.find((r) => r.id === librarySelectedId);
+  const filmOrientation =
+    selectedRecording?.orientation ?? recordingSettings.orientation;
+
   const { sidebarPx } = useDockLayout({
     ready,
     expanded,
@@ -67,6 +74,7 @@ export function App() {
     libraryTab: tab === "preview",
     filmSelected: !!librarySelectedId,
     filmVisible: filmExtended,
+    filmOrientation,
   });
 
   useEffect(() => {
@@ -147,8 +155,12 @@ export function App() {
   }
 
   const previewLabel = "Library";
+  const formatSub =
+    recordingSettings.orientation === "landscape"
+      ? "Frame your shot, then record in true 16×9."
+      : "Frame your shot, then record in true 9×16.";
   const headings: Record<TabId, { title: string; sub: string }> = {
-    studio: { title: "Studio", sub: "Frame your shot, then record in true 9×16." },
+    studio: { title: "Studio", sub: formatSub },
     preview: {
       title: previewLabel,
       sub: isPro ? "Review, export, and manage your takes." : "Preview takes — upgrade to export.",
@@ -194,7 +206,7 @@ export function App() {
           <div className="rail-spacer" />
 
           <div className="rail-wordmark">
-            <Wordmark className="vmark" size={24} showSuffix />
+            <RailWordmark orientation={recordingSettings.orientation} size={24} />
           </div>
         </nav>
 
