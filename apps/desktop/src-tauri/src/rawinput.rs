@@ -4,8 +4,9 @@ use crate::state::{SharedState, SharedViewport};
 mod imp {
     use super::*;
     use crate::geometry::{
-        advance_pan_follow, clamp, normalize_zoom, pan_max_speed_for_zoom, smooth_toward_capped,
-        zoom_max_vel_for_level, zoom_min_for, ZOOM_SNAP_EPS,
+        advance_pan_follow, apply_edge_soft_pan, clamp, edge_soft_zone_px, frame_layout,
+        normalize_zoom, output_dims, pan_max_speed_for_zoom, smooth_toward_capped,
+        viewport_center_bounds, zoom_max_vel_for_level, zoom_min_for, ZOOM_SNAP_EPS,
     };
     use crate::state::Orientation;
     use crate::log::capture_log;
@@ -23,8 +24,8 @@ mod imp {
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
         HC_ACTION, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
-        WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+        WM_RBUTTONDOWN, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     static ALT_HELD: AtomicBool = AtomicBool::new(false);
@@ -54,8 +55,9 @@ mod imp {
     // Lower Hz = longer ease-in before the velocity cap engages (cinematic ramp).
     const PAN_SMOOTH_HZ: f64 = 6.2;
     const PAN_SMOOTH_HZ_ALT: f64 = 7.0;
-    const PAN_SMOOTH_HZ_UNFREEZE: f64 = 4.2;
-    const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(2500);
+    const UNFREEZE_PAN_HZ_START: f64 = 1.5;
+    const UNFREEZE_SPEED_START: f64 = 0.09;
+    const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(3600);
     const UNFREEZE_ARRIVED_PX: f64 = 10.0;
     // Lower = creamier zoom glide toward the target.
     const ZOOM_SMOOTH_HZ: f64 = 3.0;
@@ -376,6 +378,11 @@ mod imp {
             crate::click_audio::record_click(crate::file_record::session_t_secs());
         }
 
+        if msg == WM_MOUSEMOVE {
+            let info = &*(lparam.0 as *const MSLLHOOKSTRUCT);
+            crate::cursor::record_hook_move(info.pt.x, info.pt.y);
+        }
+
         CallNextHookEx(None, code, wparam, lparam)
     }
 
@@ -563,8 +570,9 @@ mod imp {
         let oy = vp.viewport.y;
         let oz = vp.viewport.zoom;
 
-        if let Some(m) = vp.monitor.as_ref() {
+        if let Some(m) = vp.monitor.clone() {
             if !vp.frame_frozen {
+                crate::cursor::set_capture_space(m.origin_x, m.origin_y, m.width, m.height);
                 if let Some((tx, ty)) = cursor_pos_for_monitor(
                     m.origin_x,
                     m.origin_y,
@@ -572,21 +580,35 @@ mod imp {
                     m.height as f64,
                 ) {
                     sample_pos = Some((tx, ty));
-                    let pan_hz = if let Some(at) = vp.frame_unfreeze_at {
-                        if Instant::now().duration_since(at) < UNFREEZE_EASE_DURATION {
-                            PAN_SMOOTH_HZ_UNFREEZE
-                        } else {
+                    let (pan_hz, speed_mult) = if let Some(at) = vp.frame_unfreeze_at {
+                        let elapsed = Instant::now().duration_since(at).as_secs_f64();
+                        let dur = UNFREEZE_EASE_DURATION.as_secs_f64();
+                        if elapsed >= dur {
                             vp.frame_unfreeze_at = None;
-                            if alt_held() {
+                            let hz = if alt_held() {
                                 PAN_SMOOTH_HZ_ALT
                             } else {
                                 PAN_SMOOTH_HZ
-                            }
+                            };
+                            (hz, 1.0)
+                        } else {
+                            // Ease-in: gentle acceleration off a frozen frame.
+                            let t = (elapsed / dur).clamp(0.0, 1.0);
+                            let ease = t * t;
+                            let target_hz = if alt_held() {
+                                PAN_SMOOTH_HZ_ALT
+                            } else {
+                                PAN_SMOOTH_HZ
+                            };
+                            (
+                                UNFREEZE_PAN_HZ_START + (target_hz - UNFREEZE_PAN_HZ_START) * ease,
+                                UNFREEZE_SPEED_START + (1.0 - UNFREEZE_SPEED_START) * ease,
+                            )
                         }
                     } else if alt_held() {
-                        PAN_SMOOTH_HZ_ALT
+                        (PAN_SMOOTH_HZ_ALT, 1.0)
                     } else {
-                        PAN_SMOOTH_HZ
+                        (PAN_SMOOTH_HZ, 1.0)
                     };
 
                     let max_pan_speed = pan_max_speed_for_zoom(
@@ -594,7 +616,7 @@ mod imp {
                         PAN_MAX_SPEED_BASE,
                         PAN_MAX_SPEED_WIDE_SCALE,
                         PAN_MAX_SPEED_TIGHT_SCALE,
-                    );
+                    ) * speed_mult;
 
                     let (nx, ny) = advance_pan_follow(
                         vp.viewport.x,
@@ -607,6 +629,22 @@ mod imp {
                         PAN_SOFT_OUTER_PX,
                         PAN_SOFT_INNER_SCALE,
                         max_pan_speed,
+                    );
+                    let (out_w, out_h) = output_dims(vp.viewport.orientation, 1080);
+                    let layout = frame_layout(&vp.viewport, m.width, m.height, out_w, out_h);
+                    let soft = edge_soft_zone_px(layout.crop.w, layout.crop.h);
+                    let (min_x, max_x, min_y, max_y) =
+                        viewport_center_bounds(&vp.viewport, m.width, m.height);
+                    let (nx, ny) = apply_edge_soft_pan(
+                        vp.viewport.x,
+                        vp.viewport.y,
+                        nx,
+                        ny,
+                        min_x,
+                        max_x,
+                        min_y,
+                        max_y,
+                        soft,
                     );
                     vp.viewport.x = nx;
                     vp.viewport.y = ny;

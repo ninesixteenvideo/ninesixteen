@@ -1,9 +1,30 @@
-import { mediaSrc, isDesktop } from "./bridge";
+import { invoke, isDesktop } from "./bridge";
 
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
 
-/** Capture the first frame of a recording as a JPEG data URL (cached). */
+const MAX_CONCURRENT = 4;
+let active = 0;
+const queue: Array<() => void> = [];
+
+function schedule<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      active += 1;
+      fn()
+        .then(resolve, reject)
+        .finally(() => {
+          active -= 1;
+          const next = queue.shift();
+          if (next) next();
+        });
+    };
+    if (active < MAX_CONCURRENT) run();
+    else queue.push(run);
+  });
+}
+
+/** Cached JPEG data URL from disk/ffmpeg (no in-webview video decode). */
 export async function recordingThumb(id: string): Promise<string | null> {
   const hit = cache.get(id);
   if (hit) return hit;
@@ -11,13 +32,12 @@ export async function recordingThumb(id: string): Promise<string | null> {
   const pending = inflight.get(id);
   if (pending) return pending;
 
-  const work = (async () => {
+  const work = schedule(async () => {
     if (!isDesktop) return null;
-    const url = await mediaSrc(id);
-    const data = await captureFirstFrame(url);
+    const data = await invoke<string>("get_recording_thumbnail", { id });
     if (data) cache.set(id, data);
-    return data;
-  })();
+    return data || null;
+  });
 
   inflight.set(id, work);
   try {
@@ -32,52 +52,9 @@ export function dropRecordingThumb(id: string) {
   inflight.delete(id);
 }
 
-function captureFirstFrame(url: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "auto";
-
-    let done = false;
-    const finish = (data: string | null) => {
-      if (done) return;
-      done = true;
-      window.clearTimeout(timer);
-      video.removeAttribute("src");
-      video.load();
-      resolve(data);
-    };
-
-    const timer = window.setTimeout(() => finish(null), 10_000);
-
-    video.addEventListener("loadeddata", () => {
-      video.currentTime = 0.04;
-    });
-    video.addEventListener("seeked", () => {
-      try {
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        if (!w || !h) {
-          finish(null);
-          return;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          finish(null);
-          return;
-        }
-        ctx.drawImage(video, 0, 0, w, h);
-        finish(canvas.toDataURL("image/jpeg", 0.84));
-      } catch {
-        finish(null);
-      }
-    });
-    video.addEventListener("error", () => finish(null));
-
-    video.src = url;
-  });
+/** Warm thumbnails for visible/nearby library rows without blocking UI. */
+export function prefetchRecordingThumbs(ids: string[]): void {
+  for (const id of ids) {
+    void recordingThumb(id).catch(() => {});
+  }
 }

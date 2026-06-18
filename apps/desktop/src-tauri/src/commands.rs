@@ -1,4 +1,7 @@
-use crate::geometry::{frame_layout, normalize_zoom, output_dims};
+use crate::geometry::{
+    apply_edge_soft_pan, edge_soft_zone_px, frame_layout, normalize_zoom, output_dims,
+    viewport_center_bounds,
+};
 use crate::state::{
     AppHandles, AppState, AudioDeviceInfo, AudioLevels, AudioSettings, CaptureState,
     InputSettings, MonitorInfo, Orientation, OverlayFrame, RecordingInfo, RecordingSettings,
@@ -272,8 +275,29 @@ pub fn nudge_viewport(
 ) -> CaptureState {
     {
         let mut vp = handles.viewport.lock();
-        vp.viewport.x += dx;
-        vp.viewport.y += dy;
+        if let Some(m) = vp.monitor.as_ref() {
+            let (out_w, out_h) = output_dims(vp.viewport.orientation, 1080);
+            let layout = frame_layout(&vp.viewport, m.width, m.height, out_w, out_h);
+            let soft = edge_soft_zone_px(layout.crop.w, layout.crop.h);
+            let (min_x, max_x, min_y, max_y) =
+                viewport_center_bounds(&vp.viewport, m.width, m.height);
+            let (nx, ny) = apply_edge_soft_pan(
+                vp.viewport.x,
+                vp.viewport.y,
+                vp.viewport.x + dx,
+                vp.viewport.y + dy,
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+                soft,
+            );
+            vp.viewport.x = nx;
+            vp.viewport.y = ny;
+        } else {
+            vp.viewport.x += dx;
+            vp.viewport.y += dy;
+        }
     }
     merged_capture_state(handles.inner())
 }
@@ -684,6 +708,11 @@ pub fn set_stream_settings(handles: State<AppHandles>, settings: StreamSettings)
 #[tauri::command]
 pub fn list_recordings() -> Vec<RecordingInfo> {
     recordings::list_recordings()
+}
+
+#[tauri::command]
+pub fn get_recording_thumbnail(id: String) -> String {
+    recordings::thumbnail_data_url(&id)
 }
 
 #[tauri::command]

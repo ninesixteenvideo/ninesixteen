@@ -244,7 +244,7 @@ export function Overlay() {
         const img = cursorImg.current;
         const meta = cursorMeta.current;
         const short = Math.min(monitor.current.w, monitor.current.h);
-        const cursorH = Math.max(36 * dpr, Math.min(112 * dpr, short * 0.056 * dpr));
+        const cursorH = Math.max(40 * dpr, Math.min(124 * dpr, short * 0.062 * dpr));
         const cursorScale = cursorH / meta.height;
         const cursorW = (meta.width / meta.height) * cursorH;
         const hx = meta.hotspotX * cursorScale;

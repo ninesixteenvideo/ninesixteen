@@ -2,7 +2,7 @@
 
 #[cfg(windows)]
 mod imp {
-    use crate::geometry::{frame_layout, FrameLayout};
+    use crate::geometry::{clamp, frame_layout, FrameLayout};
     use crate::state::{AppState, SharedState, Viewport};
     use image::imageops::FilterType;
     use image::RgbaImage;
@@ -15,8 +15,31 @@ mod imp {
     static FOLLOW_CAPTURE: AtomicBool = AtomicBool::new(false);
     static SESSION_START: Mutex<Option<Instant>> = Mutex::new(None);
 
-    const RING_CAP: usize = 512;
+    const RING_CAP: usize = 2048;
     const CURSOR_PNG: &[u8] = include_bytes!("../resources/cursor/default.png");
+
+    /// One Euro filter — smooth takeoff/landing, responsive mid-flight (Screen Studio class).
+    const EURO_MIN_CUTOFF: f64 = 1.2;
+    const EURO_BETA: f64 = 0.05;
+
+    /// Motion-state thresholds (px/s) with hysteresis.
+    const MOVE_ON_SPEED: f64 = 85.0;
+    const MOVE_OFF_SPEED: f64 = 48.0;
+
+    /// Jerk/accel limits during travel — caps speed wobble on straight drags.
+    const MAX_ACCEL: f64 = 16_000.0;
+    const MAX_JERK: f64 = 140_000.0;
+    const EURO_TRACK_BLEND: f64 = 0.38;
+
+    #[derive(Clone, Copy)]
+    struct CaptureSpace {
+        origin_x: i32,
+        origin_y: i32,
+        width: f64,
+        height: f64,
+    }
+
+    static CAPTURE_SPACE: Mutex<Option<CaptureSpace>> = Mutex::new(None);
 
     struct CursorSprite {
         rgba: RgbaImage,
@@ -32,20 +55,6 @@ mod imp {
 
     static SPRITE: OnceLock<CursorSprite> = OnceLock::new();
     static SCALE_CACHE: Mutex<Option<ScaledCache>> = Mutex::new(None);
-
-    fn strip_matte(rgba: &mut RgbaImage) {
-        for p in rgba.pixels_mut() {
-            let [r, g, b, a] = p.0;
-            if a < 8 || (r < 24 && g < 24 && b < 24) {
-                p.0 = [0, 0, 0, 0];
-            }
-        }
-    }
-
-    fn prepare_sprite_rgba(mut rgba: RgbaImage) -> RgbaImage {
-        strip_matte(&mut rgba);
-        rgba
-    }
 
     /// Hotspot at the top-left tip of the arrow (min x+y among opaque pixels).
     fn hotspot_for(rgba: &RgbaImage) -> (u32, u32) {
@@ -72,10 +81,9 @@ mod imp {
             let raw = image::load_from_memory(CURSOR_PNG)
                 .map(|img| img.to_rgba8())
                 .unwrap_or_else(|_| RgbaImage::new(1, 1));
-            let rgba = prepare_sprite_rgba(raw);
-            let (hotspot_x, hotspot_y) = hotspot_for(&rgba);
+            let (hotspot_x, hotspot_y) = hotspot_for(&raw);
             CursorSprite {
-                rgba,
+                rgba: raw,
                 hotspot_x,
                 hotspot_y,
             }
@@ -107,7 +115,30 @@ mod imp {
             }
         }
 
+        fn last_slot(&self) -> Option<Sample> {
+            if self.len == 0 {
+                return None;
+            }
+            let idx = if self.head == 0 {
+                RING_CAP - 1
+            } else {
+                self.head - 1
+            };
+            self.slots[idx]
+        }
+
         fn push(&mut self, t_secs: f64, x: f64, y: f64, buttons: u8) {
+            if let Some(s) = self.last_slot() {
+                let dt = t_secs - s.t_secs;
+                if dt >= 0.0
+                    && dt < 0.0004
+                    && (x - s.x).hypot(y - s.y) < 0.25
+                    && buttons == s.buttons
+                {
+                    self.latest = Some((x, y, buttons));
+                    return;
+                }
+            }
             self.slots[self.head] = Some(Sample {
                 t_secs,
                 x,
@@ -119,19 +150,33 @@ mod imp {
             self.latest = Some((x, y, buttons));
         }
 
-        fn sample_at(&self, t_secs: f64) -> Option<(f64, f64, u8)> {
+        fn chronological(&self) -> Vec<Sample> {
             if self.len == 0 {
-                return self.latest.map(|(x, y, b)| (x, y, b));
+                return Vec::new();
+            }
+            let start = (self.head + RING_CAP - self.len) % RING_CAP;
+            let mut out = Vec::with_capacity(self.len);
+            for i in 0..self.len {
+                if let Some(s) = self.slots[(start + i) % RING_CAP] {
+                    out.push(s);
+                }
+            }
+            out
+        }
+
+        fn raw_linear_at(samples: &[Sample], t_secs: f64) -> Option<(f64, f64, u8)> {
+            if samples.is_empty() {
+                return None;
             }
             let mut best_before: Option<Sample> = None;
             let mut best_after: Option<Sample> = None;
-            for slot in self.slots.iter().flatten() {
-                if slot.t_secs <= t_secs {
-                    if best_before.map(|b| slot.t_secs > b.t_secs).unwrap_or(true) {
-                        best_before = Some(*slot);
+            for s in samples {
+                if s.t_secs <= t_secs {
+                    if best_before.map(|b| s.t_secs > b.t_secs).unwrap_or(true) {
+                        best_before = Some(*s);
                     }
-                } else if best_after.map(|a| slot.t_secs < a.t_secs).unwrap_or(true) {
-                    best_after = Some(*slot);
+                } else if best_after.map(|a| s.t_secs < a.t_secs).unwrap_or(true) {
+                    best_after = Some(*s);
                 }
             }
             match (best_before, best_after) {
@@ -150,15 +195,250 @@ mod imp {
                 }
                 (Some(a), _) => Some((a.x, a.y, a.buttons)),
                 (_, Some(b)) => Some((b.x, b.y, b.buttons)),
-                _ => self.latest.map(|(x, y, b)| (x, y, b)),
+                _ => None,
             }
         }
+
+        fn sample_at(&self, t_secs: f64) -> Option<(f64, f64, u8)> {
+            let samples = self.chronological();
+            if samples.is_empty() {
+                return self.latest.map(|(x, y, b)| (x, y, b));
+            }
+            filtered_at(&samples, t_secs).or_else(|| self.latest.map(|(x, y, b)| (x, y, b)))
+        }
+    }
+
+    /// 1D One Euro filter (Casiez et al.) — adaptive low-pass keyed on speed.
+    struct OneEuro1d {
+        min_cutoff: f64,
+        beta: f64,
+        d_cutoff: f64,
+        x_prev: Option<f64>,
+        dx_prev: f64,
+        t_prev: Option<f64>,
+    }
+
+    impl OneEuro1d {
+        fn new(min_cutoff: f64, beta: f64) -> Self {
+            Self {
+                min_cutoff,
+                beta,
+                d_cutoff: 1.0,
+                x_prev: None,
+                dx_prev: 0.0,
+                t_prev: None,
+            }
+        }
+
+        fn alpha(dt: f64, cutoff: f64) -> f64 {
+            let tau = 1.0 / (2.0 * std::f64::consts::PI * cutoff);
+            1.0 / (1.0 + tau / dt.max(1.0 / 2000.0))
+        }
+
+        fn filter(&mut self, x: f64, t: f64) -> f64 {
+            match (self.x_prev, self.t_prev) {
+                (Some(x_prev), Some(t_prev)) => {
+                    let dt = (t - t_prev).max(1.0 / 2000.0);
+                    let dx = (x - x_prev) / dt;
+                    let a_d = Self::alpha(dt, self.d_cutoff);
+                    let dx_hat = a_d * dx + (1.0 - a_d) * self.dx_prev;
+                    let cutoff = self.min_cutoff + self.beta * dx_hat.abs();
+                    let a = Self::alpha(dt, cutoff);
+                    let x_hat = a * x + (1.0 - a) * x_prev;
+                    self.dx_prev = dx_hat;
+                    self.x_prev = Some(x_hat);
+                    self.t_prev = Some(t);
+                    x_hat
+                }
+                _ => {
+                    self.x_prev = Some(x);
+                    self.t_prev = Some(t);
+                    x
+                }
+            }
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct EuroKeyframe {
+        t_secs: f64,
+        x: f64,
+        y: f64,
+        buttons: u8,
+    }
+
+    fn euro_keyframes(samples: &[Sample], t_secs: f64) -> Option<Vec<EuroKeyframe>> {
+        if samples.is_empty() {
+            return None;
+        }
+        if samples[0].t_secs > t_secs {
+            return Some(vec![EuroKeyframe {
+                t_secs,
+                x: samples[0].x,
+                y: samples[0].y,
+                buttons: samples[0].buttons,
+            }]);
+        }
+
+        let mut fx = OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA);
+        let mut fy = OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA);
+        let mut frames = Vec::new();
+
+        for s in samples {
+            if s.t_secs > t_secs {
+                break;
+            }
+            frames.push(EuroKeyframe {
+                t_secs: s.t_secs,
+                x: fx.filter(s.x, s.t_secs),
+                y: fy.filter(s.y, s.t_secs),
+                buttons: s.buttons,
+            });
+        }
+
+        if frames.is_empty() {
+            return None;
+        }
+
+        let last_t = frames.last().unwrap().t_secs;
+        if last_t < t_secs {
+            if let Some((rx, ry, buttons)) = Ring::raw_linear_at(samples, t_secs) {
+                frames.push(EuroKeyframe {
+                    t_secs,
+                    x: fx.filter(rx, t_secs),
+                    y: fy.filter(ry, t_secs),
+                    buttons,
+                });
+            }
+        }
+
+        Some(frames)
+    }
+
+    struct MotionSmoother {
+        x: f64,
+        y: f64,
+        vx: f64,
+        vy: f64,
+        ax: f64,
+        ay: f64,
+        moving: bool,
+    }
+
+    impl MotionSmoother {
+        fn new(x: f64, y: f64) -> Self {
+            Self {
+                x,
+                y,
+                vx: 0.0,
+                vy: 0.0,
+                ax: 0.0,
+                ay: 0.0,
+                moving: false,
+            }
+        }
+
+        fn step(&mut self, prev: &EuroKeyframe, next: &EuroKeyframe) {
+            let dt = (next.t_secs - prev.t_secs).max(1.0 / 2000.0);
+            let euro_vx = (next.x - prev.x) / dt;
+            let euro_vy = (next.y - prev.y) / dt;
+            let euro_speed = (euro_vx * euro_vx + euro_vy * euro_vy).sqrt();
+
+            if !self.moving && euro_speed > MOVE_ON_SPEED {
+                self.moving = true;
+            } else if self.moving && euro_speed < MOVE_OFF_SPEED {
+                self.moving = false;
+            }
+
+            if !self.moving {
+                self.x = next.x;
+                self.y = next.y;
+                self.vx = 0.0;
+                self.vy = 0.0;
+                self.ax = 0.0;
+                self.ay = 0.0;
+                return;
+            }
+
+            let target_ax = (euro_vx - self.vx) / dt;
+            let target_ay = (euro_vy - self.vy) / dt;
+            let mut ax = target_ax;
+            let mut ay = target_ay;
+
+            let dax = ax - self.ax;
+            let day = ay - self.ay;
+            let da_len = (dax * dax + day * day).sqrt();
+            let max_da = MAX_JERK * dt;
+            if da_len > max_da && da_len > f64::EPSILON {
+                let s = max_da / da_len;
+                ax = self.ax + dax * s;
+                ay = self.ay + day * s;
+            }
+            self.ax = ax;
+            self.ay = ay;
+
+            self.vx += self.ax * dt;
+            self.vy += self.ay * dt;
+
+            let dvx = euro_vx - self.vx;
+            let dvy = euro_vy - self.vy;
+            let dv_len = (dvx * dvx + dvy * dvy).sqrt();
+            let max_dv = MAX_ACCEL * dt;
+            if dv_len > max_dv && dv_len > f64::EPSILON {
+                let s = max_dv / dv_len;
+                self.vx += dvx * s;
+                self.vy += dvy * s;
+            }
+
+            self.x += self.vx * dt;
+            self.y += self.vy * dt;
+
+            let lock = (1.0 - (-8.0 * dt).exp()) * EURO_TRACK_BLEND;
+            self.x += (next.x - self.x) * lock;
+            self.y += (next.y - self.y) * lock;
+        }
+    }
+
+    fn motion_smoothed_at(frames: &[EuroKeyframe]) -> Option<(f64, f64, u8)> {
+        if frames.is_empty() {
+            return None;
+        }
+        if frames.len() == 1 {
+            let f = &frames[0];
+            return Some((f.x, f.y, f.buttons));
+        }
+
+        let mut smooth = MotionSmoother::new(frames[0].x, frames[0].y);
+        for pair in frames.windows(2) {
+            smooth.step(&pair[0], &pair[1]);
+        }
+        let last = frames.last().unwrap();
+        Some((smooth.x, smooth.y, last.buttons))
+    }
+
+    fn filtered_at(samples: &[Sample], t_secs: f64) -> Option<(f64, f64, u8)> {
+        let frames = euro_keyframes(samples, t_secs)?;
+        motion_smoothed_at(&frames)
     }
 
     static RING: OnceLock<Mutex<Ring>> = OnceLock::new();
 
     fn ring() -> &'static Mutex<Ring> {
         RING.get_or_init(|| Mutex::new(Ring::new()))
+    }
+
+    fn pointer_button_state() -> u8 {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+        let mut b = 0u8;
+        unsafe {
+            if GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 {
+                b |= 0x1;
+            }
+            if GetAsyncKeyState(VK_RBUTTON.0 as i32) < 0 {
+                b |= 0x2;
+            }
+        }
+        b
     }
 
     pub fn cinematic_enabled(state: &SharedState) -> bool {
@@ -171,6 +451,43 @@ mod imp {
         r.slots = [None; RING_CAP];
         r.head = 0;
         r.len = 0;
+        r.latest = None;
+        *CAPTURE_SPACE.lock() = None;
+    }
+
+    pub fn set_capture_space(origin_x: i32, origin_y: i32, width: u32, height: u32) {
+        if !FOLLOW_CAPTURE.load(Ordering::Acquire) {
+            return;
+        }
+        *CAPTURE_SPACE.lock() = Some(CaptureSpace {
+            origin_x,
+            origin_y,
+            width: width as f64,
+            height: height as f64,
+        });
+    }
+
+    /// High-rate sample from the mouse hook (`WM_MOUSEMOVE`).
+    pub fn record_hook_move(screen_x: i32, screen_y: i32) {
+        if !FOLLOW_CAPTURE.load(Ordering::Acquire) {
+            return;
+        }
+        let space = match *CAPTURE_SPACE.lock() {
+            Some(s) => s,
+            None => return,
+        };
+        let x = clamp(
+            screen_x as f64 - space.origin_x as f64,
+            0.0,
+            space.width,
+        );
+        let y = clamp(
+            screen_y as f64 - space.origin_y as f64,
+            0.0,
+            space.height,
+        );
+        let session = *SESSION_START.lock();
+        record_sample(session, x, y, pointer_button_state());
     }
 
     /// Call whenever recording/arming/cinematic settings change (never from follow thread).
@@ -185,6 +502,9 @@ mod imp {
             None
         };
         *SESSION_START.lock() = session;
+        if !on {
+            *CAPTURE_SPACE.lock() = None;
+        }
     }
 
     /// Hot-path sample from cursor-follow thread — no `state` lock.
@@ -204,7 +524,12 @@ mod imp {
     }
 
     pub fn latest_monitor_pos() -> Option<(f64, f64)> {
-        ring().lock().latest.map(|(x, y, _)| (x, y))
+        let t = SESSION_START
+            .lock()
+            .as_ref()
+            .map(|s| s.elapsed().as_secs_f64())
+            .unwrap_or(0.0);
+        sample_at(t).map(|(x, y, _)| (x, y))
     }
 
     fn sample_at(t_secs: f64) -> Option<(f64, f64, u8)> {
@@ -247,6 +572,66 @@ mod imp {
         resized
     }
 
+    #[inline]
+    fn blend_over(out: &mut [u8], o: usize, sr: u8, sg: u8, sb: u8, alpha: f32) {
+        let inv = 1.0 - alpha;
+        out[o] = (sb as f32 * alpha + out[o] as f32 * inv).round().clamp(0.0, 255.0) as u8;
+        out[o + 1] = (sg as f32 * alpha + out[o + 1] as f32 * inv).round().clamp(0.0, 255.0) as u8;
+        out[o + 2] = (sr as f32 * alpha + out[o + 2] as f32 * inv).round().clamp(0.0, 255.0) as u8;
+    }
+
+    /// Sub-pixel bilinear splat — fractional hotspot placement without grid snap.
+    fn splat_rgba(
+        out: &mut [u8],
+        out_w: u32,
+        out_h: u32,
+        row_bytes: usize,
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+        xf: f64,
+        yf: f64,
+        alpha_mul: f32,
+    ) {
+        if a < 8 {
+            return;
+        }
+        let base_alpha = (a as f32 / 255.0) * alpha_mul;
+        if base_alpha <= 0.001 {
+            return;
+        }
+
+        let x0 = xf.floor() as i32;
+        let y0 = yf.floor() as i32;
+        let fx = (xf - x0 as f64) as f32;
+        let fy = (yf - y0 as f64) as f32;
+
+        let corners = [
+            (0, 0, (1.0 - fx) * (1.0 - fy)),
+            (1, 0, fx * (1.0 - fy)),
+            (0, 1, (1.0 - fx) * fy),
+            (1, 1, fx * fy),
+        ];
+
+        for (dx, dy, w) in corners {
+            let wa = base_alpha * w;
+            if wa <= 0.001 {
+                continue;
+            }
+            let px = x0 + dx;
+            let py = y0 + dy;
+            if px < 0 || py < 0 || px >= out_w as i32 || py >= out_h as i32 {
+                continue;
+            }
+            let o = py as usize * row_bytes + px as usize * 4;
+            if o + 3 >= out.len() {
+                continue;
+            }
+            blend_over(out, o, r, g, b, wa.min(1.0));
+        }
+    }
+
     fn stamp_sprite(
         out: &mut [u8],
         out_w: u32,
@@ -257,7 +642,7 @@ mod imp {
         click: bool,
     ) {
         let short = out_w.min(out_h).max(1) as f64;
-        let mut scale = (short * 0.056).clamp(36.0, 112.0) / spr.rgba.height().max(1) as f64;
+        let mut scale = (short * 0.062).clamp(40.0, 124.0) / spr.rgba.height().max(1) as f64;
         if click {
             scale *= 0.88;
         }
@@ -270,49 +655,44 @@ mod imp {
         let row_bytes = out_w as usize * 4;
         let sprite = scaled_sprite(spr, sw, sh);
 
-        // Soft drop shadow (1px down-right) before the sprite.
         for y in 0..sh {
             for x in 0..sw {
                 let p = sprite.get_pixel(x, y);
                 if p[3] < 8 {
                     continue;
                 }
-                let dx = left.round() as i32 + x as i32 + 1;
-                let dy = top.round() as i32 + y as i32 + 1;
-                if dx < 0 || dy < 0 || dx >= out_w as i32 || dy >= out_h as i32 {
-                    continue;
-                }
-                let o = dy as usize * row_bytes + dx as usize * 4;
-                if o + 3 >= out.len() {
-                    continue;
-                }
-                let shadow_a = (p[3] as f32 / 255.0) * 0.35;
-                out[o] = ((out[o] as f32 * (1.0 - shadow_a)) as u32).min(255) as u8;
-                out[o + 1] = ((out[o + 1] as f32 * (1.0 - shadow_a)) as u32).min(255) as u8;
-                out[o + 2] = ((out[o + 2] as f32 * (1.0 - shadow_a)) as u32).min(255) as u8;
+                splat_rgba(
+                    out,
+                    out_w,
+                    out_h,
+                    row_bytes,
+                    p[0],
+                    p[1],
+                    p[2],
+                    p[3],
+                    left + x as f64 + 1.0,
+                    top + y as f64 + 1.0,
+                    0.35,
+                );
             }
         }
 
         for y in 0..sh {
             for x in 0..sw {
                 let p = sprite.get_pixel(x, y);
-                let a = p[3] as f32 / 255.0;
-                if a <= 0.01 {
-                    continue;
-                }
-                let dx = left.round() as i32 + x as i32;
-                let dy = top.round() as i32 + y as i32;
-                if dx < 0 || dy < 0 || dx >= out_w as i32 || dy >= out_h as i32 {
-                    continue;
-                }
-                let o = dy as usize * row_bytes + dx as usize * 4;
-                if o + 3 >= out.len() {
-                    continue;
-                }
-                let inv = 1.0 - a;
-                out[o] = (p[2] as f32 * a + out[o] as f32 * inv) as u8;
-                out[o + 1] = (p[1] as f32 * a + out[o + 1] as f32 * inv) as u8;
-                out[o + 2] = (p[0] as f32 * a + out[o + 2] as f32 * inv) as u8;
+                splat_rgba(
+                    out,
+                    out_w,
+                    out_h,
+                    row_bytes,
+                    p[0],
+                    p[1],
+                    p[2],
+                    p[3],
+                    left + x as f64,
+                    top + y as f64,
+                    1.0,
+                );
             }
         }
     }
@@ -350,16 +730,159 @@ mod imp {
         let click = buttons & 0x1 != 0;
         stamp_sprite(out, out_w, out_h, sprite(), ox, oy, click);
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn one_euro_softens_step_start() {
+            let samples = vec![
+                Sample {
+                    t_secs: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+                Sample {
+                    t_secs: 0.05,
+                    x: 100.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+            ];
+            let raw = Ring::raw_linear_at(&samples, 0.05).unwrap();
+            let filtered = filtered_at(&samples, 0.05).unwrap();
+            assert!(filtered.0 < raw.0);
+            assert!(filtered.0 > 0.0);
+        }
+
+        #[test]
+        fn hook_dedup_skips_redundant_moves() {
+            let mut ring = Ring::new();
+            ring.push(1.0, 10.0, 20.0, 0);
+            ring.push(1.0001, 10.1, 20.0, 0);
+            assert_eq!(ring.len, 1);
+        }
+
+        #[test]
+        fn jerk_limit_caps_velocity_spike() {
+            let frames = vec![
+                EuroKeyframe {
+                    t_secs: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+                EuroKeyframe {
+                    t_secs: 0.02,
+                    x: 200.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+            ];
+            let (_, _, _) = motion_smoothed_at(&frames).unwrap();
+            let mid = vec![
+                EuroKeyframe {
+                    t_secs: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+                EuroKeyframe {
+                    t_secs: 0.01,
+                    x: 100.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+                EuroKeyframe {
+                    t_secs: 0.02,
+                    x: 200.0,
+                    y: 0.0,
+                    buttons: 0,
+                },
+            ];
+            let (x, _, _) = motion_smoothed_at(&mid).unwrap();
+            assert!(x < 100.0);
+            assert!(x > 0.0);
+        }
+
+        #[test]
+        fn motion_smoother_reduces_speed_wobble() {
+            let mut samples = vec![Sample {
+                t_secs: 0.0,
+                x: 0.0,
+                y: 0.0,
+                buttons: 0,
+            }];
+            for i in 1..=40 {
+                let t = i as f64 * 0.02;
+                let base_x = t * 420.0;
+                let jitter = match i % 4 {
+                    0 => 14.0,
+                    1 => -11.0,
+                    2 => 7.0,
+                    _ => -5.0,
+                };
+                samples.push(Sample {
+                    t_secs: t,
+                    x: base_x + jitter,
+                    y: 0.0,
+                    buttons: 0,
+                });
+            }
+
+            let t_end = 0.8;
+            let euro = euro_keyframes(&samples, t_end).unwrap();
+            let mut euro_speeds = Vec::new();
+            let mut smooth_speeds = Vec::new();
+            for pair in euro.windows(2) {
+                let dt = (pair[1].t_secs - pair[0].t_secs).max(1.0 / 2000.0);
+                euro_speeds.push((pair[1].x - pair[0].x).abs() / dt);
+            }
+            for i in 1..euro.len() {
+                let partial = &euro[..=i];
+                let (x0, _, _) = motion_smoothed_at(&partial[..partial.len() - 1]).unwrap();
+                let (x1, _, _) = motion_smoothed_at(partial).unwrap();
+                let dt = (partial.last().unwrap().t_secs
+                    - partial[partial.len() - 2].t_secs)
+                    .max(1.0 / 2000.0);
+                smooth_speeds.push((x1 - x0).abs() / dt);
+            }
+
+            fn variance(vals: &[f64]) -> f64 {
+                if vals.len() < 2 {
+                    return 0.0;
+                }
+                let mean = vals.iter().sum::<f64>() / vals.len() as f64;
+                vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / vals.len() as f64
+            }
+
+            let moving_euro: Vec<f64> = euro_speeds
+                .iter()
+                .copied()
+                .filter(|s| *s > MOVE_ON_SPEED)
+                .collect();
+            let moving_smooth: Vec<f64> = smooth_speeds
+                .iter()
+                .copied()
+                .filter(|s| *s > MOVE_ON_SPEED * 0.5)
+                .collect();
+            assert!(!moving_euro.is_empty());
+            assert!(!moving_smooth.is_empty());
+            assert!(variance(&moving_smooth) < variance(&moving_euro));
+        }
+    }
 }
 
 #[cfg(windows)]
 pub use imp::{
-    cinematic_enabled, latest_monitor_pos, record_follow_sample, record_sample, reset_session,
-    stamp_into_buffer, sync_follow_gate_from_state,
+    cinematic_enabled, latest_monitor_pos, record_follow_sample, record_hook_move, record_sample,
+    reset_session, set_capture_space, stamp_into_buffer, sync_follow_gate_from_state,
 };
 
 #[cfg(not(windows))]
-use crate::state::{SharedState, Viewport};
+use crate::state::{AppState, SharedState, Viewport};
 #[cfg(not(windows))]
 use std::time::Instant;
 
@@ -369,16 +892,19 @@ pub fn cinematic_enabled(_state: &SharedState) -> bool {
 }
 
 #[cfg(not(windows))]
-use crate::state::AppState;
-
-#[cfg(not(windows))]
 pub fn reset_session() {}
 
 #[cfg(not(windows))]
 pub fn sync_follow_gate_from_state(_st: &AppState) {}
 
 #[cfg(not(windows))]
+pub fn set_capture_space(_origin_x: i32, _origin_y: i32, _width: u32, _height: u32) {}
+
+#[cfg(not(windows))]
 pub fn record_follow_sample(_x: f64, _y: f64, _buttons: u8) {}
+
+#[cfg(not(windows))]
+pub fn record_hook_move(_screen_x: i32, _screen_y: i32) {}
 
 #[cfg(not(windows))]
 pub fn record_sample(_session_start: Option<Instant>, _x: f64, _y: f64, _buttons: u8) {}

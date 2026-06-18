@@ -395,6 +395,11 @@ function TabbedBody({ tab }: { tab: TabId }) {
   const [shown, setShown] = useState<TabId>(tab);
   const [phase, setPhase] = useState<"in" | "out">("in");
   const pending = useRef<TabId>(tab);
+  const [libraryMounted, setLibraryMounted] = useState(tab === "preview");
+
+  useEffect(() => {
+    if (tab === "preview") setLibraryMounted(true);
+  }, [tab]);
 
   useEffect(() => {
     if (tab === shown) return;
@@ -410,11 +415,14 @@ function TabbedBody({ tab }: { tab: TabId }) {
   return (
     <div className="panel-body">
       <div className={`pb-anim ${phase}`}>
+        {libraryMounted ? (
+          <div style={{ display: shown === "preview" ? "block" : "none" }}>
+            <Preview />
+          </div>
+        ) : null}
         {shown === "studio" ? (
           <Studio />
-        ) : shown === "preview" ? (
-          <Preview />
-        ) : shown === "hotkeys" ? (
+        ) : shown === "preview" ? null : shown === "hotkeys" ? (
           <Hotkeys />
         ) : shown === "account" ? (
           <Account />

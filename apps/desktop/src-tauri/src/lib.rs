@@ -497,6 +497,7 @@ pub fn run() {
             commands::stop_streaming,
             commands::set_stream_settings,
             commands::list_recordings,
+            commands::get_recording_thumbnail,
             commands::delete_recording,
             commands::rename_recording,
             commands::export_recording,

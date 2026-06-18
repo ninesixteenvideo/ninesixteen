@@ -113,6 +113,7 @@ pub fn list_recordings() -> Vec<RecordingInfo> {
 
 pub fn delete_recording(id: &str) {
     let dir = recordings_dir();
+    let _ = std::fs::remove_file(thumb_path(id));
     if let Ok(rd) = std::fs::read_dir(&dir) {
         for e in rd.flatten() {
             let path = e.path();
@@ -122,6 +123,103 @@ pub fn delete_recording(id: &str) {
             }
         }
     }
+}
+
+const THUMB_MAX_W: u32 = 168;
+
+pub fn thumb_path(id: &str) -> PathBuf {
+    recordings_dir().join(format!("{id}.thumb.jpg"))
+}
+
+/// Extract a small JPEG beside the take (from plaintext MP4). Idempotent.
+#[cfg(windows)]
+pub fn write_thumbnail_from_mp4(mp4: &std::path::Path, id: &str) -> Result<(), String> {
+    use crate::ffmpeg_util::{ffmpeg_command, find_ffmpeg};
+    use std::process::Stdio;
+
+    if !mp4.exists() {
+        return Err("recording mp4 missing".into());
+    }
+    let out = thumb_path(id);
+    if let Some(parent) = out.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let ffmpeg = find_ffmpeg()?;
+    let vf = format!("scale={THUMB_MAX_W}:-2:flags=lanczos");
+    let status = ffmpeg_command(&ffmpeg)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            "0.05",
+            "-i",
+        ])
+        .arg(mp4)
+        .args([
+            "-frames:v",
+            "1",
+            "-vf",
+            &vf,
+            "-q:v",
+            "5",
+            "-y",
+        ])
+        .arg(&out)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .status()
+        .map_err(|e| format!("ffmpeg thumb: {e}"))?;
+    if !status.success() {
+        return Err("ffmpeg thumb failed".into());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn write_thumbnail_from_mp4(_mp4: &std::path::Path, _id: &str) -> Result<(), String> {
+    Err("thumbnails unsupported".into())
+}
+
+#[cfg(windows)]
+pub fn ensure_thumbnail(id: &str) -> Result<PathBuf, String> {
+    let out = thumb_path(id);
+    if out.exists() && out.metadata().map(|m| m.len()).unwrap_or(0) > 64 {
+        return Ok(out);
+    }
+    let ns = recordings_dir().join(format!("{id}.ns"));
+    if !ns.exists() {
+        return Err("recording not found".into());
+    }
+    let temp = std::env::temp_dir().join(format!("ns-thumb-{id}.mp4"));
+    crate::crypto::decrypt_to_file(&ns, &temp).map_err(|e| format!("decrypt for thumb: {e}"))?;
+    let result = write_thumbnail_from_mp4(&temp, id);
+    let _ = std::fs::remove_file(&temp);
+    result?;
+    Ok(out)
+}
+
+#[cfg(not(windows))]
+pub fn ensure_thumbnail(_id: &str) -> Result<PathBuf, String> {
+    Err("thumbnails unsupported".into())
+}
+
+/// JPEG data URL for the library list (empty string on failure).
+pub fn thumbnail_data_url(id: &str) -> String {
+    use base64::Engine;
+    let Ok(path) = ensure_thumbnail(id) else {
+        return String::new();
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return String::new();
+    };
+    if bytes.is_empty() {
+        return String::new();
+    }
+    format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 fn normalize_display_filename(raw: &str) -> Result<String, String> {

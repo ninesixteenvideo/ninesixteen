@@ -255,6 +255,8 @@ const mock = (() => {
         }
         case "list_recordings":
           return recordings as unknown as T;
+        case "get_recording_thumbnail":
+          return "" as unknown as T;
         case "delete_recording": {
           const i = recordings.findIndex((r) => r.id === args.id);
           if (i >= 0) recordings.splice(i, 1);

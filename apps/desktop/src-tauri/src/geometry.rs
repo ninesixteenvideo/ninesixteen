@@ -80,14 +80,88 @@ fn base_crop(sw: f64, sh: f64, aspect: f64) -> (f64, f64) {
 }
 
 fn centered_crop(cx: f64, cy: f64, w: f64, h: f64, sw: f64, sh: f64) -> CropRect {
-    let cx = clamp(cx, w / 2.0, sw - w / 2.0);
-    let cy = clamp(cy, h / 2.0, sh - h / 2.0);
+    let (min_x, max_x, min_y, max_y) = center_bounds(w, h, sw, sh);
+    let cx = clamp(cx, min_x, max_x);
+    let cy = clamp(cy, min_y, max_y);
     CropRect {
         x: cx - w / 2.0,
         y: cy - h / 2.0,
         w,
         h,
     }
+}
+
+/// Valid viewport-center range so a `w`×`h` crop stays inside the source.
+pub fn center_bounds(w: f64, h: f64, sw: f64, sh: f64) -> (f64, f64, f64, f64) {
+    (w / 2.0, sw - w / 2.0, h / 2.0, sh - h / 2.0)
+}
+
+/// Soft-zone width for edge pan easing — scales with crop size, clamped for tiny/huge frames.
+pub const EDGE_PAN_SOFT_FRAC: f64 = 0.15;
+pub const EDGE_PAN_SOFT_MIN_PX: f64 = 60.0;
+pub const EDGE_PAN_SOFT_MAX_PX: f64 = 220.0;
+
+pub fn edge_soft_zone_px(crop_w: f64, crop_h: f64) -> f64 {
+    (crop_w.min(crop_h) * EDGE_PAN_SOFT_FRAC).clamp(EDGE_PAN_SOFT_MIN_PX, EDGE_PAN_SOFT_MAX_PX)
+}
+
+/// Viewport center limits for the current zoom/orientation on a monitor.
+pub fn viewport_center_bounds(vp: &Viewport, src_w: u32, src_h: u32) -> (f64, f64, f64, f64) {
+    let (out_w, out_h) = output_dims(vp.orientation, 1080);
+    let layout = frame_layout(vp, src_w, src_h, out_w, out_h);
+    center_bounds(
+        layout.crop.w,
+        layout.crop.h,
+        src_w as f64,
+        src_h as f64,
+    )
+}
+
+/// Per-axis scale for movement toward that axis's boundary only.
+fn edge_pan_axis_scale(pos: f64, delta: f64, min: f64, max: f64, soft_px: f64) -> f64 {
+    if delta < -f64::EPSILON {
+        edge_pan_speed_scale(pos - min, soft_px)
+    } else if delta > f64::EPSILON {
+        edge_pan_speed_scale(max - pos, soft_px)
+    } else {
+        1.0
+    }
+}
+
+fn edge_pan_speed_scale(margin_px: f64, soft_px: f64) -> f64 {
+    if margin_px >= soft_px {
+        1.0
+    } else if margin_px <= 0.0 {
+        0.0
+    } else {
+        smoothstep(0.0, soft_px, margin_px)
+    }
+}
+
+/// Apply edge softening to a proposed pan step; each axis slows independently so the
+/// frame can glide along an edge while only the into-edge component eases off.
+pub fn apply_edge_soft_pan(
+    cx: f64,
+    cy: f64,
+    nx: f64,
+    ny: f64,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+    soft_px: f64,
+) -> (f64, f64) {
+    let dx = nx - cx;
+    let dy = ny - cy;
+    if dx.abs() <= f64::EPSILON && dy.abs() <= f64::EPSILON {
+        return (clamp(cx, min_x, max_x), clamp(cy, min_y, max_y));
+    }
+    let scale_x = edge_pan_axis_scale(cx, dx, min_x, max_x, soft_px);
+    let scale_y = edge_pan_axis_scale(cy, dy, min_y, max_y, soft_px);
+    (
+        clamp(cx + dx * scale_x, min_x, max_x),
+        clamp(cy + dy * scale_y, min_y, max_y),
+    )
 }
 
 /// Letterbox the full monitor into a 9:16 output frame.
@@ -282,6 +356,35 @@ pub fn output_dims(o: Orientation, short_edge: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edge_pan_glides_along_left_boundary() {
+        let (nx, ny) = apply_edge_soft_pan(100.0, 400.0, 80.0, 520.0, 100.0, 900.0, 100.0, 800.0, 80.0);
+        assert_eq!(nx, 100.0);
+        assert!((ny - 520.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn edge_pan_resumes_when_cursor_moves_away_from_edge() {
+        let (nx, ny) = apply_edge_soft_pan(100.0, 400.0, 180.0, 400.0, 100.0, 900.0, 100.0, 800.0, 80.0);
+        assert!((nx - 180.0).abs() < f64::EPSILON);
+        assert_eq!(ny, 400.0);
+    }
+
+    #[test]
+    fn edge_pan_slows_near_left_boundary() {
+        let (nx, ny) = apply_edge_soft_pan(120.0, 400.0, 20.0, 400.0, 100.0, 900.0, 100.0, 800.0, 80.0);
+        assert!(nx > 100.0);
+        assert!(nx < 120.0);
+        assert_eq!(ny, 400.0);
+    }
+
+    #[test]
+    fn edge_pan_full_speed_away_from_boundary() {
+        let (nx, ny) = apply_edge_soft_pan(300.0, 400.0, 360.0, 400.0, 100.0, 900.0, 100.0, 800.0, 80.0);
+        assert!((nx - 360.0).abs() < f64::EPSILON);
+        assert_eq!(ny, 400.0);
+    }
 
     #[test]
     fn pan_follow_speed_scale_ramps_in_soft_zone() {

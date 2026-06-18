@@ -1357,6 +1357,7 @@ mod imp {
         // playable is ever left in the recordings folder (export decrypts it).
         let ns_path = path.with_extension("ns");
         crate::save_progress::report(65, "encrypting");
+        let _ = crate::recordings::write_thumbnail_from_mp4(&path, &stem);
         let stored = match crate::crypto::encrypt_file_with_progress(&path, &ns_path, |pct| {
             let overall = 65u8.saturating_add((pct as u16 * 34 / 100) as u8);
             let mapped = overall.min(99);

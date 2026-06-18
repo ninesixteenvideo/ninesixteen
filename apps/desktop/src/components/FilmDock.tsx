@@ -220,7 +220,7 @@ export const FilmDock = forwardRef<
               src={src}
               controls
               playsInline
-              preload="auto"
+              preload="metadata"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}

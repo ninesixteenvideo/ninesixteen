@@ -3,6 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, prefetchMediaSrc } from "../lib/bridge";
+import { prefetchRecordingThumbs } from "../lib/recordingThumb";
 import { ensureDriveToken } from "../lib/driveAuth";
 import { isOnline } from "../lib/entitlementCache";
 import type { RecordingInfo } from "../lib/types";
@@ -55,6 +56,12 @@ export function Preview() {
   useEffect(() => {
     if (selectedId) prefetchMediaSrc(selectedId);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (recordings.length === 0) return;
+    for (const rec of recordings) prefetchMediaSrc(rec.id);
+    prefetchRecordingThumbs(recordings.map((r) => r.id));
+  }, [recordings]);
 
   useEffect(() => {
     setCardMode("default");
