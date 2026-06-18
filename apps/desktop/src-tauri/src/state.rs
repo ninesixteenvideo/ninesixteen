@@ -76,6 +76,23 @@ pub struct RecordingSettings {
     pub fps: u32,
     pub quality: u32,
     pub capture_cursor: bool,
+    /// When true (default), record with a custom stamped cursor instead of the OS pointer in WGC.
+    #[serde(default = "default_cinematic_cursor")]
+    pub cinematic_cursor: bool,
+    /// Mix a click sound into the recording on each left/right mouse button press.
+    #[serde(default)]
+    pub mouse_click_audio: bool,
+    /// Playback/mix gain for mouse click SFX (0.0–2.0).
+    #[serde(default = "default_mouse_click_volume")]
+    pub mouse_click_volume: f64,
+}
+
+fn default_mouse_click_volume() -> f64 {
+    1.0
+}
+
+fn default_cinematic_cursor() -> bool {
+    true
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -110,8 +127,11 @@ impl Default for RecordingSettings {
         Self {
             orientation: Orientation::Portrait,
             fps: 30,
-            quality: 1080,
+            quality: 720,
             capture_cursor: true,
+            cinematic_cursor: true,
+            mouse_click_audio: false,
+            mouse_click_volume: default_mouse_click_volume(),
         }
     }
 }
@@ -194,8 +214,10 @@ pub struct CaptureState {
     pub recording_armed: bool,
     pub countdown_seconds: u8,
     pub overlay_frame: Option<OverlayFrame>,
-    /// Whether the mouse cursor is baked into the final recording (Alt+C toggles).
+    /// Whether the mouse cursor appears in the final recording (Alt+C toggles).
     pub capture_cursor: bool,
+    /// Custom cursor stamped per frame (vs system cursor baked into capture).
+    pub cinematic_cursor: bool,
     /// True while Alt+F has paused cursor follow (crop stays fixed).
     pub frame_frozen: bool,
 }
@@ -207,6 +229,10 @@ pub struct OverlayFrame {
     pub w: f64,
     pub h: f64,
     pub zoom: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor_x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor_y: Option<f64>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]

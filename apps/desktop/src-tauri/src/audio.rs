@@ -754,9 +754,6 @@ mod imp {
         session_target: Arc<AtomicU64>,
     ) -> Result<(), String> {
         com_init();
-        // session_target is no longer used to gate writes — audio runs at the
-        // device clock and is locked to the video duration at mux time.
-        let _ = session_target;
 
         let file = File::create(&pcm_path).map_err(|e| format!("create PCM sidecar: {e}"))?;
         let mut writer = BufWriter::with_capacity(256 * 1024, file);
@@ -845,7 +842,12 @@ mod imp {
             // be. Only open a gap once we're more than GRACE behind (a real
             // silence gap, not ordinary latency); once open, top up to the wall
             // clock every pass so audio resumes tightly aligned.
-            let target = (session_start.elapsed().as_secs_f64() * SAMPLE_RATE as f64) as u64;
+            let mut target =
+                (session_start.elapsed().as_secs_f64() * SAMPLE_RATE as f64) as u64;
+            let cap = session_target.load(Ordering::Acquire);
+            if cap > 0 {
+                target = target.min(cap);
+            }
             if !in_gap && frames_written + GRACE_FRAMES < target {
                 in_gap = true;
             }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
-import { invoke, isDesktop } from "../lib/bridge";
+import { invoke, isDesktop, prefetchMediaSrc } from "../lib/bridge";
 import { ensureDriveToken } from "../lib/driveAuth";
 import { isOnline } from "../lib/entitlementCache";
 import type { RecordingInfo } from "../lib/types";
@@ -23,7 +23,7 @@ type CardMode = "default" | "export" | "delete" | "rename";
 /**
  * The Library tab is a pure vertical file browser. Selecting a take drives the
  * shared store; the film player lives in <FilmDock /> at the shell level
- * so it can slide out from behind the sidebar (9×16 or 16×9).
+ * beside the sidebar (9×16 or 16×9, cross-fade on selection).
  */
 export function Preview() {
   const {
@@ -51,6 +51,10 @@ export function Preview() {
       setLibrarySelected(null);
     }
   }, [recordings, selectedId, setLibrarySelected]);
+
+  useEffect(() => {
+    if (selectedId) prefetchMediaSrc(selectedId);
+  }, [selectedId]);
 
   useEffect(() => {
     setCardMode("default");
@@ -234,6 +238,8 @@ export function Preview() {
                 type="button"
                 className="rec-item"
                 onClick={() => setLibrarySelected(rec.id)}
+                onMouseEnter={() => prefetchMediaSrc(rec.id)}
+                onFocus={() => prefetchMediaSrc(rec.id)}
                 title={rec.filename}
               >
                 <RecThumb id={rec.id} orientation={rec.orientation} />

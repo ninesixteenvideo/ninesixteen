@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "../state/store";
+import { invoke } from "../lib/bridge";
 import type { AudioSourceMode, Orientation } from "../lib/types";
 
 const SOURCE_OPTIONS: { id: AudioSourceMode; label: string }[] = [
@@ -117,20 +118,45 @@ export function Studio() {
               </section>
 
               <section className="field-card">
-                <div className="row">
-                  <span className="field-label">Zoom sensitivity</span>
-                  <span className="muted">{inputSettings.zoomSensitivity.toFixed(2)}</span>
+                <span className="field-label">Mouse click audio</span>
+                <div className="toggle" role="group" aria-label="Mouse click audio">
+                  {(["off", "on"] as const).map((choice) => {
+                    const on = choice === "on";
+                    const active = on === recordingSettings.mouseClickAudio;
+                    return (
+                      <button
+                        key={choice}
+                        type="button"
+                        className={`toggle-opt ${active ? "active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => setRecordingSettings({ mouseClickAudio: on })}
+                      >
+                        {choice === "off" ? "Off" : "On"}
+                      </button>
+                    );
+                  })}
                 </div>
-                <input
-                  type="range"
-                  min={0.2}
-                  max={3}
-                  step={0.05}
-                  value={inputSettings.zoomSensitivity}
-                  onChange={(e) => setInputSettings({ zoomSensitivity: parseFloat(e.target.value) })}
+                <MouseClickVolume
+                  volume={recordingSettings.mouseClickVolume}
+                  onVolume={(mouseClickVolume) => setRecordingSettings({ mouseClickVolume })}
                 />
               </section>
             </div>
+
+            <section className="field-card">
+              <div className="row">
+                <span className="field-label">Zoom sensitivity</span>
+                <span className="muted">{inputSettings.zoomSensitivity.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min={0.2}
+                max={3}
+                step={0.05}
+                value={inputSettings.zoomSensitivity}
+                onChange={(e) => setInputSettings({ zoomSensitivity: parseFloat(e.target.value) })}
+              />
+            </section>
 
             <section className="audio">
               <span className="field-label">Audio</span>
@@ -287,6 +313,59 @@ function Channel({
         />
         <span className="chan-gain-val">{draft.toFixed(2)}×</span>
       </div>
+    </div>
+  );
+}
+
+function MouseClickVolume({
+  volume,
+  onVolume,
+}: {
+  volume: number;
+  onVolume: (volume: number) => void;
+}) {
+  const [draft, setDraft] = useState(volume);
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    if (!dragging.current) setDraft(volume);
+  }, [volume]);
+
+  const commit = (value: number) => {
+    const clamped = Math.min(2, Math.max(0, value));
+    setDraft(clamped);
+    onVolume(clamped);
+    void invoke("preview_mouse_click_audio", { volume: clamped }).catch(() => {});
+  };
+
+  return (
+    <div className="chan-gain" style={{ marginTop: 10 }}>
+      <span className="chan-gain-label">Volume</span>
+      <input
+        type="range"
+        min={0}
+        max={2}
+        step={0.05}
+        value={draft}
+        aria-label="Mouse click volume"
+        onPointerDown={() => {
+          dragging.current = true;
+        }}
+        onPointerUp={(e) => {
+          dragging.current = false;
+          commit(Number(e.currentTarget.value));
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          setDraft(volume);
+        }}
+        onChange={(e) => setDraft(Number(e.target.value))}
+        onBlur={(e) => {
+          if (dragging.current) return;
+          commit(Number(e.currentTarget.value));
+        }}
+      />
+      <span className="chan-gain-val">{draft.toFixed(2)}×</span>
     </div>
   );
 }

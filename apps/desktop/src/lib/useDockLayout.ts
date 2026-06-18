@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isDesktop } from "./bridge";
 import type { Orientation } from "./types";
 import {
@@ -6,8 +6,8 @@ import {
   SIDEBAR_COLLAPSE_MS,
   dockWidth,
   filmStripWidth,
+  libraryFilmStripWidth,
   syncDockWindow,
-  waitForDockWidth,
 } from "./windowDock";
 
 /** Keeps the native window pinned to the left edge and sized to the dock + film strip. */
@@ -29,6 +29,7 @@ export function useDockLayout(opts: {
   const [viewportHeight, setViewportHeight] = useState(
     typeof window !== "undefined" ? window.innerHeight : 900
   );
+  const resizeGen = useRef(0);
 
   /**
    * Lags `expanded` on collapse so the native window and film strip stay wide
@@ -48,6 +49,12 @@ export function useDockLayout(opts: {
   const filmSpace =
     layoutExpanded && (libraryTab || filmSelected || filmVisible);
 
+  const filmStripPx = filmSpace
+    ? libraryTab
+      ? libraryFilmStripWidth(viewportHeight)
+      : filmStripWidth(viewportHeight, filmOrientation)
+    : 0;
+
   useEffect(() => {
     if (!isDesktop) return;
     void (async () => {
@@ -59,16 +66,26 @@ export function useDockLayout(opts: {
 
   useEffect(() => {
     if (!ready || !isDesktop) return;
+    const gen = ++resizeGen.current;
     void (async () => {
-      const targetW = await syncDockWindow({
+      await syncDockWindow({
         expanded: layoutExpanded,
         filmExtended: filmSpace,
         hide: capturing,
         filmOrientation,
+        filmStripPx: filmSpace ? filmStripPx : undefined,
       });
-      if (filmSpace) await waitForDockWidth(targetW);
+      if (gen !== resizeGen.current) return;
     })();
-  }, [ready, layoutExpanded, filmSpace, capturing, filmOrientation, viewportHeight]);
+  }, [
+    ready,
+    layoutExpanded,
+    filmSpace,
+    capturing,
+    filmOrientation,
+    viewportHeight,
+    filmStripPx,
+  ]);
 
   // Track the sidebar's animated width so the film strip stays glued to its edge.
   useEffect(() => {
@@ -93,10 +110,7 @@ export function useDockLayout(opts: {
   }, [ready]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--film-w",
-      `${filmSpace ? filmStripWidth(viewportHeight, filmOrientation) : 0}px`
-    );
+    document.documentElement.style.setProperty("--film-w", `${filmStripPx}px`);
     document.documentElement.style.setProperty(
       "--film-aspect",
       filmOrientation === "landscape" ? "landscape" : "portrait"
@@ -108,9 +122,10 @@ export function useDockLayout(opts: {
         filmExtended: filmSpace,
         viewportHeight,
         filmOrientation,
+        filmStripPx: filmSpace ? filmStripPx : undefined,
       })}px`
     );
-  }, [filmSpace, viewportHeight, layoutExpanded, filmOrientation]);
+  }, [filmSpace, filmStripPx, viewportHeight, layoutExpanded, filmOrientation]);
 
-  return { sidebarPx: expanded ? DOCK.EXPANDED : DOCK.RAIL, viewportHeight };
+  return { sidebarPx: expanded ? DOCK.EXPANDED : DOCK.RAIL, viewportHeight, filmStripPx };
 }

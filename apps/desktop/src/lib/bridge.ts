@@ -27,15 +27,33 @@ async function ensureReal() {
   }
 }
 
+const mediaSrcCache = new Map<string, string>();
+let tauriCore: typeof import("@tauri-apps/api/core") | null = null;
+
+async function ensureTauriCore() {
+  if (!tauriCore) tauriCore = await import("@tauri-apps/api/core");
+  return tauriCore;
+}
+
 /**
  * Build a URL the webview can load in a <video> tag for a recording id. Streams
  * the decrypted recording through the custom `nsmedia` protocol (recordings are
  * encrypted at rest). In browser dev it just returns the id (no real files).
+ * Results are cached so rapid library navigation does not re-resolve URLs.
  */
 export async function mediaSrc(id: string): Promise<string> {
+  const cached = mediaSrcCache.get(id);
+  if (cached) return cached;
   if (!inTauri) return id;
-  const core = await import("@tauri-apps/api/core");
-  return core.convertFileSrc(id, "nsmedia");
+  const core = await ensureTauriCore();
+  const url = core.convertFileSrc(id, "nsmedia");
+  mediaSrcCache.set(id, url);
+  return url;
+}
+
+/** Warm the media URL cache before the user opens a take in the film player. */
+export function prefetchMediaSrc(id: string): void {
+  void mediaSrc(id).catch(() => {});
 }
 
 const mock = (() => {
@@ -109,6 +127,7 @@ const mock = (() => {
       recordingArmed: arming,
       countdownSeconds,
       captureCursor: true,
+      cinematicCursor: true,
       frameFrozen: false,
     };
   }
@@ -288,6 +307,8 @@ const mock = (() => {
         case "start_audio_monitor":
         case "stop_audio_monitor":
         case "get_audio_levels":
+          return null as unknown as T;
+        case "preview_mouse_click_audio":
           return null as unknown as T;
         case "show_overlay":
         case "hide_overlay":

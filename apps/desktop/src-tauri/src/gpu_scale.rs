@@ -39,7 +39,9 @@ pub struct GpuScaler {
     out_h: u32,
     out_tex: ID3D11Texture2D,
     out_rtv: ID3D11RenderTargetView,
-    staging: ID3D11Texture2D,
+    staging: [ID3D11Texture2D; 2],
+    readback_pending: bool,
+    readback_slot: usize,
     out_surface: SendDirectX<IDirect3DSurface>,
     vs: ID3D11VertexShader,
     ps: ID3D11PixelShader,
@@ -182,10 +184,14 @@ impl GpuScaler {
                 CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
                 MiscFlags: 0,
             };
-            let mut staging = None;
+            let mut staging0 = None;
             device
-                .CreateTexture2D(&staging_desc, None, Some(&mut staging))
-                .map_err(|e| format!("staging tex: {e}"))?;
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging0))
+                .map_err(|e| format!("staging tex 0: {e}"))?;
+            let mut staging1 = None;
+            device
+                .CreateTexture2D(&staging_desc, None, Some(&mut staging1))
+                .map_err(|e| format!("staging tex 1: {e}"))?;
 
             let (src_copy, src_srv) = create_src_copy(device, 1, 1)?;
 
@@ -194,7 +200,9 @@ impl GpuScaler {
                 out_h,
                 out_tex: out_tex.clone(),
                 out_rtv,
-                staging: staging.unwrap(),
+                staging: [staging0.unwrap(), staging1.unwrap()],
+                readback_pending: false,
+                readback_slot: 0,
                 out_surface: SendDirectX::new(out_surface),
                 vs,
                 ps,
@@ -240,7 +248,6 @@ impl GpuScaler {
         unsafe {
             self.ensure_src_copy(device, src_w, src_h)?;
             ctx.CopyResource(&self.src_copy, src_tex);
-            ctx.Flush();
         }
         Ok(())
     }
@@ -333,7 +340,6 @@ impl GpuScaler {
             ctx.PSSetSamplers(0, Some(&[Some(self.sampler.clone())]));
             ctx.PSSetConstantBuffers(0, Some(&[Some(self.cbuffer.clone())]));
             ctx.Draw(3, 0);
-            ctx.Flush();
 
             Ok(self.out_surface.0.clone())
         }
@@ -343,13 +349,57 @@ impl GpuScaler {
         (self.out_w, self.out_h)
     }
 
-    /// Read the latest scaled frame as tightly-packed BGRA bytes (for live streaming).
+    /// Read the latest scaled frame synchronously (preview / streaming).
     pub fn read_bgra(&self, ctx: &ID3D11DeviceContext) -> Result<Vec<u8>, String> {
         unsafe {
-            ctx.CopyResource(&self.staging, &self.out_tex);
+            ctx.CopyResource(&self.staging[0], &self.out_tex);
+            self.map_staging(ctx, 0)
+        }
+    }
+
+    /// Finish the previous pipelined readback, if any (call before drawing the next frame).
+    pub fn take_pipelined_readback(&mut self, ctx: &ID3D11DeviceContext) -> Option<Vec<u8>> {
+        if !self.readback_pending {
+            return None;
+        }
+        let slot = self.readback_slot;
+        self.readback_pending = false;
+        self.map_staging(ctx, slot).ok()
+    }
+
+    /// Queue a GPU copy of the current output for a later `take_pipelined_readback`.
+    pub fn queue_readback(&mut self, ctx: &ID3D11DeviceContext) {
+        let slot = if self.readback_pending {
+            1 - self.readback_slot
+        } else {
+            0
+        };
+        unsafe {
+            ctx.CopyResource(&self.staging[slot], &self.out_tex);
+        }
+        self.readback_slot = slot;
+        self.readback_pending = true;
+    }
+
+    /// Drain any queued readback at recording stop.
+    pub fn flush_pipelined_readback(&mut self, ctx: &ID3D11DeviceContext) -> Option<Vec<u8>> {
+        self.take_pipelined_readback(ctx)
+    }
+
+    pub fn reset_readback_pipeline(&mut self) {
+        self.readback_pending = false;
+        self.readback_slot = 0;
+    }
+
+    fn map_staging(
+        &self,
+        ctx: &ID3D11DeviceContext,
+        slot: usize,
+    ) -> Result<Vec<u8>, String> {
+        unsafe {
             ctx.Flush();
             let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-            ctx.Map(&self.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
+            ctx.Map(&self.staging[slot], 0, D3D11_MAP_READ, 0, Some(&mut mapped))
                 .map_err(|e| format!("Map staging: {e}"))?;
             let row_bytes = (self.out_w * 4) as usize;
             let mut out = vec![0u8; row_bytes * self.out_h as usize];
@@ -361,7 +411,7 @@ impl GpuScaler {
                     row_bytes,
                 );
             }
-            ctx.Unmap(&self.staging, 0);
+            ctx.Unmap(&self.staging[slot], 0);
             Ok(out)
         }
     }

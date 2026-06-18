@@ -20,6 +20,9 @@ export function Overlay() {
   const countdown = useRef(0);
   const recordingStartedAt = useRef<number | null>(null);
   const captureCursor = useRef(true);
+  const cinematicCursor = useRef(true);
+  const cursorImg = useRef<HTMLImageElement | null>(null);
+  const cursorMeta = useRef({ width: 256, height: 256, hotspotX: 0, hotspotY: 0 });
   const frameFrozen = useRef(false);
   const prevCountdown = useRef(0);
   const countdownChangedAt = useRef(0);
@@ -37,13 +40,37 @@ export function Overlay() {
         arming.current = st.recordingArmed ?? false;
         countdown.current = st.countdownSeconds ?? 0;
         captureCursor.current = st.captureCursor ?? true;
+        cinematicCursor.current = st.cinematicCursor ?? true;
         frameFrozen.current = st.frameFrozen ?? false;
       } catch {
         /* mock / not ready */
       }
+      const img = new Image();
+      img.src = "/cursor/default.png";
+      img.onload = () => {
+        cursorImg.current = img;
+      };
+      void fetch("/cursor/cursor.json")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((meta) => {
+          if (meta && typeof meta.hotspotX === "number" && typeof meta.hotspotY === "number") {
+            cursorMeta.current = {
+              width: meta.width ?? img.naturalWidth,
+              height: meta.height ?? img.naturalHeight,
+              hotspotX: meta.hotspotX,
+              hotspotY: meta.hotspotY,
+            };
+          }
+        })
+        .catch(() => {});
       unsubs.push(
-        await listen("overlay:cursor-capture", (on: boolean) => {
-          captureCursor.current = on;
+        await listen("overlay:cursor-capture", (p: { captureCursor?: boolean; cinematicCursor?: boolean } | boolean) => {
+          if (typeof p === "boolean") {
+            captureCursor.current = p;
+            return;
+          }
+          if (p.captureCursor !== undefined) captureCursor.current = p.captureCursor;
+          if (p.cinematicCursor !== undefined) cinematicCursor.current = p.cinematicCursor;
         }),
       );
       unsubs.push(
@@ -205,6 +232,26 @@ export function Overlay() {
         ctx.fillStyle = "#000000";
         ctx.textBaseline = "middle";
         ctx.fillText(text, cChipX + cpadX, cChipY + cChipH / 2);
+      }
+
+      if (
+        captureCursor.current &&
+        cinematicCursor.current &&
+        cursorImg.current &&
+        typeof f.cursorX === "number" &&
+        typeof f.cursorY === "number"
+      ) {
+        const img = cursorImg.current;
+        const meta = cursorMeta.current;
+        const short = Math.min(monitor.current.w, monitor.current.h);
+        const cursorH = Math.max(36 * dpr, Math.min(112 * dpr, short * 0.056 * dpr));
+        const cursorScale = cursorH / meta.height;
+        const cursorW = (meta.width / meta.height) * cursorH;
+        const hx = meta.hotspotX * cursorScale;
+        const hy = meta.hotspotY * cursorScale;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, f.cursorX * scale - hx, f.cursorY * scale - hy, cursorW, cursorH);
       }
 
       if (frameFrozen.current && (recording.current || arming.current)) {

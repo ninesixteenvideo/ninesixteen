@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "pnpm -w icon:gen && tauri build",
+    "tauri:build": "pnpm -w icon:gen && tauri build"
   },
   "dependencies": {
     "@ninesixteen/brand": "workspace:*",

@@ -7,6 +7,8 @@ mod entitlement_store;
 mod export;
 mod feedback;
 mod geometry;
+mod click_audio;
+mod cursor;
 mod hotkeys;
 #[cfg(windows)]
 mod flv;
@@ -514,6 +516,7 @@ pub fn run() {
             commands::start_audio_monitor,
             commands::stop_audio_monitor,
             commands::get_audio_levels,
+            commands::preview_mouse_click_audio,
             commands::show_overlay,
             commands::hide_overlay,
             commands::set_overlay,

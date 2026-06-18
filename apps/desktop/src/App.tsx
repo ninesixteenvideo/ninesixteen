@@ -5,7 +5,7 @@ import { useStore } from "./state/store";
 import { useAuth } from "./lib/auth";
 import { Studio } from "./components/Studio";
 import { Preview } from "./components/Preview";
-import { FilmDock } from "./components/FilmDock";
+import { FilmDock, type FilmDockHandle } from "./components/FilmDock";
 import { Account } from "./components/Account";
 import { Info } from "./components/Info";
 import { Hotkeys } from "./components/Hotkeys";
@@ -29,9 +29,6 @@ import {
 
 type TabId = "studio" | "preview" | "hotkeys" | "account" | "info";
 
-/** Must match the .film slide transition duration in styles.css. */
-const FILM_SLIDE_MS = 520;
-
 export function App() {
   const {
     ready,
@@ -51,6 +48,7 @@ export function App() {
   const { isPro } = useAuth();
   const [expanded, setExpanded] = useState(true);
   const [filmExtended, setFilmExtended] = useState(false);
+  const filmRef = useRef<FilmDockHandle>(null);
   const [updateOffer, setUpdateOffer] = useState<{ version: string } | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -123,8 +121,10 @@ export function App() {
 
   function retractFilmThen(action: () => void) {
     if (tab === "preview" && librarySelectedId) {
-      setLibrarySelected(null);
-      window.setTimeout(action, FILM_SLIDE_MS);
+      void filmRef.current?.fadeOut().then(() => {
+        setLibrarySelected(null);
+        action();
+      });
       return true;
     }
     return false;
@@ -234,7 +234,7 @@ export function App() {
         </button>
       </aside>
 
-      <FilmDock onExtendedChange={setFilmExtended} />
+      <FilmDock ref={filmRef} onExtendedChange={setFilmExtended} />
 
       {!ready && (
         <div className="boot" style={{ width: sidebarPx }}>

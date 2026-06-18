@@ -35,6 +35,8 @@ export interface OverlayFrame {
   w: number;
   h: number;
   zoom: number;
+  cursorX?: number;
+  cursorY?: number;
 }
 
 export interface CaptureState {
@@ -54,6 +56,7 @@ export interface CaptureState {
   countdownSeconds: number;
   overlayFrame?: OverlayFrame | null;
   captureCursor: boolean;
+  cinematicCursor: boolean;
   frameFrozen: boolean;
 }
 
@@ -78,6 +81,9 @@ export interface RecordingSettings {
   fps: number;
   quality: 720 | 1080;
   captureCursor: boolean;
+  cinematicCursor: boolean;
+  mouseClickAudio: boolean;
+  mouseClickVolume: number;
 }
 
 export type AudioSourceMode = "none" | "system" | "microphone" | "system_and_microphone";

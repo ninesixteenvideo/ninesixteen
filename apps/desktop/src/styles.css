@@ -289,59 +289,34 @@ button {
 .rail-wm {
   transform: rotate(-90deg);
   white-space: nowrap;
+  transform-origin: center center;
 }
 .rail-wm {
   position: relative;
   display: inline-flex;
   align-items: baseline;
   user-select: none;
+  opacity: 1;
+  transition: opacity 0.28s var(--ease);
+}
+.rail-wm--faded {
+  opacity: 0;
 }
 .rail-wm-core {
   position: relative;
-  display: inline-grid;
-  place-items: center;
-}
-.rail-wm-syllables {
   display: inline-flex;
   align-items: baseline;
+  white-space: nowrap;
+  min-width: 16.5ch;
 }
-.rail-wm-part {
+.rail-wm-part,
+.rail-wm-suffix {
   display: inline-block;
 }
-.rail-wm-face--leave {
-  position: absolute;
-  inset: 0;
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  pointer-events: none;
-  animation: rail-wm-leave 0.68s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.rail-wm-face--enter.rail-wm-face--active {
-  animation: rail-wm-enter 0.68s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes rail-wm-leave {
-  0% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-    filter: blur(0);
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-0.55em) scale(0.92);
-    filter: blur(3px);
-  }
-}
-@keyframes rail-wm-enter {
-  0% {
-    opacity: 0;
-    transform: translateX(0.55em) scale(1.08);
-    filter: blur(3px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-    filter: blur(0);
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-wm {
+    transition-duration: 0.12s;
   }
 }
 
@@ -1136,7 +1111,7 @@ input[type="range"]::-webkit-slider-thumb {
   max-width: 280px;
 }
 
-/* The film player — full-size card that slides out from behind the sidebar. */
+/* The film player — sits beside the sidebar on the Library tab. */
 .film {
   position: absolute;
   left: var(--sidebar-w, 48px);
@@ -1151,14 +1126,8 @@ input[type="range"]::-webkit-slider-thumb {
   background: transparent;
   overflow: visible;
   pointer-events: none;
-  transform: translateX(-100%);
-  transition:
-    transform 0.52s var(--ease),
-    width 0.52s var(--ease);
-  will-change: transform, width;
 }
-.film.out {
-  transform: translateX(0);
+.film.mounted {
   pointer-events: auto;
 }
 .film-inner {
@@ -1169,10 +1138,29 @@ input[type="range"]::-webkit-slider-thumb {
   --film-r: var(--r-md);
   border-radius: var(--film-r);
   overflow: hidden;
-  border: none;
+  border: 3.5px solid var(--d-card-hi);
   background: #000;
-  box-shadow: 0 24px 64px -26px rgba(0, 0, 0, 0.88);
+  box-shadow:
+    0 24px 64px -26px rgba(0, 0, 0, 0.88),
+    0 0 0 1px rgba(0, 0, 0, 0.45);
   line-height: 0;
+  flex-shrink: 0;
+}
+.film-fade {
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+.film-fade--in {
+  opacity: 1;
+}
+.film-fade--out {
+  opacity: 0;
+}
+.film--portrait .film-inner {
+  width: min(calc((100vh - 128px) * 9 / 16), 100%);
+}
+.film--landscape .film-inner {
+  width: min(900px, 100%);
 }
 /* Drawn on top so WebView2 video can't bleed past the rounded frame. */
 .film-inner::after {
@@ -1180,16 +1168,49 @@ input[type="range"]::-webkit-slider-thumb {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
   pointer-events: none;
   z-index: 3;
 }
 /* WebView2 renders <video> on its own layer — clip-path is required for rounded corners. */
 .film-clip {
+  position: relative;
   overflow: hidden;
   border-radius: var(--film-r);
   clip-path: inset(0 round var(--film-r));
   contain: paint;
+}
+.film-play-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(18, 17, 16, 0.42);
+  cursor: pointer;
+  color: var(--d-ink);
+  transition: background 0.2s ease;
+}
+.film-play-overlay:hover {
+  background: rgba(18, 17, 16, 0.52);
+}
+.film-play-ring {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(38, 36, 33, 0.92);
+  border: 2.5px solid var(--d-card-hi);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.film-play-ring svg {
+  margin-left: 4px;
 }
 .film-loading {
   width: min(calc((100vh - 128px) * 9 / 16), 100%);
@@ -1201,7 +1222,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .film--landscape .film-inner,
 .film--landscape .film-clip {
-  width: 100%;
+  width: min(900px, 100%);
   max-width: 100%;
 }
 .film--landscape .film-loading {

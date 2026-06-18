@@ -13,8 +13,14 @@ export const DOCK = {
 /** Match .sidebar.collapsed width transition (0.06s delay + 0.42s duration). */
 export const SIDEBAR_COLLAPSE_MS = 480;
 
-/** Landscape library player width — kept compact so the dock window does not overflow. */
-export const LANDSCAPE_FILM_MAX_W = 360;
+/** Must match `.film-inner.film-fade` opacity transition in styles.css. */
+export const FILM_FADE_MS = 280;
+
+/** @deprecated Slide animation removed — use FILM_FADE_MS. */
+export const FILM_SLIDE_MS = FILM_FADE_MS;
+
+/** Landscape library player width (logical px). */
+export const LANDSCAPE_FILM_MAX_W = 900;
 
 export function sidebarWidth(expanded: boolean) {
   return expanded ? DOCK.EXPANDED : DOCK.RAIL;
@@ -32,17 +38,29 @@ export function filmStripWidth(viewportHeight: number, orientation: Orientation 
   return filmPlayerWidth(viewportHeight, orientation) + DOCK.FILM_PAD_X;
 }
 
+/** Widest strip the library player needs — avoids resize when swapping 9×16 ↔ 16×9. */
+export function libraryFilmStripWidth(viewportHeight: number) {
+  return Math.max(
+    filmStripWidth(viewportHeight, "portrait"),
+    filmStripWidth(viewportHeight, "landscape")
+  );
+}
+
 export function dockWidth(opts: {
   expanded: boolean;
   filmExtended: boolean;
   viewportHeight: number;
   filmOrientation?: Orientation;
+  /** When set, used instead of orientation-based strip width. */
+  filmStripPx?: number;
 }) {
   const side = sidebarWidth(opts.expanded);
   const handle = DOCK.HANDLE;
-  const orientation = opts.filmOrientation ?? "portrait";
   if (!opts.filmExtended) return side + handle;
-  return side + filmStripWidth(opts.viewportHeight, orientation) + handle;
+  const film =
+    opts.filmStripPx ??
+    filmStripWidth(opts.viewportHeight, opts.filmOrientation ?? "portrait");
+  return side + film + handle;
 }
 
 export async function monitorWorkArea(): Promise<{
@@ -74,6 +92,7 @@ export async function syncDockWindow(opts: {
   filmExtended: boolean;
   hide?: boolean;
   filmOrientation?: Orientation;
+  filmStripPx?: number;
 }): Promise<number> {
   if (!isDesktop) return window.innerWidth;
 
@@ -99,6 +118,7 @@ export async function syncDockWindow(opts: {
     filmExtended: opts.filmExtended,
     viewportHeight: height,
     filmOrientation: orientation,
+    filmStripPx: opts.filmStripPx,
   });
 
   await win.setResizable(true);

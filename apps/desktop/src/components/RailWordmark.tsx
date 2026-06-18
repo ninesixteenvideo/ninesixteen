@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { colors, fonts } from "@ninesixteen/brand";
 import type { Orientation } from "../lib/types";
 
-const SWAP_MS = 680;
+/** Total fade-out + fade-in — keep in sync with styles.css */
+export const RAIL_WORDMARK_SWAP_MS = 560;
+const FADE_HALF_MS = RAIL_WORDMARK_SWAP_MS / 2;
 
 type RailWordmarkProps = {
   orientation: Orientation;
@@ -17,84 +19,67 @@ const brandStyle = (size: number): CSSProperties => ({
   lineHeight: 1,
 });
 
-function Syllables({
-  landscape,
-  size,
-  className,
-}: {
-  landscape: boolean;
-  size: number;
-  className?: string;
-}) {
+function domainTitle(landscape: boolean) {
+  return landscape ? "sixteennine.video" : "ninesixteen.video";
+}
+
+function WordmarkLabel({ landscape, size }: { landscape: boolean; size: number }) {
   const brand = brandStyle(size);
-  const first = landscape ? "sixteen" : "nine";
-  const second = landscape ? "nine" : "sixteen";
+  const first = landscape
+    ? { text: "sixteen", color: colors.pink }
+    : { text: "nine", color: colors.blue };
+  const second = landscape
+    ? { text: "nine", color: colors.blue }
+    : { text: "sixteen", color: colors.pink };
 
   return (
-    <span className={className}>
-      <span
-        className="rail-wm-part rail-wm-a"
-        style={{ ...brand, color: first === "nine" ? colors.blue : colors.pink }}
-      >
-        {first}
+    <>
+      <span className="rail-wm-part rail-wm-part-a" style={{ ...brand, color: first.color }}>
+        {first.text}
       </span>
-      <span
-        className="rail-wm-part rail-wm-b"
-        style={{ ...brand, color: second === "nine" ? colors.blue : colors.pink }}
-      >
-        {second}
+      <span className="rail-wm-part rail-wm-part-b" style={{ ...brand, color: second.color }}>
+        {second.text}
       </span>
-    </span>
+      <span className="rail-wm-suffix" style={{ ...brand, color: colors.ink }}>
+        .video
+      </span>
+    </>
   );
 }
 
 /**
- * Vertical rail wordmark — ninesixteen.video (portrait) ↔ sixteennine.video (landscape).
- * Syllables cross-fade while ".video" stays anchored.
+ * Vertical rail wordmark — ninesixteen.video (9×16) ↔ sixteennine.video (16×9).
+ * Crossfades on orientation change.
  */
 export function RailWordmark({ orientation, size = 24 }: RailWordmarkProps) {
   const landscape = orientation === "landscape";
-  const [shown, setShown] = useState(landscape);
-  const [leaving, setLeaving] = useState<boolean | null>(null);
-  const timers = useRef<number[]>([]);
+  const timer = useRef<number | undefined>(undefined);
+  const [shownLandscape, setShownLandscape] = useState(landscape);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    if (landscape === shown) return;
+    if (landscape === shownLandscape) return;
 
-    setLeaving(shown);
-    setShown(landscape);
+    setVisible(false);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setShownLandscape(landscape);
+      setVisible(true);
+    }, FADE_HALF_MS);
 
-    timers.current.forEach((t) => window.clearTimeout(t));
-    timers.current = [window.setTimeout(() => setLeaving(null), SWAP_MS)];
+    return () => window.clearTimeout(timer.current);
+  }, [landscape, shownLandscape]);
 
-    return () => {
-      timers.current.forEach((t) => window.clearTimeout(t));
-      timers.current = [];
-    };
-  }, [landscape, shown]);
-
-  const title = shown ? "sixteennine.video" : "ninesixteen.video";
+  const title = domainTitle(shownLandscape);
 
   return (
-    <span className="rail-wm vmark" title={title} aria-label={title}>
+    <span
+      className={`rail-wm vmark${visible ? "" : " rail-wm--faded"}`}
+      title={title}
+      aria-label={title}
+    >
       <span className="rail-wm-core">
-        {leaving !== null && (
-          <Syllables
-            landscape={leaving}
-            size={size}
-            className="rail-wm-syllables rail-wm-face rail-wm-face--leave"
-          />
-        )}
-        <Syllables
-          landscape={shown}
-          size={size}
-          className={`rail-wm-syllables rail-wm-face rail-wm-face--enter${
-            leaving !== null ? " rail-wm-face--active" : ""
-          }`}
-        />
-      </span>
-      <span className="rail-wm-suffix" style={{ ...brandStyle(size), color: colors.ink }}>
-        .video
+        <WordmarkLabel landscape={shownLandscape} size={size} />
       </span>
     </span>
   );

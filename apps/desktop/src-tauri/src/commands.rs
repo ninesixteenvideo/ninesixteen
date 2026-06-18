@@ -32,12 +32,15 @@ fn overlay_frame(vp: &ViewportState, quality: u32) -> Option<OverlayFrame> {
     let m = vp.monitor.as_ref()?;
     let (out_w, out_h) = output_dims(vp.viewport.orientation, quality);
     let crop = frame_layout(&vp.viewport, m.width, m.height, out_w, out_h).crop;
+    let (cursor_x, cursor_y) = crate::cursor::latest_monitor_pos().unzip();
     Some(OverlayFrame {
         x: crop.x,
         y: crop.y,
         w: crop.w,
         h: crop.h,
         zoom: vp.viewport.zoom,
+        cursor_x,
+        cursor_y,
     })
 }
 
@@ -69,6 +72,7 @@ fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
         countdown_seconds: st.countdown_seconds,
         overlay_frame: overlay_frame(vp, st.recording_settings.quality),
         capture_cursor: st.recording_settings.capture_cursor,
+        cinematic_cursor: st.recording_settings.cinematic_cursor,
         frame_frozen: vp.frame_frozen,
     }
 }
@@ -348,6 +352,10 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
                 let mut st = state.lock();
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
+                crate::cursor::sync_follow_gate_from_state(&st);
+    crate::click_audio::sync_click_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+                crate::click_audio::sync_click_gate_from_state(&st);
             }
             defer_countdown(&app, 0);
             defer_recording_state(
@@ -361,6 +369,10 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
                 let mut st = state.lock();
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
+                crate::cursor::sync_follow_gate_from_state(&st);
+    crate::click_audio::sync_click_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+                crate::click_audio::sync_click_gate_from_state(&st);
             }
             defer_countdown(&app, 0);
             defer_overlay_visibility(&app, &state);
@@ -402,6 +414,9 @@ pub fn start_recording(
         st.recording_armed = true;
         st.countdown_seconds = RECORD_COUNTDOWN_SECS;
         let orientation = st.recording_settings.orientation;
+        crate::cursor::sync_follow_gate_from_state(&st);
+    crate::click_audio::sync_click_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
         drop(st);
         handles.viewport.lock().viewport.orientation = orientation;
     }
@@ -451,6 +466,9 @@ pub fn cancel_recording_countdown(
         }
         st.recording_armed = false;
         st.countdown_seconds = 0;
+        crate::cursor::sync_follow_gate_from_state(&st);
+    crate::click_audio::sync_click_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
     }
     crate::rawinput::reset_frame_follow(&handles.viewport);
     let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
@@ -787,6 +805,9 @@ pub fn set_recording_settings(
     };
     let orientation = st.recording_settings.orientation;
     let capture_cursor = st.recording_settings.capture_cursor;
+    let cinematic_cursor = st.recording_settings.cinematic_cursor;
+    crate::cursor::sync_follow_gate_from_state(&st);
+    crate::click_audio::sync_click_gate_from_state(&st);
     {
         let mut vp = handles.viewport.lock();
         vp.viewport.orientation = orientation;
@@ -795,19 +816,22 @@ pub fn set_recording_settings(
         vp.zoom_target = z;
     }
     drop(st);
-    emit_cursor_capture(&app, capture_cursor);
+    emit_cursor_capture(&app, capture_cursor, cinematic_cursor);
     if let Err(e) = capture::sync_output_dimensions(handles.state.clone()) {
         crate::log::capture_log(&format!("WARN: output dimension sync failed: {e}"));
     }
     emit_viewport_from_handles(&app, handles.inner());
 }
 
-/// Tell the overlay window whether the cursor will be baked into the recording,
-/// so it can show the "cursor hidden" badge. Main window keeps it in its store.
-fn emit_cursor_capture(app: &AppHandle, capture_cursor: bool) {
-    let _ = app.emit("overlay:cursor-capture", capture_cursor);
+/// Tell the overlay whether the system cursor is baked into capture or cinematic stamp is used.
+fn emit_cursor_capture(app: &AppHandle, capture_cursor: bool, cinematic_cursor: bool) {
+    let payload = serde_json::json!({
+        "captureCursor": capture_cursor,
+        "cinematicCursor": cinematic_cursor,
+    });
+    let _ = app.emit("overlay:cursor-capture", payload.clone());
     if let Some(overlay) = app.get_webview_window("overlay") {
-        let _ = overlay.emit("overlay:cursor-capture", capture_cursor);
+        let _ = overlay.emit("overlay:cursor-capture", payload);
     }
 }
 
@@ -872,6 +896,11 @@ pub fn stop_audio_monitor() {
 #[tauri::command]
 pub fn get_audio_levels() -> AudioLevels {
     audio::monitor_levels()
+}
+
+#[tauri::command]
+pub fn preview_mouse_click_audio(volume: f64) -> Result<(), String> {
+    crate::click_audio::preview(volume as f32)
 }
 
 pub fn ensure_overlay(app: &AppHandle) {

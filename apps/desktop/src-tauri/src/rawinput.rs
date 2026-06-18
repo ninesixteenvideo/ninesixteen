@@ -23,7 +23,8 @@ mod imp {
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, DispatchMessageW, GetMessageW, SetWindowsHookExW, TranslateMessage,
         HC_ACTION, KBDLLHOOKSTRUCT, MSLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_KEYUP, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
+        WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     static ALT_HELD: AtomicBool = AtomicBool::new(false);
@@ -186,7 +187,8 @@ mod imp {
         *PENDING_WHEEL_DELTA.lock() = 0.0;
         *ZOOM_LOCK_UNTIL.lock() = None;
         let _ = alt_held();
-        sync_zoom_at_min(viewport.lock().zoom_target, viewport.lock().viewport.orientation);
+        let vp = viewport.lock();
+        sync_zoom_at_min(vp.zoom_target, vp.viewport.orientation);
         alt_log("capture input reset");
     }
 
@@ -370,6 +372,10 @@ mod imp {
             return LRESULT(1);
         }
 
+        if msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN {
+            crate::click_audio::record_click(crate::file_record::session_t_secs());
+        }
+
         CallNextHookEx(None, code, wparam, lparam)
     }
 
@@ -465,12 +471,14 @@ mod imp {
     }
 
     pub fn start(app: AppHandle, viewport: SharedViewport, state: SharedState) {
+        // Single lock guard — two lock() calls in one statement deadlock on the same thread.
         let _ = CTX.set(Ctx {
             viewport: viewport.clone(),
             state,
             app,
         });
-        sync_zoom_at_min(viewport.lock().zoom_target, viewport.lock().viewport.orientation);
+        let vp = viewport.lock();
+        sync_zoom_at_min(vp.zoom_target, vp.viewport.orientation);
         std::thread::spawn(|| unsafe {
             run_message_loop();
         });
@@ -506,6 +514,20 @@ mod imp {
 
     /// Cursor follow only updates shared viewport state; overlay refresh runs on
     /// the main thread via `commands::start_overlay_refresh_loop`.
+    fn pointer_button_state() -> u8 {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+        let mut b = 0u8;
+        unsafe {
+            if GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 {
+                b |= 0x1;
+            }
+            if GetAsyncKeyState(VK_RBUTTON.0 as i32) < 0 {
+                b |= 0x2;
+            }
+        }
+        b
+    }
+
     fn cursor_pos_for_monitor(
         origin_x: i32,
         origin_y: i32,
@@ -530,10 +552,11 @@ mod imp {
         None
     }
 
-    fn advance_viewport(viewport: &SharedViewport, dt_secs: f64) -> bool {
+    fn advance_viewport(viewport: &SharedViewport, dt_secs: f64) -> (bool, Option<(f64, f64)>) {
         let hold = zoom_hold_active();
         let pending = PENDING_FULL_LOCK.load(Ordering::Acquire);
 
+        let mut sample_pos = None;
         let mut vp = viewport.lock();
 
         let ox = vp.viewport.x;
@@ -548,6 +571,7 @@ mod imp {
                     m.width as f64,
                     m.height as f64,
                 ) {
+                    sample_pos = Some((tx, ty));
                     let pan_hz = if let Some(at) = vp.frame_unfreeze_at {
                         if Instant::now().duration_since(at) < UNFREEZE_EASE_DURATION {
                             PAN_SMOOTH_HZ_UNFREEZE
@@ -621,7 +645,7 @@ mod imp {
                 vp.zoom_target = 1.0;
                 drop(vp);
                 engage_full_frame_hold();
-                return true;
+                return (true, sample_pos);
             }
         }
 
@@ -631,7 +655,7 @@ mod imp {
         if moved {
             mark_viewport_dirty();
         }
-        moved
+        (moved, sample_pos)
     }
 
     fn zoom_animating(viewport: &SharedViewport) -> bool {
@@ -658,7 +682,10 @@ mod imp {
             let _ = drain_pending_wheel(ctx);
         }
 
-        let moved = advance_viewport(viewport, dt);
+        let (moved, sample_pos) = advance_viewport(viewport, dt);
+        if let Some((x, y)) = sample_pos {
+            crate::cursor::record_follow_sample(x, y, pointer_button_state());
+        }
         let animating = zoom_animating(viewport);
         moved || animating
     }

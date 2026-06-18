@@ -41,7 +41,7 @@ mod imp {
     use crate::gpu_scale::GpuScaler;
     use crate::state::Orientation;
     use crate::camera::{self, camera_connected, camera_sink};
-    use crate::file_record::{FileRecorder, publish_capture_frame};
+    use crate::file_record::{effective_recording_fps, FileRecorder, publish_capture_frame};
     use crate::recordings::new_recording_path;
     use crate::state::Viewport;
     use crate::stream::{StreamConfig, StreamPipeline};
@@ -85,8 +85,109 @@ mod imp {
     static GPU_SCALE_LOG_MS: AtomicU64 = AtomicU64::new(0);
     static WGC_FRAMES_WINDOW: AtomicU64 = AtomicU64::new(0);
     static REC_CAPTURE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
+    static REC_GLIDE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
+    static PROF_WGC_HANDLERS: AtomicU64 = AtomicU64::new(0);
+    static PROF_RENDER_US: AtomicU64 = AtomicU64::new(0);
+    static PROF_READ_US: AtomicU64 = AtomicU64::new(0);
+    static PROF_HANDLER_US: AtomicU64 = AtomicU64::new(0);
+    static ENC_QUEUE_DEPTH: AtomicU64 = AtomicU64::new(0);
     static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
     static FIRST_REC_FRAME_LOGGED: AtomicBool = AtomicBool::new(false);
+
+    struct RecordingGlidePulse {
+        stop: Arc<AtomicBool>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl RecordingGlidePulse {
+        fn empty() -> Self {
+            Self {
+                stop: Arc::new(AtomicBool::new(true)),
+                thread: None,
+            }
+        }
+    }
+
+    static REC_GLIDE_PULSE: OnceLock<Mutex<RecordingGlidePulse>> = OnceLock::new();
+
+    fn glide_pulse_slot() -> &'static Mutex<RecordingGlidePulse> {
+        REC_GLIDE_PULSE.get_or_init(|| Mutex::new(RecordingGlidePulse::empty()))
+    }
+
+    #[cfg(windows)]
+    fn boost_glide_thread_priority() {
+        use windows::Win32::System::Threading::{
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+        };
+        unsafe {
+            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn boost_glide_thread_priority() {}
+
+    /// Re-crop the cached monitor texture when pan/zoom moves between WGC frames.
+    /// Runs on a dedicated pulse thread; D3D work is serialized through `gpu_bridge`.
+    fn recording_glide_loop(state: SharedState, stop: Arc<AtomicBool>, period: Duration) {
+        boost_glide_thread_priority();
+        while !stop.load(Ordering::Relaxed) {
+            let tick = Instant::now();
+
+            if !state.lock().recording {
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+
+            if viewport_changed_since_last_render() {
+                if let Some(mut bridge) = gpu_bridge().try_lock() {
+                    if bridge.ready {
+                        if let Some(bgra) = render_from_cache(&mut bridge, &state, None, true) {
+                            publish_capture_frame(bgra);
+                            REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                            REC_GLIDE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }
+
+            let wait = period.saturating_sub(tick.elapsed());
+            if wait > Duration::ZERO {
+                std::thread::sleep(wait);
+            } else {
+                std::thread::yield_now();
+            }
+        }
+    }
+
+    fn start_recording_glide_pulse(state: SharedState, fps: u32) {
+        stop_recording_glide_pulse();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_flag = stop.clone();
+        let period = Duration::from_nanos(1_000_000_000 / fps.max(1) as u64);
+        let handle = std::thread::Builder::new()
+            .name("rec-glide".into())
+            .spawn(move || recording_glide_loop(state, stop_flag, period))
+            .ok();
+        if let Some(handle) = handle {
+            *glide_pulse_slot().lock() = RecordingGlidePulse {
+                stop,
+                thread: Some(handle),
+            };
+            capture_log(&format!(
+                "Recording viewport-glide pulse @ {fps}Hz (re-crop on pan/zoom between WGC frames)"
+            ));
+        }
+    }
+
+    fn stop_recording_glide_pulse() {
+        let mut slot = glide_pulse_slot().lock();
+        slot.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = slot.thread.take() {
+            let _ = handle.join();
+        }
+        *slot = RecordingGlidePulse::empty();
+    }
 
     struct PacedOutput {
         stop: Arc<AtomicBool>,
@@ -187,6 +288,51 @@ mod imp {
     }
 
     fn render_with_bridge(bridge: &mut GpuBridge, state: &SharedState) -> Option<Vec<u8>> {
+        render_from_cache(bridge, state, None, false)
+    }
+
+    fn flush_gpu_readback_pipeline() {
+        let mut bridge = gpu_bridge().lock();
+        if let (Some(ctx), Some(scaler)) = (bridge.context.clone(), bridge.scaler.as_mut()) {
+            if let Some(bgra) = scaler.flush_pipelined_readback(&ctx) {
+                publish_capture_frame(bgra);
+            }
+            scaler.reset_readback_pipeline();
+        }
+    }
+
+    pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
+        let vs = shared_viewport().lock();
+        let (sw, sh) = vs
+            .monitor
+            .as_ref()
+            .map(|m| (m.width, m.height))
+            .unwrap_or((1920, 1080));
+        (vs.viewport, sw, sh)
+    }
+
+    fn wgc_cursor_settings(state: &SharedState) -> CursorCaptureSettings {
+        let st = state.lock();
+        if !st.recording_settings.capture_cursor {
+            return CursorCaptureSettings::WithoutCursor;
+        }
+        if st.recording_settings.cinematic_cursor {
+            CursorCaptureSettings::WithoutCursor
+        } else {
+            CursorCaptureSettings::WithCursor
+        }
+    }
+
+    /// Crop the monitor into output pixels. When `live_tex` is set (WGC hot path), copy
+    /// from the fresh frame once; otherwise re-crop the cached `src_copy` (viewport glide).
+    /// Pipelined readback is used only for glide re-crops — WGC always reads synchronously
+    /// so the cursor is not delayed by one frame (which causes visible skip/stutter).
+    fn render_from_cache(
+        bridge: &mut GpuBridge,
+        state: &SharedState,
+        live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
+        pipelined: bool,
+    ) -> Option<Vec<u8>> {
         if !bridge.ready {
             return None;
         }
@@ -197,10 +343,41 @@ mod imp {
         let src_h = bridge.src_h;
         ensure_gpu_scaler(&device, state, bridge).ok()?;
         let scaler = bridge.scaler.as_mut()?;
-        let (out_w, out_h) = scaler.dimensions();
-        let layout = frame_layout(&vp, src_w, src_h, out_w, out_h);
-        scaler.render_cached(&ctx, src_w, src_h, &layout).ok()?;
+        let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
+
+        // Glide-only pipelining: pan/zoom re-crops overlap readback; WGC needs same-frame cursor.
+        let use_pipeline = pipelined && live_tex.is_none();
+
+        if use_pipeline {
+            let prev = scaler.take_pipelined_readback(&ctx);
+
+            let draw = scaler.render_cached(&ctx, src_w, src_h, &layout);
+            draw.ok()?;
+            scaler.queue_readback(&ctx);
+
+            if let Some(bgra) = prev {
+                remember_vp(bridge, &vp);
+                return Some(bgra);
+            }
+            return None;
+        }
+
+        let t_render = Instant::now();
+        let draw = if let Some(tex) = live_tex {
+            scaler.render(&ctx, &device, tex, src_w, src_h, &layout)
+        } else {
+            scaler.render_cached(&ctx, src_w, src_h, &layout)
+        };
+        draw.ok()?;
+        let render_us = t_render.elapsed().as_micros() as u64;
+
+        let t_read = Instant::now();
         let bgra = scaler.read_bgra(&ctx).ok()?;
+        if live_tex.is_some() {
+            PROF_RENDER_US.fetch_add(render_us, Ordering::Relaxed);
+            PROF_READ_US.fetch_add(t_read.elapsed().as_micros() as u64, Ordering::Relaxed);
+        }
+
         remember_vp(bridge, &vp);
         Some(bgra)
     }
@@ -449,6 +626,8 @@ mod imp {
     }
 
     fn close_recorder() -> Result<(u64, u64, f64), CaptureError> {
+        stop_recording_glide_pulse();
+        flush_gpu_readback_pipeline();
         let rec = recorder_slot().lock().take();
         let Some(rec) = rec else {
             return Ok((0, 0, 0.0));
@@ -468,7 +647,8 @@ mod imp {
         let st = state.lock();
         let (out_w, out_h) =
             output_dims(viewport_orientation(), st.recording_settings.quality);
-        let fps = st.recording_settings.fps.max(1);
+        let requested = st.recording_settings.fps.max(1);
+        let fps = effective_recording_fps(requested, out_w, out_h);
         let bitrate_kbps = (broadcast_bitrate(out_w, out_h, fps) / 1000).max(500);
         (out_w, out_h, fps, bitrate_kbps)
     }
@@ -488,6 +668,8 @@ mod imp {
             (720, 1280, 60) => 12_000_000,
             (1080, 1920, 30) => 15_000_000,
             (1080, 1920, 60) => 25_000_000,
+            (1920, 1080, 30) => 15_000_000,
+            (1920, 1080, 60) => 25_000_000,
             _ => {
                 let bpp = if w <= 720 { 0.18 } else { 0.16 };
                 ((w as u64 * h as u64 * fps as u64) as f64 * bpp)
@@ -532,8 +714,39 @@ mod imp {
                 return Ok(());
             }
 
+            let t_handler = Instant::now();
             let src_w = frame.width();
             let src_h = frame.height();
+
+            let (recording, streaming, feed_cam, fps) = {
+                let st = self.state.lock();
+                let feed_cam = st.camera_enabled
+                    && !st.recording
+                    && !st.recording_armed
+                    && crate::camera::camera_connected();
+                (
+                    st.recording,
+                    st.streaming,
+                    feed_cam,
+                    st.recording_settings.fps.max(1),
+                )
+            };
+
+            if !recording && !streaming && !feed_cam {
+                return Ok(());
+            }
+
+            if !recording && (streaming || feed_cam) {
+                let interval = preview_render_interval_ms(streaming, feed_cam, fps);
+                let now = now_ms();
+                let last = LAST_PREVIEW_RENDER_MS.load(Ordering::Relaxed);
+                if now.saturating_sub(last) >= interval {
+                    LAST_PREVIEW_RENDER_MS.store(now, Ordering::Relaxed);
+                } else {
+                    return Ok(());
+                }
+            }
+
             let mut bridge = gpu_bridge().lock();
             bridge.device = Some(frame.device().clone());
             bridge.context = Some(frame.device_context().clone());
@@ -543,71 +756,33 @@ mod imp {
             bridge.src_h = src_h;
             bridge.ready = true;
 
-            let (recording, streaming, feed_cam) = {
-                let st = self.state.lock();
-                let feed_cam = st.camera_enabled
-                    && !st.recording
-                    && !st.recording_armed
-                    && crate::camera::camera_connected();
-                (st.recording, st.streaming, feed_cam)
-            };
+            bridge.last_wgc_ms.store(now_ms(), Ordering::Relaxed);
+            WGC_FRAMES_WINDOW.fetch_add(1, Ordering::Relaxed);
 
-            // Camera registered but nothing consuming the feed — skip GPU ingest entirely.
-            if !recording && !streaming && !feed_cam {
-                drop(bridge);
-                return Ok(());
-            }
+            let src_tex = frame.as_raw_texture();
+            let live = Some(src_tex);
 
-            if let Err(e) = bridge
-                .scaler
-                .as_mut()
-                .unwrap()
-                .ingest_monitor_frame(
-                    frame.device_context(),
-                    frame.device(),
-                    frame.as_raw_texture(),
-                    src_w,
-                    src_h,
-                )
-            {
-                log_gpu_scale_warn(&format!("WARN: monitor ingest skipped: {e}"));
-            } else {
-                bridge.last_wgc_ms.store(now_ms(), Ordering::Relaxed);
-                WGC_FRAMES_WINDOW.fetch_add(1, Ordering::Relaxed);
-
-                let fps = self.state.lock().recording_settings.fps.max(1);
-
-                // Release the GPU bridge before render/recorder work that also locks state.
-                drop(bridge);
-
-                if recording {
-                    let mut bridge = gpu_bridge().lock();
-                    if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
-                        if streaming {
-                            if let Some(stream) = stream_sink().lock().as_ref() {
-                                stream.push_frame(bgra.clone());
-                            }
-                        }
-                        publish_capture_frame(Arc::new(bgra));
-                        REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
-                        if !FIRST_REC_FRAME_LOGGED.swap(true, Ordering::Relaxed) {
-                            capture_log("First recording frame published to encoder");
+            if recording {
+                if let Some(bgra) = render_from_cache(&mut bridge, &self.state, live, true) {
+                    if streaming {
+                        if let Some(stream) = stream_sink().lock().as_ref() {
+                            stream.push_frame(bgra.clone());
                         }
                     }
-                } else if streaming || feed_cam {
-                    let cam_live = feed_cam;
-                    let interval = preview_render_interval_ms(streaming, cam_live, fps);
-                    let now = now_ms();
-                    let last = LAST_PREVIEW_RENDER_MS.load(Ordering::Relaxed);
-                    if now.saturating_sub(last) >= interval {
-                        LAST_PREVIEW_RENDER_MS.store(now, Ordering::Relaxed);
-                        let mut bridge = gpu_bridge().lock();
-                        if let Some(bgra) = render_with_bridge(&mut bridge, &self.state) {
-                            dispatch_preview_outputs(bgra, streaming, &self.state);
-                        }
+                    publish_capture_frame(bgra);
+                    REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                    if !FIRST_REC_FRAME_LOGGED.swap(true, Ordering::Relaxed) {
+                        capture_log("First recording frame published to encoder");
                     }
                 }
+            } else if streaming || feed_cam {
+                if let Some(bgra) = render_from_cache(&mut bridge, &self.state, live, false) {
+                    dispatch_preview_outputs(bgra, streaming, &self.state);
+                }
             }
+
+            PROF_HANDLER_US.fetch_add(t_handler.elapsed().as_micros() as u64, Ordering::Relaxed);
+            PROF_WGC_HANDLERS.fetch_add(1, Ordering::Relaxed);
 
             Ok(())
         }
@@ -724,57 +899,96 @@ mod imp {
 
         let viewport = shared_viewport().lock().viewport;
         let (out_w, out_h) = output_dims(viewport.orientation, settings_snapshot.quality);
-        let fps = settings_snapshot.fps.max(1);
+        let requested_fps = settings_snapshot.fps.max(1);
+        let record_fps = effective_recording_fps(requested_fps, out_w, out_h);
         let recording_active = state.lock().recording;
         let wgc_fps = if record_path.is_some() || has_stream || recording_active {
-            fps
+            requested_fps
         } else {
             // Camera-only idle: lower WGC rate until recording — saves GPU + WebView breathing room.
-            fps.min(20).max(10)
+            requested_fps.min(20).max(10)
         };
-        let record_bitrate = broadcast_bitrate(out_w, out_h, fps);
+        let record_bitrate = broadcast_bitrate(out_w, out_h, record_fps);
         let bitrate_kbps = (record_bitrate / 1000).max(500);
 
         if let Some(ref path) = record_path {
             FIRST_REC_FRAME_LOGGED.store(false, Ordering::Relaxed);
-            open_recorder(path, out_w, out_h, fps, bitrate_kbps, state.clone())?;
+            open_recorder(path, out_w, out_h, record_fps, bitrate_kbps, state.clone())?;
+            if record_fps != requested_fps {
+                capture_log(&format!(
+                    "Recording CFR capped at {record_fps}fps (requested {requested_fps}fps) for reliable A/V sync at {}x{}",
+                    out_w, out_h
+                ));
+            }
             capture_log(&format!(
                 "Recording to {} ({}x{} @ {}fps)",
                 path.display(),
                 out_w,
                 out_h,
-                fps
+                record_fps
             ));
         }
 
-        let cursor = if settings_snapshot.capture_cursor {
-            CursorCaptureSettings::WithCursor
-        } else {
-            CursorCaptureSettings::WithoutCursor
-        };
+        let cursor = wgc_cursor_settings(&state);
+        if record_path.is_some() && settings_snapshot.capture_cursor && settings_snapshot.cinematic_cursor {
+            capture_log("Cinematic cursor armed (WGC without system pointer; stamped per CFR slot)");
+        }
         let monitor = Monitor::primary().map_err(|e| CaptureError::Other(format!("no primary monitor: {e:?}")))?;
 
         let min_interval = std::time::Duration::from_nanos(1_000_000_000 / wgc_fps as u64);
-        let flags = Flags {
-            state: state.clone(),
-            out_w,
-            out_h,
+        let recording_with_cursor = settings_snapshot.capture_cursor
+            && settings_snapshot.cinematic_cursor
+            && (record_path.is_some() || has_stream || recording_active);
+        let dirty = if recording_with_cursor {
+            DirtyRegionSettings::ReportAndRender
+        } else {
+            DirtyRegionSettings::Default
         };
-        let settings = Settings::new(
-            monitor,
-            cursor,
-            DrawBorderSettings::WithoutBorder,
-            SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Custom(min_interval),
-            DirtyRegionSettings::Default,
-            ColorFormat::Bgra8,
-            flags,
-        );
 
-        match Handler::start_free_threaded(settings) {
+        let build_settings = |dirty: DirtyRegionSettings| {
+            Settings::new(
+                monitor,
+                cursor,
+                DrawBorderSettings::WithoutBorder,
+                SecondaryWindowSettings::Default,
+                MinimumUpdateIntervalSettings::Custom(min_interval),
+                dirty,
+                ColorFormat::Bgra8,
+                Flags {
+                    state: state.clone(),
+                    out_w,
+                    out_h,
+                },
+            )
+        };
+
+        let start_result = Handler::start_free_threaded(build_settings(dirty)).or_else(|e| {
+            if dirty == DirtyRegionSettings::Default {
+                Err(e)
+            } else {
+                capture_log(
+                    "WGC dirty-region mode unavailable on this system; using default capture",
+                );
+                Handler::start_free_threaded(build_settings(DirtyRegionSettings::Default))
+            }
+        });
+
+        match start_result {
             Ok(control) => {
                 *control_slot().lock() = Some(control);
-                start_paced_output(state);
+                start_paced_output(state.clone());
+                if record_path.is_some() || state.lock().recording {
+                    let glide_fps = if record_path.is_some() {
+                        record_fps
+                    } else {
+                        effective_recording_fps(
+                            state.lock().recording_settings.fps.max(1),
+                            out_w,
+                            out_h,
+                        )
+                    };
+                    start_recording_glide_pulse(state, glide_fps);
+                }
                 Ok(())
             }
             Err(e) => {
@@ -919,6 +1133,8 @@ mod imp {
             st.current_path = Some(path.clone());
             st.current_dims = (out_w, out_h);
             st.recording = true;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
         }
 
         if capture_already_running() {
@@ -929,6 +1145,8 @@ mod imp {
             let mut st = state.lock();
             st.recording = false;
             st.current_path = None;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
             return Err(e);
         }
 
@@ -1044,6 +1262,7 @@ mod imp {
     }
 
     fn stop_capture() {
+        stop_recording_glide_pulse();
         stop_paced_output();
         if let Some(control) = control_slot().lock().take() {
             // Join the capture thread first so the handler can flush frames, then finalize in Drop.
@@ -1112,6 +1331,8 @@ mod imp {
             st.current_path = None;
             st.session_start = None;
             st.current_start = None;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
         }
 
         if frames == 0 || size_bytes < 512 {
@@ -1194,12 +1415,40 @@ mod imp {
         capture_already_running()
     }
 
-    /// WGC frames and capture-thread recording renders since the last call (then reset).
-    pub fn recording_pipeline_window_stats() -> (u64, u64) {
+    /// WGC frames, recording renders, glide re-crops, and handler timing since last call (then reset).
+    pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64) {
+        let wgc = WGC_FRAMES_WINDOW.swap(0, Ordering::Relaxed);
+        let cap = REC_CAPTURE_RENDERS_WINDOW.swap(0, Ordering::Relaxed);
+        let glide = REC_GLIDE_RENDERS_WINDOW.swap(0, Ordering::Relaxed);
+        let handlers = PROF_WGC_HANDLERS.swap(0, Ordering::Relaxed);
+        let render_us = PROF_RENDER_US.swap(0, Ordering::Relaxed);
+        let read_us = PROF_READ_US.swap(0, Ordering::Relaxed);
+        let handler_us = PROF_HANDLER_US.swap(0, Ordering::Relaxed);
+        let div = handlers.max(1);
         (
-            WGC_FRAMES_WINDOW.swap(0, Ordering::Relaxed),
-            REC_CAPTURE_RENDERS_WINDOW.swap(0, Ordering::Relaxed),
+            wgc,
+            cap,
+            glide,
+            render_us / div,
+            read_us / div,
+            handler_us / div,
         )
+    }
+
+    pub fn recording_encoder_queue_depth() -> u64 {
+        ENC_QUEUE_DEPTH.load(Ordering::Relaxed)
+    }
+
+    pub fn recording_encoder_queue_note_sent() {
+        ENC_QUEUE_DEPTH.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn recording_encoder_queue_note_consumed() {
+        ENC_QUEUE_DEPTH.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub fn recording_encoder_queue_reset() {
+        ENC_QUEUE_DEPTH.store(0, Ordering::Relaxed);
     }
 
     /// Snapshot which capture-pipeline locks are currently held (watchdog aid).
@@ -1225,10 +1474,22 @@ mod imp {
 }
 
 #[cfg(windows)]
+pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
+    imp::recording_viewport_context()
+}
+
+#[cfg(not(windows))]
+pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
+    (crate::state::Viewport::default(), 1920, 1080)
+}
+
+#[cfg(windows)]
 pub use imp::{
     attach_camera, attach_recording, attach_stream, debug_lock_report, dispatch_recording_outputs,
-    ensure_capture_session, is_capture_running, poll_camera_connected, recording_pipeline_window_stats,
-    register_virtual_camera, render_output_frame, start_both, start_camera, start_recording,
+    ensure_capture_session, is_capture_running, poll_camera_connected, recording_encoder_queue_depth,
+    recording_encoder_queue_note_consumed, recording_encoder_queue_note_sent,
+    recording_encoder_queue_reset, recording_pipeline_window_stats, register_virtual_camera,
+    render_output_frame, start_both, start_camera, start_recording,
     start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
     viewport_changed_since_last_render,
 };
@@ -1249,9 +1510,23 @@ pub fn viewport_changed_since_last_render() -> bool {
 }
 
 #[cfg(not(windows))]
-pub fn recording_pipeline_window_stats() -> (u64, u64) {
-    (0, 0)
+pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64) {
+    (0, 0, 0, 0, 0, 0)
 }
+
+#[cfg(not(windows))]
+pub fn recording_encoder_queue_depth() -> u64 {
+    0
+}
+
+#[cfg(not(windows))]
+pub fn recording_encoder_queue_note_sent() {}
+
+#[cfg(not(windows))]
+pub fn recording_encoder_queue_note_consumed() {}
+
+#[cfg(not(windows))]
+pub fn recording_encoder_queue_reset() {}
 
 #[cfg(not(windows))]
 pub fn sync_output_dimensions(_state: SharedState) -> Result<(), CaptureError> {
