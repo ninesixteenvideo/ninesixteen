@@ -28,7 +28,7 @@ const AFTER_INSTALL = [
 ];
 
 const INCLUDED = [
-  "True 9×16 vertical capture with cursor-driven framing",
+  "True 9×16 or 16×9 capture with cursor-driven framing",
   "Alt + scroll zoom with rule-of-thirds guides",
   "System & microphone audio with live level meters",
   "Encrypted local recordings with built-in preview",

@@ -1,5 +1,17 @@
 const RELEASES = [
   {
+    version: "1.1.0",
+    date: "June 2026",
+    items: [
+      "16\u00d79 landscape recording \u2014 pick portrait or landscape in Studio; the overlay, library player, and exports match your format",
+      "Cinematic cursor overhaul \u2014 smoother follow (One Euro + velocity limiting), sharper high-res cursor, slightly larger on screen",
+      "Optional mouse click audio \u2014 mix click sounds into recordings with a Studio toggle and volume slider",
+      "Faster Library \u2014 cached first-frame thumbnails, smoother scrolling, quicker film player load and fades",
+      "Smarter viewport \u2014 softer panning at screen edges; gentler ease back to your cursor after Alt+F unfreeze",
+      "720p @ 30fps defaults in Studio for a lighter starting point",
+    ],
+  },
+  {
     version: "1.0.0",
     date: "June 2026",
     items: [

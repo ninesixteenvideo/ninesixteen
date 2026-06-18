@@ -8,8 +8,8 @@ export function SiteFooter() {
         <div>
           <Wordmark size={26} showSuffix />
           <p className="mt-4 max-w-xs font-body text-sm leading-relaxed text-inksoft">
-            The vertical screen recorder for Windows. Frame with your cursor, record locally,
-            and export clean MP4s with Pro.
+            Native 9×16 and 16×9 screen recorder for Windows. Frame with your cursor, record
+            locally, and export clean MP4s with Pro.
           </p>
         </div>
         <div>
@@ -43,7 +43,7 @@ export function SiteFooter() {
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <Link href="/terms" className="hover:text-inksoft">Terms</Link>
             <Link href="/privacy" className="hover:text-inksoft">Privacy</Link>
-            <span>Windows · 9×16 · local-first</span>
+            <span>Windows · 9×16 &amp; 16×9 · local-first</span>
           </div>
         </div>
       </div>

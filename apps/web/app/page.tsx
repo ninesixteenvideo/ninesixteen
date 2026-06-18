@@ -11,18 +11,18 @@ export default function HomePage() {
       {/* HERO */}
       <section className="grid items-center gap-8 pb-12 pt-16 md:grid-cols-[1.15fr_1fr] md:gap-4 md:pb-14 md:pt-24">
         <div>
-          <span className="ns-chip inline-block">Windows · vertical screen recorder</span>
+          <span className="ns-chip inline-block">Windows · 9×16 &amp; 16×9 screen recorder</span>
           <h1 className="mt-6 font-display text-[2.75rem] leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-[4.25rem]">
-            Your desktop
+            Your desktop,
             <br />
-            shot vertical.
+            native aspect.
           </h1>
           <p className="mt-6 max-w-lg font-body text-lg leading-relaxed text-inksoft">
             <Wordmark size={20} /> records your screen in true{" "}
-            <b className="font-semibold text-ink">9×16</b> — no cropping, no reframing
+            <b className="font-semibold text-ink">9×16</b> or{" "}
+            <b className="font-semibold text-ink">16×9</b> — no cropping, no reframing
             in post production. Follow your cursor, zoom with Alt + scroll, and walk away with
-            short-form footage that drops straight into CapCut, Premiere, or your editor
-            of choice.
+            footage that drops straight into CapCut, Premiere, or your editor of choice.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link href="/download" className="ns-cta ns-cta--primary">
@@ -61,8 +61,8 @@ export default function HomePage() {
             title="Made for people who film their screen."
           />
           <p className="max-w-sm font-body text-sm text-inksoft">
-            If your content lives on a phone screen, your recordings should too. One app, one
-            framing workflow, and output that already fits where you publish.
+            Portrait for Shorts and Reels, landscape for demos and tutorials — one framing
+            workflow, native aspect from frame one.
           </p>
         </div>
         <UseCasesGrid />
@@ -72,7 +72,7 @@ export default function HomePage() {
       <section id="features" className="py-16">
         <SectionHeading
           kicker="What you get"
-          title="Everything to shoot vertical, faster than ever."
+          title="Everything to shoot vertical or widescreen, faster than ever."
         />
         <FeaturesGrid />
       </section>
@@ -92,7 +92,7 @@ export default function HomePage() {
 }
 
 const STATS = [
-  { value: "9×16", label: "Native portrait capture" },
+  { value: "9×16 · 16×9", label: "Portrait & landscape" },
   { value: "0", label: "Crop steps in post" },
   { value: "1080p", label: "Up to 60fps" },
   { value: "$49", label: "One-time, no subscription" },

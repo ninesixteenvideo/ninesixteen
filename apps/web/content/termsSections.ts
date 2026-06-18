@@ -38,7 +38,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     id: "service",
     title: "4. Description of the Service",
     paragraphs: [
-      `${SERVICE_NAME} is a vertical desktop capture tool for Windows. The Service lets you frame a 9×16 region of your screen, record video (and optional audio), preview recordings inside the app, and—once you have purchased Pro—export decrypted MP4 files locally or to Google Drive.`,
+      `${SERVICE_NAME} is a desktop capture tool for Windows. The Service lets you frame a 9×16 or 16×9 region of your screen, record video (and optional audio), preview recordings inside the app, and—once you have purchased Pro—export decrypted MP4 files locally or to Google Drive.`,
       `We may update, change, or discontinue features at any time. We do not guarantee uninterrupted or error-free operation. Where the Service is supplied to Australian consumers, our obligations under the Australian Consumer Law (ACL) are not limited by this section.`,
     ],
   },

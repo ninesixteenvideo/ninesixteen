@@ -185,6 +185,15 @@ export function Info() {
               Privacy Policy
             </button>
           </div>
+          <p className="card-sub" style={{ marginTop: 14 }}>
+            <a target="_blank" rel="noopener noreferrer" href="https://icons8.com/icon/xv1kwIOOUeFZ/cursor">
+              mouse cursor
+            </a>{" "}
+            icon by{" "}
+            <a target="_blank" rel="noopener noreferrer" href="https://icons8.com">
+              Icons8
+            </a>
+          </p>
         </section>
       </div>
     </div>

@@ -36,26 +36,29 @@ const fasterOne = Faster_One({
 });
 
 export const metadata: Metadata = {
-  title: "ninesixteen.video — the vertical screen recorder for Windows",
+  title: "ninesixteen.video — native 9×16 & 16×9 screen recorder for Windows",
   description:
-    "Record your screen in true 9×16 — no cropping in post. Frame with your cursor, zoom with Alt + scroll, and capture short-form footage ready for CapCut. Free to try, $49 one-time purchase.",
+    "Record your screen in true 9×16 or 16×9 — no cropping in post. Frame with your cursor, zoom with Alt + scroll, and capture footage ready for Shorts, Reels, TikTok, or widescreen edits. Free to try, $49 one-time purchase.",
   applicationName: "ninesixteen.video",
   keywords: [
     "vertical screen recorder",
+    "landscape screen recorder",
     "9x16 screen recorder",
+    "16x9 screen recorder",
     "tiktok screen recorder",
     "reels screen recorder",
     "youtube shorts recorder",
     "vertical video",
+    "landscape video",
     "short form content",
     "saas demo recorder",
     "build in public",
     "windows screen recorder",
   ],
   openGraph: {
-    title: "ninesixteen.video — the vertical screen recorder for Windows",
+    title: "ninesixteen.video — native 9×16 & 16×9 screen recorder for Windows",
     description:
-      "Record your screen in true 9×16 for Shorts, Reels, and TikTok — no cropping later. Free to try, $49 one-time to export.",
+      "Record your screen in true 9×16 or 16×9 — no cropping later. Free to try, $49 one-time to export.",
     type: "website",
   },
 };

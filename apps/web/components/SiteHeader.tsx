@@ -6,12 +6,12 @@ import { Wordmark } from "@ninesixteen/brand";
 import { useAuth } from "@/lib/auth";
 
 const TICKER = [
-  "true 9×16 capture",
+  "true 9×16 & 16×9 capture",
   "no crop in post",
   "frame with your cursor",
   "alt + scroll to zoom",
   "system + mic audio",
-  "built for short-form content",
+  "built for short-form & widescreen",
   "one-time $49 · no subscription",
   "private & local-first",
 ];

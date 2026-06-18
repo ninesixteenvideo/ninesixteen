@@ -21,13 +21,13 @@ const USE_CASES = [
     icon: DeviceMobile,
     tone: "soft" as const,
     title: "Native short-form content",
-    desc: "Vertical from frame one. Publish clips in seconds with no post production reframing.",
+    desc: "9×16 from frame one. Publish vertical clips in seconds with no post production reframing.",
   },
   {
     icon: RocketLaunch,
     tone: "ink" as const,
     title: "Demos & build-in-public",
-    desc: "Show your app tight and vertical — the perfect launch and progress clips for founders and indie hackers.",
+    desc: "Show your app tight in portrait or widescreen — launch and progress clips for founders and indie hackers.",
   },
   {
     icon: GraduationCap,
@@ -39,7 +39,7 @@ const USE_CASES = [
     icon: GameController,
     tone: "ink" as const,
     title: "Walkthroughs & reviews",
-    desc: "Capture software, tools, and gameplay in portrait with system audio and your voice.",
+    desc: "Capture software, tools, and gameplay in 9×16 or 16×9 with system audio and your voice.",
   },
 ];
 
@@ -47,8 +47,8 @@ const FEATURES = [
   {
     icon: FilmStrip,
     tone: "soft" as const,
-    title: "True 9×16 capture",
-    desc: "Record portrait-native. What you frame is exactly what exports — zero letterboxing, zero cropping later.",
+    title: "True 9×16 & 16×9 capture",
+    desc: "Pick portrait or landscape in Studio. What you frame is exactly what exports — zero letterboxing, zero cropping later.",
   },
   {
     icon: Cursor,
@@ -87,15 +87,15 @@ const STEPS = [
     icon: Record,
     tone: "ink" as const,
     title: "Hit Record",
-    desc: "Press record in Studio. The app slips out of the way and drops a live 9×16 overlay onto your desktop.",
-    points: ["5-second countdown so you can get set", "Cancel anytime before capture starts"],
+    desc: "Press record in Studio. The app slips out of the way and drops a live 9×16 or 16×9 overlay onto your desktop.",
+    points: ["Pick portrait or landscape before you roll", "5-second countdown so you can get set", "Cancel anytime before capture starts"],
   },
   {
     icon: FrameCorners,
     tone: "soft" as const,
     title: "Frame as you go",
     desc: "Steer the viewport with your cursor and zoom with Alt + scroll. Rule-of-thirds guides keep every shot composed.",
-    points: ["Snap to full 9×16 for precision", "Reframe live, mid-recording"],
+    points: ["Snap to full frame for precision", "Reframe live, mid-recording"],
   },
   {
     icon: Export,
