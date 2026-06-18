@@ -58,12 +58,24 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: ninesixteen.video ${{ github.ref_name }}
           releaseBody: |
-            Windows desktop release.
+            **ninesixteen.video** — native 9×16 & 16×9 screen recorder for Windows.
 
+            Record your screen in true portrait or landscape aspect — no cropping in post. Cursor-driven framing, Alt + scroll zoom, system + mic audio, encrypted local recordings. Free to try; **$49 one-time** Pro export.
+
+            ### Highlights
+            - True **9×16** and **16×9** capture from frame one
+            - Cursor-driven viewport + live zoom
+            - Lightweight **Tauri** app (not Electron) with Windows Graphics Capture
+            - Virtual camera appears as **ninesixteen.video** in OBS, Zoom, Meet
+            - Up to 1080p @ 30/60 fps · FFmpeg bundled
+
+            ### Install
             - **New installs:** download the NSIS `.exe` or `.msi` installer below.
             - **Existing installs:** the app checks GitHub on startup and offers a one-click update.
 
-            See [UPDATEGUIDE.md](https://github.com/ninesixteenvideo/ninesixteen/blob/master/UPDATEGUIDE.md) for maintainer notes.
+            **Website:** https://ninesixteen.video · **FAQ:** https://ninesixteen.video/faq · **Changelog:** https://ninesixteen.video/changelog
+
+            Maintainer notes: [UPDATEGUIDE.md](https://github.com/ninesixteenvideo/ninesixteen/blob/master/UPDATEGUIDE.md)
           releaseDraft: true
           prerelease: false
           args: --target x86_64-pc-windows-msvc

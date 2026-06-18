@@ -15,6 +15,16 @@ async function openLegalPage(path: "/terms" | "/privacy") {
   }
 }
 
+async function openWebsite(path = "") {
+  const url = `${WEB_URL}${path}`;
+  try {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
 export function Info() {
   const { user } = useAuth();
   const [feedbackMessage, setFeedbackMessage] = useState("");
@@ -95,6 +105,35 @@ export function Info() {
             <p className="muted">Web preview — capture runs only in the desktop build.</p>
           </div>
         )}
+
+        <section className="card">
+          <h3 className="card-title">About</h3>
+          <p className="card-sub">
+            <strong>ninesixteen.video</strong> records your screen in native 9×16 portrait or
+            16×9 landscape — no crop in post. Frame with your cursor, zoom with Alt + scroll,
+            and export MP4 with Pro ($49 one-time).
+          </p>
+          <ul className="card-sub" style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
+            <li>True 9×16 and 16×9 capture from frame one</li>
+            <li>System + mic audio, optional click sounds</li>
+            <li>Encrypted local recordings · virtual camera for OBS/Zoom</li>
+            <li>Free to record and preview</li>
+          </ul>
+          <div className="row" style={{ gap: 8, justifyContent: "flex-start", flexWrap: "wrap", marginTop: 14 }}>
+            <button className="btn ghost sm" onClick={() => void openWebsite()}>
+              ninesixteen.video
+            </button>
+            <button className="btn ghost sm" onClick={() => void openWebsite("/download")}>
+              Download page
+            </button>
+            <button className="btn ghost sm" onClick={() => void openWebsite("/faq")}>
+              FAQ
+            </button>
+            <button className="btn ghost sm" onClick={() => void openWebsite("/changelog")}>
+              Changelog
+            </button>
+          </div>
+        </section>
 
         <section className="card">
           <h3 className="card-title">Bug report &amp; feedback</h3>

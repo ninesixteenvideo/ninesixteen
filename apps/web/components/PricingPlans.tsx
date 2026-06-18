@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
 const FEATURES = [
-  "All feautures, present and future",
+  "All features, present and future",
   "Save locally or straight to Google Drive",
   "Up to 1080p · 60fps encoding",
   "Account links to desktop app",

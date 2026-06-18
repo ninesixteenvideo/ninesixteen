@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
+import { FAQ_ITEMS } from "@/content/faq";
 import { FeaturesGrid, StepsGrid, UseCasesGrid } from "@/components/LandingCardSections";
 import { HeroVideo } from "@/components/HeroVideo";
 import { ReleaseNotesLink } from "@/components/ReleaseNotesLink";
 import { ReleaseNotesSection } from "@/components/ReleaseNotes";
+import { FaqSection } from "@/components/FaqSection";
 
 export default function HomePage() {
+  const homeFaq = FAQ_ITEMS.slice(0, 6);
+
   return (
     <div className="mx-auto max-w-6xl px-5">
       {/* HERO */}
@@ -85,6 +89,12 @@ export default function HomePage() {
         />
         <StepsGrid />
       </section>
+
+      <FaqSection
+        items={homeFaq}
+        title="Common questions"
+        showViewAll
+      />
 
       <ReleaseNotesSection />
     </div>

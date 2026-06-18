@@ -1,0 +1,47 @@
+# ninesixteen.video
+
+> Native 9×16 and 16×9 screen recorder for Windows. Record locally, frame with your cursor, export MP4 with Pro ($49 one-time). No subscription. No crop in post.
+
+## Product
+
+- [Home](https://ninesixteen.video/)
+- [Download](https://ninesixteen.video/download)
+- [Pricing](https://ninesixteen.video/pricing)
+- [Features](https://ninesixteen.video/features)
+- [FAQ](https://ninesixteen.video/faq)
+- [Changelog](https://ninesixteen.video/changelog)
+
+## Use-case pages
+
+- [Vertical 9×16 screen recorder](https://ninesixteen.video/vertical-screen-recorder)
+- [Landscape 16×9 screen recorder](https://ninesixteen.video/landscape-screen-recorder)
+- [TikTok screen recorder](https://ninesixteen.video/tiktok-screen-recorder)
+- [YouTube Shorts screen recorder](https://ninesixteen.video/youtube-shorts-screen-recorder)
+- [SaaS demo recorder](https://ninesixteen.video/saas-demo-recorder)
+- [vs OBS comparison](https://ninesixteen.video/compare/obs)
+
+## Key facts
+
+- **Platform:** Windows 10/11 (64-bit)
+- **Formats:** True 9×16 portrait and 16×9 landscape — native aspect, no post crop
+- **Framing:** Cursor-driven viewport, Alt + scroll zoom, rule-of-thirds guides
+- **Audio:** System + microphone; optional mouse click sounds in recordings
+- **Pricing:** Free to record and preview; $49 USD one-time for Pro MP4 export
+- **Privacy:** Local-first, encrypted recordings on your machine
+- **Tech:** Tauri + Windows Graphics Capture (not Electron); FFmpeg bundled
+- **Virtual camera:** Appears as "ninesixteen.video" in OBS, Zoom, Meet
+- **Latest version:** 1.1.0 (June 2026)
+
+## Contact
+
+- Email: dev@ninesixteen.video
+- Website: https://ninesixteen.video
+
+## Legal
+
+- [Terms of Use](https://ninesixteen.video/terms)
+- [Privacy Policy](https://ninesixteen.video/privacy)
+
+## Extended documentation
+
+- [llms-full.txt](https://ninesixteen.video/llms-full.txt)

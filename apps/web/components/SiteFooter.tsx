@@ -15,14 +15,25 @@ export function SiteFooter() {
         <div>
           <h4 className="font-display text-sm uppercase tracking-wide text-ink">Product</h4>
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
-            <li><a href="/#features" className="hover:text-ink">Features</a></li>
-            <li><a href="/#how-it-works" className="hover:text-ink">How it works</a></li>
+            <li><Link href="/features" className="hover:text-ink">Features</Link></li>
+            <li><Link href="/#how-it-works" className="hover:text-ink">How it works</Link></li>
+            <li><Link href="/vertical-screen-recorder" className="hover:text-ink">9×16 recorder</Link></li>
+            <li><Link href="/landscape-screen-recorder" className="hover:text-ink">16×9 recorder</Link></li>
+            <li><Link href="/compare/obs" className="hover:text-ink">vs OBS</Link></li>
+            <li><Link href="/faq" className="hover:text-ink">FAQ</Link></li>
+            <li><Link href="/changelog" className="hover:text-ink">Changelog</Link></li>
             <li><Link href="/pricing" className="hover:text-ink">Purchase</Link></li>
             <li><Link href="/download" className="hover:text-ink">Download</Link></li>
           </ul>
         </div>
         <div>
-          <h4 className="font-display text-sm uppercase tracking-wide text-ink">Account</h4>
+          <h4 className="font-display text-sm uppercase tracking-wide text-ink">Use cases</h4>
+          <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
+            <li><Link href="/tiktok-screen-recorder" className="hover:text-ink">TikTok recorder</Link></li>
+            <li><Link href="/youtube-shorts-screen-recorder" className="hover:text-ink">YouTube Shorts</Link></li>
+            <li><Link href="/saas-demo-recorder" className="hover:text-ink">SaaS demos</Link></li>
+          </ul>
+          <h4 className="mt-6 font-display text-sm uppercase tracking-wide text-ink">Account</h4>
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
             <li><Link href="/sign-in" className="hover:text-ink">Sign in</Link></li>
             <li><Link href="/sign-up" className="hover:text-ink">Create account</Link></li>
@@ -34,6 +45,7 @@ export function SiteFooter() {
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
             <li><Link href="/terms" className="hover:text-ink">Terms of Use</Link></li>
             <li><Link href="/privacy" className="hover:text-ink">Privacy Policy</Link></li>
+            <li><a href="/llms.txt" className="hover:text-ink">llms.txt</a></li>
           </ul>
         </div>
       </div>

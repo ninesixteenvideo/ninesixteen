@@ -50,7 +50,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     TrayIconBuilder::new()
         .icon(icon)
-        .tooltip("ninesixteen.video")
+        .tooltip("ninesixteen.video — 9×16 & 16×9 screen recorder")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "tray-show" => show_main_window(app),

@@ -6,6 +6,9 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { JsonLd } from "@/components/JsonLd";
+import { organizationJsonLd, softwareApplicationJsonLd, webSiteJsonLd } from "@/lib/seo/jsonLd";
+import { rootMetadata } from "@/lib/seo/metadata";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -35,33 +38,7 @@ const fasterOne = Faster_One({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "ninesixteen.video — native 9×16 & 16×9 screen recorder for Windows",
-  description:
-    "Record your screen in true 9×16 or 16×9 — no cropping in post. Frame with your cursor, zoom with Alt + scroll, and capture footage ready for Shorts, Reels, TikTok, or widescreen edits. Free to try, $49 one-time purchase.",
-  applicationName: "ninesixteen.video",
-  keywords: [
-    "vertical screen recorder",
-    "landscape screen recorder",
-    "9x16 screen recorder",
-    "16x9 screen recorder",
-    "tiktok screen recorder",
-    "reels screen recorder",
-    "youtube shorts recorder",
-    "vertical video",
-    "landscape video",
-    "short form content",
-    "saas demo recorder",
-    "build in public",
-    "windows screen recorder",
-  ],
-  openGraph: {
-    title: "ninesixteen.video — native 9×16 & 16×9 screen recorder for Windows",
-    description:
-      "Record your screen in true 9×16 or 16×9 — no cropping later. Free to try, $49 one-time to export.",
-    type: "website",
-  },
-};
+export const metadata: Metadata = rootMetadata;
 
 export const viewport: Viewport = {
   themeColor: "#121110",
@@ -78,6 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${ibmPlexMono.variable} ${bungee.variable} ${fasterOne.variable}`}
     >
       <body className="ns-grain min-h-screen font-body antialiased">
+        <JsonLd
+          data={[organizationJsonLd(), webSiteJsonLd(), softwareApplicationJsonLd()]}
+        />
         {xPixelId ? (
           <Script id="x-conversion-pixel" strategy="afterInteractive">
             {`!function(e,t,n,s,u,a){e.twq||(s=e.twq=function(){s.exe?s.exe.apply(s,arguments):s.queue.push(arguments);},s.version='1.1',s.queue=[],u=t.createElement(n),u.async=!0,u.src='https://static.ads-twitter.com/uwt.js',a=t.getElementsByTagName(n)[0],a.parentNode.insertBefore(u,a))}(window,document,'script');

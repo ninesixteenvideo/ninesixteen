@@ -51,6 +51,11 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis"],
+    "shortDescription": "Native 9×16 & 16×9 screen recorder for Windows",
+    "longDescription": "Record your screen in true 9×16 portrait or 16×9 landscape — no cropping in post. Cursor-driven framing, Alt + scroll zoom, system + mic audio, encrypted local recordings. Free to try; $49 one-time Pro export. Built with Tauri and Windows Graphics Capture — not Electron.",
+    "copyright": "Copyright © 2026 ninesixteen.video",
+    "category": "Video",
+    "homepage": "https://ninesixteen.video",
     "resources": {
       "resources/softcam/": "softcam",
       "resources/ffmpeg/": "ffmpeg"
@@ -66,6 +71,9 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "installerHooks": "./installer-hooks.nsh"
       }
     },
     "createUpdaterArtifacts": true

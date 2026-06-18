@@ -1,8 +1,12 @@
 [package]
 name = "ninesixteen"
 version = "1.1.0"
-description = "ninesixteen.video desktop recorder & live streamer"
+description = "ninesixteen.video — native 9×16 & 16×9 Windows screen recorder with cursor-driven framing"
 authors = ["ninesixteen.video"]
+homepage = "https://ninesixteen.video"
+repository = "https://github.com/ninesixteenvideo/ninesixteen"
+license = "Proprietary"
+keywords = ["screen-recorder", "vertical-video", "9x16", "16x9", "windows", "tauri", "short-form"]
 edition = "2021"
 rust-version = "1.77"
 

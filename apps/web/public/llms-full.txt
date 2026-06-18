@@ -1,0 +1,68 @@
+# ninesixteen.video — full product reference
+
+## One-line summary
+
+ninesixteen.video is a native Windows screen recorder for true 9×16 portrait and 16×9 landscape capture. Frame with your cursor, zoom with Alt + scroll, record locally, and export MP4 with a one-time $49 Pro license.
+
+## Who it is for
+
+- TikTok, Instagram Reels, and YouTube Shorts creators who want vertical clips without cropping
+- Founders and indie hackers recording SaaS demos and build-in-public updates
+- Tutorial and course creators who need tight UI framing
+- Anyone who wants native aspect ratio screen recording on Windows without OBS scene setup
+
+## Core features
+
+1. **True 9×16 and 16×9 capture** — Pick portrait or landscape in Studio. Overlay, library player, and exports match your format. Zero letterboxing, zero crop step in post.
+2. **Cursor-driven framing** — The viewport follows your mouse. Hold Alt + scroll to zoom from full desktop into a tight crop live while recording.
+3. **Rule-of-thirds guides** — Compose shots intentionally mid-recording.
+4. **System + microphone audio** — Blend desktop sound and voice with gain meters.
+5. **Optional mouse click audio** — Mix click SFX into recordings (Studio toggle + volume).
+6. **Encrypted local recordings** — Stored on your machine; nothing uploads until you export.
+7. **Native Windows Graphics Capture** — Lightweight Tauri app, low CPU, not Electron.
+8. **Virtual camera** — Device name "ninesixteen.video" in OBS, Zoom, Google Meet.
+9. **Up to 1080p at 30 or 60 fps** — Defaults to 720p @ 30fps for lighter sessions.
+10. **In-app library** — Preview takes, filmstrip thumbnails, slide-out player.
+
+## Pricing
+
+| Tier | Price | Includes |
+|------|-------|----------|
+| Free | $0 | Record, preview, all capture features |
+| Pro | $49 USD one-time | Unlimited MP4 export to disk or Google Drive |
+
+No subscription. No renewals.
+
+## System requirements
+
+- Windows 10 or 11 (64-bit)
+- WebView2 (installer bootstraps if needed)
+- 8 GB RAM minimum, 16 GB recommended
+- DirectX 11 GPU, 2 GB VRAM
+- 1920×1080 display or higher
+- ~500 MB disk for app; SSD recommended for recordings
+
+## How it differs from OBS
+
+OBS records full desktop or manual regions — you reframe for vertical social. ninesixteen records native 9×16 or 16×9 from frame one with cursor follow. OBS is better for live streaming and complex multi-source setups. ninesixteen is faster for short-form and native-aspect clips.
+
+## Latest release — v1.1.0 (June 2026)
+
+- 16×9 landscape recording in Studio
+- Cinematic cursor overhaul (smoother follow, sharper cursor)
+- Optional mouse click audio
+- Faster Library (cached thumbnails, smoother scroll)
+- Smarter viewport edge panning and Alt+F unfreeze easing
+- 720p @ 30fps defaults
+
+## Links
+
+- Home: https://ninesixteen.video/
+- Download: https://ninesixteen.video/download
+- FAQ: https://ninesixteen.video/faq
+- GitHub: https://github.com/ninesixteenvideo/ninesixteen
+- Contact: dev@ninesixteen.video
+
+## Operator
+
+Operated by ninesixteen.video from Western Australia, Australia.

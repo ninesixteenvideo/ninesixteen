@@ -66,6 +66,8 @@ export function HeroVideo() {
       <video
         ref={videoRef}
         src="/promo.mp4"
+        title="ninesixteen.video demo — native 9×16 screen recording on Windows"
+        aria-label="Product demo showing ninesixteen.video vertical screen recording with cursor-driven framing"
         autoPlay
         loop
         muted
