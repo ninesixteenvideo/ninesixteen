@@ -416,7 +416,7 @@ function TabbedBody({ tab }: { tab: TabId }) {
     <div className="panel-body">
       <div className={`pb-anim ${phase}`}>
         {libraryMounted ? (
-          <div style={{ display: shown === "preview" ? "block" : "none" }}>
+          <div className="tab-pane" hidden={shown !== "preview"}>
             <Preview />
           </div>
         ) : null}
