@@ -14,6 +14,7 @@ import { HomePanelAuth } from "./panels/HomePanelAuth";
 import { HomePanelCheckout } from "./panels/HomePanelCheckout";
 import { HOME_VIEW_PARAM, parseHomeView, type HomeView } from "./homeViews";
 import { useGlitchTransition } from "./useGlitchTransition";
+import { useMobileViewport } from "@/lib/useMobileViewport";
 
 type HomeLandingProps = {
   initialView?: HomeView;
@@ -28,6 +29,7 @@ function HomeLandingInner({ initialView = "hero" }: HomeLandingProps) {
     () => searchParams.get("next") === "/checkout"
   );
   const { view, setView, phase, transitionTo, glitching } = useGlitchTransition(startView);
+  const isMobile = useMobileViewport();
 
   const syncUrl = useCallback(
     (next: HomeView) => {
@@ -72,15 +74,19 @@ function HomeLandingInner({ initialView = "hero" }: HomeLandingProps) {
     .filter(Boolean)
     .join(" ");
 
-  const demoActive = isHero && !glitching;
+  const demoActive = isHero && !glitching && !isMobile;
 
   useEffect(() => {
     document.body.classList.toggle("home-viewport-demo", demoActive);
-    return () => document.body.classList.remove("home-viewport-demo");
-  }, [demoActive]);
+    document.body.classList.toggle("home-mobile", isMobile);
+    return () => {
+      document.body.classList.remove("home-viewport-demo");
+      document.body.classList.remove("home-mobile");
+    };
+  }, [demoActive, isMobile]);
 
   return (
-    <div className="home">
+    <div className={`home${isMobile ? " home--mobile" : ""}`}>
       <HomeInfoTicker />
       <HomeBackground />
       <HomeViewportFeed active={demoActive} onNavigate={navigate} />
