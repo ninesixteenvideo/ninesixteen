@@ -60,6 +60,37 @@ export const PRODUCT_FEATURES = [
   "One-time $49 Pro export — no subscription",
 ] as const;
 
+/** Continuous broadcast ticker on the landing page hero. */
+export const HOME_TICKER_ITEMS = [
+  "True 9×16 & 16×9 capture",
+  "Cursor-driven framing",
+  "What you frame is what you export",
+  "No crop in post",
+  "Alt + scroll to zoom",
+  "Rule-of-thirds guides",
+  "Portrait or landscape in Studio",
+  "System + mic audio",
+  "Optional mouse click sounds",
+  "Encrypted local recordings",
+  "Built-in library preview",
+  "Native Windows capture — not Electron",
+  "FFmpeg bundled · nothing else to install",
+  "Virtual camera for OBS, Zoom & Meet",
+  "1080p · 30 or 60 fps",
+  "Smoother cinematic cursor",
+  "Free to try on Windows",
+  "$49 once · no subscription",
+  "Private & local-first",
+  "Short-form & widescreen ready",
+] as const;
+
+import {
+  FEATURED_USE_CASE_SLUGS,
+  LANDING_PAGES,
+} from "@/content/landingPages";
+
+const FEATURED_SLUGS = new Set<string>(FEATURED_USE_CASE_SLUGS);
+
 /** Public marketing routes included in sitemap.xml */
 export const INDEXABLE_ROUTES = [
   { path: "/", priority: 1.0, changeFrequency: "weekly" as const },
@@ -68,11 +99,12 @@ export const INDEXABLE_ROUTES = [
   { path: "/faq", priority: 0.85, changeFrequency: "monthly" as const },
   { path: "/features", priority: 0.85, changeFrequency: "monthly" as const },
   { path: "/changelog", priority: 0.8, changeFrequency: "weekly" as const },
-  { path: "/vertical-screen-recorder", priority: 0.9, changeFrequency: "monthly" as const },
-  { path: "/landscape-screen-recorder", priority: 0.9, changeFrequency: "monthly" as const },
-  { path: "/tiktok-screen-recorder", priority: 0.88, changeFrequency: "monthly" as const },
-  { path: "/youtube-shorts-screen-recorder", priority: 0.88, changeFrequency: "monthly" as const },
-  { path: "/saas-demo-recorder", priority: 0.85, changeFrequency: "monthly" as const },
+  { path: "/solutions", priority: 0.55, changeFrequency: "monthly" as const },
+  ...LANDING_PAGES.map((page) => ({
+    path: `/${page.slug}`,
+    priority: FEATURED_SLUGS.has(page.slug) ? 0.88 : 0.72,
+    changeFrequency: "monthly" as const,
+  })),
   { path: "/compare/obs", priority: 0.82, changeFrequency: "monthly" as const },
   { path: "/privacy", priority: 0.3, changeFrequency: "yearly" as const },
   { path: "/terms", priority: 0.3, changeFrequency: "yearly" as const },

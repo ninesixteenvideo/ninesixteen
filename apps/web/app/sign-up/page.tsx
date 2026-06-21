@@ -1,4 +1,4 @@
-import { AuthForm } from "@/components/AuthForm";
+import { permanentRedirect } from "next/navigation";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 
 export const metadata = buildPageMetadata({
@@ -9,5 +9,5 @@ export const metadata = buildPageMetadata({
 });
 
 export default function SignUpPage() {
-  return <AuthForm mode="sign-up" />;
+  permanentRedirect("/?view=sign-up");
 }

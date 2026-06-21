@@ -1,10 +1,16 @@
-//! Local MP4 recording via FFmpeg raw BGRA ingest (bypasses Media Foundation).
+//! Local MP4 recording — MF GPU surface ingest (default) or FFmpeg raw BGRA pipe (fallback).
 use crate::ffmpeg_util::{find_ffmpeg, ffmpeg_command};
 use crate::log::capture_log;
 use crate::save_progress;
 use crate::state::{SharedState, Viewport};
 #[cfg(windows)]
 use crate::audio::{self, RecordingAudio};
+#[cfg(windows)]
+use crate::hw_encode::{prefer_hw_encode, HwEncoder};
+#[cfg(windows)]
+use windows_capture::d3d11::SendDirectX;
+#[cfg(windows)]
+use windows::Graphics::DirectX::Direct3D11::IDirect3DSurface;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
@@ -17,27 +23,96 @@ use parking_lot::Mutex;
 
 static CACHED_ENCODER: OnceLock<String> = OnceLock::new();
 
-/// CFR slot rate actually fed to FFmpeg. Landscape 1080p at 60fps cannot be sustained
-/// on typical AMF encoders (~30 unique GPU frames/s); wall-clock slots fall behind and
-/// audio feels ahead of on-screen motion. Cap landscape 1080p at 30fps for reliable sync.
-pub fn effective_recording_fps(requested: u32, width: u32, height: u32) -> u32 {
-    let requested = requested.max(1);
-    if width > height && height >= 1080 && requested > 30 {
-        30
+/// CFR slot rate fed to FFmpeg — honors the user's 30 or 60fps choice for every
+/// resolution and orientation. When the GPU cannot keep pace, the wall-clock slot
+/// scheduler holds the last unique frame (duplicate CFR slots) so A/V stays aligned.
+pub fn recording_fps(requested: u32) -> u32 {
+    normalize_recording_fps(requested)
+}
+
+/// UI exposes 30 and 60; clamp anything else to the nearest supported rate.
+pub fn normalize_recording_fps(requested: u32) -> u32 {
+    if requested >= 55 {
+        60
     } else {
-        requested
+        30
     }
 }
+
+#[cfg(test)]
+mod recording_fps_tests {
+    use super::*;
+
+    #[test]
+    fn recording_fps_honors_sixty_for_all_modes() {
+        assert_eq!(recording_fps(60), 60);
+        assert_eq!(recording_fps(30), 30);
+        assert_eq!(normalize_recording_fps(45), 30);
+        assert_eq!(normalize_recording_fps(59), 60);
+    }
+}
+
+/// COM surface safe to share across recording threads (ref-counted clone).
+#[cfg(windows)]
+struct ShareSurface(SendDirectX<IDirect3DSurface>);
+
+#[cfg(windows)]
+impl Clone for ShareSurface {
+    fn clone(&self) -> Self {
+        Self(SendDirectX::new(self.0.0.clone()))
+    }
+}
+
+#[cfg(windows)]
+unsafe impl Send for ShareSurface {}
+
+#[cfg(windows)]
+unsafe impl Sync for ShareSurface {}
 
 /// Desktop crop + session timestamp baked at GPU publish time (not at encode time).
 #[derive(Clone)]
 pub struct RecFrame {
-    pub pixels: Arc<Vec<u8>>,
+    pub pixels: Option<Arc<Vec<u8>>>,
+    #[cfg(windows)]
+    pub surface: Option<ShareSurface>,
     pub viewport: Viewport,
     pub src_w: u32,
     pub src_h: u32,
-    /// Wall-clock offset from session start when this crop was rendered.
+    /// CFR timeline position for this slot (seconds from session start).
     pub t_secs: f64,
+    /// Monotonic id bumped on each GPU publish (holds share the same id).
+    pub capture_id: u64,
+    /// Cinematic cursor already composited on GPU (or promo CPU stamp).
+    pub cursor_pre_stamped: bool,
+}
+
+static REC_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+fn rec_frame_is_hold(prev: &RecFrame, next: &RecFrame) -> bool {
+    prev.capture_id != 0 && prev.capture_id == next.capture_id
+}
+
+/// Bind a CFR slot time and the live viewport at push time (cursor + crop metadata).
+fn frame_for_cfr_slot(source: &Arc<RecFrame>, slot_t_secs: f64) -> Arc<RecFrame> {
+    let (viewport, src_w, src_h) = crate::capture::recording_viewport_context();
+    Arc::new(RecFrame {
+        pixels: source.pixels.clone(),
+        #[cfg(windows)]
+        surface: source.surface.clone(),
+        viewport,
+        src_w,
+        src_h,
+        t_secs: slot_t_secs,
+        capture_id: source.capture_id,
+        cursor_pre_stamped: source.cursor_pre_stamped,
+    })
+}
+
+static HW_ENCODE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// True while an MF GPU-surface recorder is active (capture skips CPU readback).
+pub fn recording_uses_hw_encode() -> bool {
+    HW_ENCODE_ACTIVE.load(Ordering::Relaxed)
 }
 
 static REC_SESSION_CLOCK: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
@@ -270,13 +345,39 @@ fn boost_recording_thread_priority() {}
 static REC_CAPTURE_FRAME: OnceLock<parking_lot::Mutex<Option<Arc<RecFrame>>>> = OnceLock::new();
 
 pub fn publish_capture_frame(pixels: Vec<u8>) {
+    publish_capture_frame_inner(Some(pixels), None, false);
+}
+
+pub fn publish_promo_capture_frame(pixels: Vec<u8>) {
+    publish_capture_frame_inner(Some(pixels), None, true);
+}
+
+#[cfg(windows)]
+pub fn publish_capture_surface(surface: SendDirectX<IDirect3DSurface>, cursor_pre_stamped: bool) {
+    publish_capture_frame_inner(None, Some(ShareSurface(surface)), cursor_pre_stamped);
+}
+
+pub fn publish_capture_frame_pre_stamped(pixels: Vec<u8>) {
+    publish_capture_frame_inner(Some(pixels), None, true);
+}
+
+fn publish_capture_frame_inner(
+    pixels: Option<Vec<u8>>,
+    #[cfg(windows)] surface: Option<ShareSurface>,
+    #[cfg(not(windows))] _surface: Option<()>,
+    cursor_pre_stamped: bool,
+) {
     let (viewport, src_w, src_h) = crate::capture::recording_viewport_context();
     let frame = Arc::new(RecFrame {
-        pixels: Arc::new(pixels),
+        pixels: pixels.map(Arc::new),
+        #[cfg(windows)]
+        surface,
         viewport,
         src_w,
         src_h,
         t_secs: session_t_secs(),
+        capture_id: REC_CAPTURE_ID.fetch_add(1, Ordering::Relaxed) + 1,
+        cursor_pre_stamped,
     });
     let slot = REC_CAPTURE_FRAME.get_or_init(|| parking_lot::Mutex::new(None));
     *slot.lock() = Some(frame);
@@ -299,6 +400,7 @@ fn clear_capture_frame() {
     if let Some(slot) = REC_CAPTURE_FRAME.get() {
         *slot.lock() = None;
     }
+    REC_CAPTURE_ID.store(0, Ordering::Relaxed);
     clear_recording_session_clock();
     STRAY_FRAME_LOGS.store(0, Ordering::Relaxed);
 }
@@ -352,14 +454,20 @@ fn write_recording_frame(
     cinematic: bool,
     scratch: &mut Vec<u8>,
 ) -> Result<bool, String> {
-    if !cinematic {
-        return write_arc_frame(stdin, &frame.pixels, width, height);
+    if !cinematic || frame.cursor_pre_stamped {
+        let Some(pixels) = frame.pixels.as_ref() else {
+            return Ok(false);
+        };
+        return write_arc_frame(stdin, pixels, width, height);
     }
-    // Stamp with the viewport + session time that baked this desktop crop.
-    // Hold frames reuse the same `RecFrame` arc, so cursor position freezes automatically.
+    let Some(pixels) = frame.pixels.as_ref() else {
+        return Ok(false);
+    };
+    // Cursor must use the same session time as this frame's baked viewport + desktop crop.
+    // Hold frames reuse the same `RecFrame`, so the pointer stays locked to the crop.
     crate::cursor::stamp_into_buffer(
         scratch,
-        frame.pixels.as_slice(),
+        pixels.as_slice(),
         width,
         height,
         &frame.viewport,
@@ -379,7 +487,10 @@ fn write_recording_frame(
     _cinematic: bool,
     _scratch: &mut Vec<u8>,
 ) -> Result<bool, String> {
-    write_arc_frame(stdin, &frame.pixels, width, height)
+    let Some(pixels) = frame.pixels.as_ref() else {
+        return Ok(false);
+    };
+    write_arc_frame(stdin, pixels, width, height)
 }
 
 struct GpuFeeder {
@@ -439,6 +550,7 @@ fn slot_scheduler_loop(
     fps_f: f64,
     latest: Arc<Mutex<Option<Arc<RecFrame>>>>,
     recording_done: Arc<AtomicBool>,
+    slot_done: Arc<AtomicBool>,
 ) {
     let mut pushed = 0u64;
     let mut last: Option<Arc<RecFrame>> = None;
@@ -448,13 +560,15 @@ fn slot_scheduler_loop(
         let Some(arc) = frame else {
             return false;
         };
+        let slot_t_secs = *pushed as f64 / fps_f;
+        let scheduled = frame_for_cfr_slot(&arc, slot_t_secs);
         loop {
             let send_result = {
                 let guard = sender.lock();
                 let Some(tx) = guard.as_ref() else {
                     return true;
                 };
-                tx.try_send(arc.clone())
+                tx.try_send(scheduled.clone())
             };
             match send_result {
                 Ok(()) => {
@@ -492,6 +606,7 @@ fn slot_scheduler_loop(
         }
 
         if push_one(&mut pushed) {
+            slot_done.store(true, Ordering::Release);
             return;
         }
     }
@@ -499,9 +614,331 @@ fn slot_scheduler_loop(
     let final_due = (session_start.elapsed().as_secs_f64() * fps_f).floor() as u64;
     while pushed < final_due {
         if push_one(&mut pushed) {
-            return;
+            break;
         }
     }
+    slot_done.store(true, Ordering::Release);
+}
+
+#[cfg(windows)]
+fn write_hw_frame(encoder: &mut HwEncoder, frame: &RecFrame) -> Result<bool, String> {
+    let Some(surface) = frame.surface.as_ref() else {
+        if STRAY_FRAME_LOGS.fetch_add(1, Ordering::Relaxed) < 3 {
+            capture_log("skipped stray frame: missing GPU surface for MF encoder");
+        }
+        return Ok(false);
+    };
+    encoder.send_surface(SendDirectX::new(surface.0.0.clone()), frame.t_secs)?;
+    Ok(true)
+}
+
+#[cfg(windows)]
+fn run_hw_body(
+    mut encoder: HwEncoder,
+    path: PathBuf,
+    stop_rx: Receiver<()>,
+    width: u32,
+    height: u32,
+    fps: u32,
+    bitrate_kbps: u32,
+    state: SharedState,
+    has_audio: bool,
+    session_target: Arc<AtomicU64>,
+    session_tx: Option<SyncSender<Instant>>,
+    audio_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<(u64, f64), String> {
+    boost_recording_thread_priority();
+    crate::capture::recording_encoder_queue_reset();
+
+    let fps_f = fps.max(1) as f64;
+    let mut written = 0u64;
+    let mut hold_frames = 0u64;
+    let mut stop_session_secs: Option<f64> = None;
+
+    clear_capture_frame();
+    let gpu_feed = GpuFeeder::start(state.clone(), fps);
+    let gpu_renders = gpu_feed.renders.clone();
+    let latest = gpu_feed.latest.clone();
+
+    let first_frame_deadline = Instant::now() + Duration::from_secs(12);
+    let mut waited_for_first = false;
+    while latest.lock().is_none() {
+        if stop_rx.try_recv().is_ok() {
+            let _ = std::fs::remove_file(&path);
+            gpu_feed.stop();
+            HW_ENCODE_ACTIVE.store(false, Ordering::Release);
+            return Ok((0, 0.0));
+        }
+        if Instant::now() >= first_frame_deadline {
+            capture_log("WARN: no capture frame after 12s — starting clock without first-frame anchor");
+            break;
+        }
+        waited_for_first = true;
+        std::thread::sleep(Duration::from_millis(2));
+    }
+
+    let session_start = Instant::now();
+    arm_recording_session_clock(session_start);
+    if waited_for_first {
+        capture_log("Recording clock anchored to first captured frame");
+    }
+    {
+        let mut st = state.lock();
+        st.session_start = Some(session_start);
+        st.current_start = Some(session_start);
+        crate::cursor::sync_follow_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+    }
+    let click_volume = {
+        let st = state.lock();
+        st.recording_settings.mouse_click_volume as f32
+    };
+    crate::click_audio::reset_session(click_volume);
+    if has_audio {
+        if let Some(tx) = session_tx {
+            let _ = tx.send(session_start);
+        }
+    }
+
+    let cinematic = {
+        let st = state.lock();
+        st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor
+    };
+    crate::cursor::reset_session();
+    if cinematic {
+        capture_log("Cinematic cursor: GPU composited on D3D11 output");
+    }
+
+    let (frame_tx, frame_rx) =
+        mpsc::sync_channel::<Arc<RecFrame>>(encoder_queue_capacity(fps, width, height));
+    let frame_sender = Arc::new(parking_lot::Mutex::new(Some(frame_tx)));
+    capture_log(&format!(
+        "MF encoder frame queue capacity: {} ({}x{} @ {}fps CFR)",
+        encoder_queue_capacity(fps, width, height),
+        width,
+        height,
+        fps
+    ));
+    let recording_done = Arc::new(AtomicBool::new(false));
+    let recording_done_slot = recording_done.clone();
+    let slot_done = Arc::new(AtomicBool::new(false));
+    let slot_done_t = slot_done.clone();
+
+    let slot_thread = std::thread::Builder::new()
+        .name("rec-slot-sched".into())
+        .spawn({
+            let frame_sender = frame_sender.clone();
+            move || {
+                slot_scheduler_loop(
+                    frame_sender,
+                    session_start,
+                    fps_f,
+                    latest,
+                    recording_done_slot,
+                    slot_done_t,
+                );
+            }
+        })
+        .map_err(|e| format!("spawn slot scheduler: {e}"))?;
+
+    let mut last_stats = Instant::now();
+    let stop_session_audio = |secs: f64| {
+        if has_audio {
+            session_target.store(
+                (secs * audio::SAMPLE_RATE as f64).round() as u64,
+                Ordering::Release,
+            );
+            if let Some(stop) = &audio_stop {
+                stop.store(true, Ordering::Release);
+            }
+        }
+    };
+
+    let mut last_frame: Option<Arc<RecFrame>> = None;
+    let mut stopping = false;
+
+    loop {
+        if !stopping && stop_rx.try_recv().is_ok() {
+            stopping = true;
+            stop_session_secs = Some(session_start.elapsed().as_secs_f64());
+            recording_done.store(true, Ordering::Release);
+            stop_session_audio(stop_session_secs.unwrap_or(0.0));
+            if let Some(secs) = stop_session_secs {
+                let target_frames = (secs * fps_f).floor() as u64;
+                let debt_frames = target_frames.saturating_sub(written);
+                if debt_frames > fps as u64 {
+                    capture_log(&format!(
+                        "WARN: encoder {:.1}s behind wall-clock CFR at stop ({written}/{target_frames} frames) — motion may look sped up until drain completes",
+                        debt_frames as f64 / fps_f
+                    ));
+                }
+            }
+            capture_log(&format!(
+                "Recording stop @ {:.2}s ({} frames encoded, draining CFR queue)",
+                stop_session_secs.unwrap_or(0.0),
+                written
+            ));
+        }
+
+        let frame_result = if stopping && slot_done.load(Ordering::Acquire) {
+            frame_rx.try_recv().map_err(|_| RecvTimeoutError::Timeout)
+        } else {
+            frame_rx.recv_timeout(Duration::from_millis(50))
+        };
+
+        match frame_result {
+            Ok(frame) => {
+                let is_hold = last_frame
+                    .as_ref()
+                    .is_some_and(|prev| rec_frame_is_hold(prev.as_ref(), frame.as_ref()));
+                if !write_hw_frame(&mut encoder, frame.as_ref())? {
+                    continue;
+                }
+                crate::capture::recording_encoder_queue_note_consumed();
+                if is_hold {
+                    hold_frames += 1;
+                }
+                last_frame = Some(frame);
+                written += 1;
+
+                if last_stats.elapsed() >= Duration::from_secs(5) {
+                    let elapsed = session_start.elapsed().as_secs_f64();
+                    let gpu_total = gpu_renders.load(Ordering::Relaxed);
+                    let gpu_fps = gpu_total as f64 / elapsed.max(0.1);
+                    let hold_pct = if written > 0 {
+                        hold_frames as f64 / written as f64 * 100.0
+                    } else {
+                        0.0
+                    };
+                    let (wgc_5s, cap_renders_5s, glide_5s, avg_render_us, avg_read_us, avg_handler_us) =
+                        crate::capture::recording_pipeline_window_stats();
+                    let enc_backlog = crate::capture::recording_encoder_queue_depth();
+                    capture_log(&format!(
+                        "Rec live @ {elapsed:.0}s: {written} MF-encoded, {hold_frames} holds ({hold_pct:.0}%), \
+                         {gpu_fps:.1} unique GPU/s (target {fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s, \
+                         glide {glide_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
+                        avg_render_us as f64 / 1000.0,
+                        avg_read_us as f64 / 1000.0,
+                        avg_handler_us as f64 / 1000.0,
+                    ));
+                    last_stats = Instant::now();
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                if stopping && slot_done.load(Ordering::Acquire) {
+                    break;
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                stop_session_secs = Some(session_start.elapsed().as_secs_f64());
+                stop_session_audio(stop_session_secs.unwrap_or(0.0));
+                break;
+            }
+        }
+    }
+
+    let _ = slot_thread.join();
+    frame_sender.lock().take();
+    save_progress::report(16, "finalizing");
+
+    let target_frames = stop_session_secs
+        .map(|secs| (secs * fps_f).floor() as u64)
+        .unwrap_or(written.max(1));
+
+    while let Ok(frame) = frame_rx.try_recv() {
+        let is_hold = last_frame
+            .as_ref()
+            .is_some_and(|prev| rec_frame_is_hold(prev.as_ref(), frame.as_ref()));
+        if !write_hw_frame(&mut encoder, frame.as_ref())? {
+            continue;
+        }
+        crate::capture::recording_encoder_queue_note_consumed();
+        if is_hold {
+            hold_frames += 1;
+        }
+        last_frame = Some(frame);
+        written += 1;
+    }
+
+    if let (Some(secs), Some(last)) = (stop_session_secs, last_frame.clone()) {
+        let target = (secs * fps_f).floor() as u64;
+        let mut padded = 0u64;
+        while written < target {
+            let slot_t = written as f64 / fps_f;
+            let slot_frame = frame_for_cfr_slot(&last, slot_t);
+            if !write_hw_frame(&mut encoder, slot_frame.as_ref())? {
+                break;
+            }
+            hold_frames += 1;
+            written += 1;
+            padded += 1;
+        }
+        if padded > 0 {
+            capture_log(&format!(
+                "CFR tail padded {padded} hold frames ({written}/{target})"
+            ));
+        }
+    }
+
+    save_progress::report(20, "finalizing");
+    gpu_feed.stop();
+    let gpu_samples = gpu_renders.load(Ordering::Relaxed);
+
+    if let Some(secs) = stop_session_secs {
+        let target_frames = (secs * fps_f).floor() as u64;
+        let pad = target_frames.saturating_sub(written);
+        if pad > 0 {
+            capture_log(&format!(
+                "WARN: recording ended {pad} frames short of target ({written}/{target_frames})"
+            ));
+        }
+        if hold_frames > 0 {
+            let hold_pct = hold_frames as f64 / written as f64 * 100.0;
+            capture_log(&format!(
+                "Recording CFR: {hold_frames} hold frames ({hold_pct:.0}%, {gpu_samples} GPU samples, {written} total @ {fps}fps)"
+            ));
+        }
+    }
+
+    let encoded_secs = written as f64 / fps_f;
+    let session_secs = stop_session_secs.unwrap_or(encoded_secs);
+
+    save_progress::report(22, "finalizing");
+    encoder.finish().map_err(|e| {
+        let _ = std::fs::remove_file(&path);
+        e
+    })?;
+    HW_ENCODE_ACTIVE.store(false, Ordering::Release);
+    save_progress::report(38, "finalizing");
+
+    if session_secs > encoded_secs + 0.5 && encoded_secs >= 0.5 {
+        let factor = session_secs / encoded_secs;
+        if factor > 1.02 {
+            capture_log(&format!(
+                "WARN: timing stretch needed ({encoded_secs:.2}s → {session_secs:.2}s ×{factor:.3})"
+            ));
+            save_progress::report(42, "timing");
+            if let Err(e) =
+                stretch_playback_duration(&path, fps, factor, written, encoded_secs)
+            {
+                capture_log(&format!("WARN: timing stretch failed ({e}); keeping {encoded_secs:.2}s"));
+            } else {
+                save_progress::report(48, "timing");
+            }
+        }
+    }
+
+    let duration = if session_secs > encoded_secs + 0.5 && (session_secs / encoded_secs) > 1.02 {
+        session_secs
+    } else {
+        encoded_secs
+    };
+    let wall = session_start.elapsed().as_secs_f64();
+    let bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    capture_log(&format!(
+        "MF GPU recorder finished ({written} frames, {gpu_samples} GPU samples, {duration:.2}s playback / {encoded_secs:.2}s encoded / {wall:.2}s wall, {bytes} bytes)"
+    ));
+    Ok((written, duration))
 }
 
 fn run(
@@ -519,6 +956,49 @@ fn run(
     #[cfg(windows)] session_tx: Option<SyncSender<Instant>>,
     #[cfg(windows)] audio_stop: Option<Arc<std::sync::atomic::AtomicBool>>,
 ) -> Result<(u64, f64), String> {
+    #[cfg(windows)]
+    {
+        let try_hw = {
+            let st = state.lock();
+            prefer_hw_encode()
+                && !st.streaming
+                && st.promo_mode.is_none()
+                && !(st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor)
+        };
+        if try_hw {
+            HW_ENCODE_ACTIVE.store(true, Ordering::Release);
+            match HwEncoder::start(&path, width, height, fps, bitrate_kbps) {
+                Ok(encoder) => {
+                    if ready_tx.send(Ok(())).is_err() {
+                        HW_ENCODE_ACTIVE.store(false, Ordering::Release);
+                        return Err("recorder cancelled before MF encoder started".into());
+                    }
+                    return run_hw_body(
+                        encoder,
+                        path,
+                        stop_rx,
+                        width,
+                        height,
+                        fps,
+                        bitrate_kbps,
+                        state,
+                        has_audio,
+                        session_target,
+                        session_tx,
+                        audio_stop,
+                    );
+                }
+                Err(e) => {
+                    HW_ENCODE_ACTIVE.store(false, Ordering::Release);
+                    capture_log(&format!(
+                        "WARN: MF GPU encode unavailable ({e}); falling back to FFmpeg pipe"
+                    ));
+                    clear_capture_frame();
+                }
+            }
+        }
+    }
+
     boost_recording_thread_priority();
     crate::capture::recording_encoder_queue_reset();
 
@@ -610,15 +1090,20 @@ fn run(
         capture_log("Cinematic cursor session started (per-slot stamp on CFR timeline)");
     }
 
-    let (frame_tx, frame_rx) = mpsc::sync_channel::<Arc<RecFrame>>(encoder_queue_capacity(fps));
+    let (frame_tx, frame_rx) =
+        mpsc::sync_channel::<Arc<RecFrame>>(encoder_queue_capacity(fps, width, height));
     let frame_sender = Arc::new(parking_lot::Mutex::new(Some(frame_tx)));
     capture_log(&format!(
-        "Encoder frame queue capacity: {} (backpressure @ {}fps CFR)",
-        encoder_queue_capacity(fps),
+        "Encoder frame queue capacity: {} ({}x{} @ {}fps CFR)",
+        encoder_queue_capacity(fps, width, height),
+        width,
+        height,
         fps
     ));
     let recording_done = Arc::new(AtomicBool::new(false));
     let recording_done_slot = recording_done.clone();
+    let slot_done = Arc::new(AtomicBool::new(false));
+    let slot_done_t = slot_done.clone();
 
     let slot_thread = std::thread::Builder::new()
         .name("rec-slot-sched".into())
@@ -631,6 +1116,7 @@ fn run(
                     fps_f,
                     latest,
                     recording_done_slot,
+                    slot_done_t,
                 );
             }
         })
@@ -654,9 +1140,11 @@ fn run(
     let stop_session_audio = |_secs: f64| {};
 
     let mut last_frame: Option<Arc<RecFrame>> = None;
+    let mut stopping = false;
 
     loop {
-        if stop_rx.try_recv().is_ok() {
+        if !stopping && stop_rx.try_recv().is_ok() {
+            stopping = true;
             stop_session_secs = Some(session_start.elapsed().as_secs_f64());
             recording_done.store(true, Ordering::Release);
             stop_session_audio(stop_session_secs.unwrap_or(0.0));
@@ -665,24 +1153,29 @@ fn run(
                 let debt_frames = target_frames.saturating_sub(written);
                 if debt_frames > fps as u64 {
                     capture_log(&format!(
-                        "WARN: encoder {:.1}s behind wall-clock CFR at stop ({written}/{target_frames} frames) — audio may feel ahead of video",
+                        "WARN: encoder {:.1}s behind wall-clock CFR at stop ({written}/{target_frames} frames) — draining queued slots before save",
                         debt_frames as f64 / fps_f
                     ));
                 }
             }
             capture_log(&format!(
-                "Recording stop @ {:.2}s ({} frames encoded)",
+                "Recording stop @ {:.2}s ({} frames encoded, draining CFR queue)",
                 stop_session_secs.unwrap_or(0.0),
                 written
             ));
-            break;
         }
 
-        match frame_rx.recv_timeout(Duration::from_millis(50)) {
+        let frame_result = if stopping && slot_done.load(Ordering::Acquire) {
+            frame_rx.try_recv().map_err(|_| RecvTimeoutError::Timeout)
+        } else {
+            frame_rx.recv_timeout(Duration::from_millis(50))
+        };
+
+        match frame_result {
             Ok(frame) => {
                 let is_hold = last_frame
                     .as_ref()
-                    .is_some_and(|prev| Arc::ptr_eq(prev, &frame));
+                    .is_some_and(|prev| rec_frame_is_hold(prev.as_ref(), frame.as_ref()));
                 if !write_recording_frame(
                     &mut stdin,
                     frame.as_ref(),
@@ -723,7 +1216,11 @@ fn run(
                     last_stats = Instant::now();
                 }
             }
-            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Timeout) => {
+                if stopping && slot_done.load(Ordering::Acquire) {
+                    break;
+                }
+            }
             Err(RecvTimeoutError::Disconnected) => {
                 stop_session_secs = Some(session_start.elapsed().as_secs_f64());
                 stop_session_audio(stop_session_secs.unwrap_or(0.0));
@@ -732,20 +1229,18 @@ fn run(
         }
     }
 
-    // Drop the sender before joining so the slot thread cannot block on a full queue
-    // while this thread has already stopped receiving (AB-BA deadlock on stop).
-    frame_sender.lock().take();
     let _ = slot_thread.join();
+    frame_sender.lock().take();
     save_progress::report(16, "finalizing");
 
     let target_frames = stop_session_secs
         .map(|secs| (secs * fps_f).floor() as u64)
         .unwrap_or(written.max(1));
 
-    while let Ok(frame) = frame_rx.recv() {
+    while let Ok(frame) = frame_rx.try_recv() {
         let is_hold = last_frame
             .as_ref()
-            .is_some_and(|prev| Arc::ptr_eq(prev, &frame));
+            .is_some_and(|prev| rec_frame_is_hold(prev.as_ref(), frame.as_ref()));
         if !write_recording_frame(
             &mut stdin,
             frame.as_ref(),
@@ -773,9 +1268,11 @@ fn run(
         let target = (secs * fps_f).floor() as u64;
         let mut padded = 0u64;
         while written < target {
+            let slot_t = written as f64 / fps_f;
+            let slot_frame = frame_for_cfr_slot(&last, slot_t);
             if !write_recording_frame(
                 &mut stdin,
-                last.as_ref(),
+                slot_frame.as_ref(),
                 width,
                 height,
                 cinematic,
@@ -1066,7 +1563,7 @@ fn spawn_ffmpeg(
         .get()
         .cloned()
         .unwrap_or_else(|| select_encoder());
-    let enc = resolve_encoder_for_recording(&ffmpeg, &preferred, width, height);
+    let enc = resolve_encoder_for_recording(&ffmpeg, &preferred, width, height, fps);
     match spawn_ffmpeg_with_encoder(&ffmpeg, &enc, path, width, height, fps, bitrate_kbps) {
         Ok(child) => Ok(child),
         Err(e) if enc != "libx264" => {
@@ -1079,16 +1576,40 @@ fn spawn_ffmpeg(
     }
 }
 
-fn encoder_queue_capacity(fps: u32) -> usize {
-    match fps.max(1) {
-        1..=30 => 6,
-        31..=45 => 10,
-        _ => 16,
-    }
+fn encoder_queue_capacity(fps: u32, width: u32, height: u32) -> usize {
+    // Buffer enough CFR slots for a full session so the wall-clock scheduler never
+    // falls behind the encoder (which would compress motion and speed up playback).
+    let fps_u = normalize_recording_fps(fps) as usize;
+    let session_slots = fps_u.saturating_mul(120);
+    let load = crate::geometry::pixel_load(width, height, normalize_recording_fps(fps));
+    let tier_floor = if load >= 3840 * 2160 * 55 {
+        360
+    } else if load >= 3840 * 2160 * 28 {
+        480
+    } else if load >= 2560 * 1440 * 55 {
+        600
+    } else if normalize_recording_fps(fps) >= 60 {
+        480
+    } else {
+        240
+    };
+    session_slots.max(tier_floor)
 }
 
-fn encoder_probe_sizes() -> [(u32, u32); 4] {
-    [(1280, 720), (720, 1280), (1920, 1080), (1080, 1920)]
+/// Probe at the target CFR — hardware encoders must sustain 60fps at recording sizes.
+fn encoder_probe_fps() -> u32 {
+    60
+}
+
+fn encoder_probe_sizes() -> [(u32, u32); 6] {
+    [
+        (1280, 720),
+        (720, 1280),
+        (1920, 1080),
+        (1080, 1920),
+        (2560, 1440),
+        (3840, 2160),
+    ]
 }
 
 fn select_encoder() -> String {
@@ -1101,20 +1622,24 @@ fn select_encoder() -> String {
             return enc.to_string();
         }
         if enc != "libx264" {
-            capture_log(&format!("FFmpeg encoder probe skipped {enc} (not available at recording sizes)"));
+            capture_log(&format!(
+                "FFmpeg encoder probe skipped {enc} (not available at 60fps recording sizes)"
+            ));
         }
     }
     "libx264".to_string()
 }
 
 fn test_encoder(ffmpeg: &str, enc: &str) -> bool {
+    let fps = encoder_probe_fps();
     encoder_probe_sizes()
         .into_iter()
-        .all(|(w, h)| test_encoder_at_size(ffmpeg, enc, w, h))
+        .all(|(w, h)| test_encoder_at_size(ffmpeg, enc, w, h, fps))
 }
 
-fn test_encoder_at_size(ffmpeg: &str, enc: &str, width: u32, height: u32) -> bool {
+fn test_encoder_at_size(ffmpeg: &str, enc: &str, width: u32, height: u32, fps: u32) -> bool {
     let size = format!("{width}x{height}");
+    let fps_s = fps.max(1).to_string();
     let bytes = (width as usize)
         .saturating_mul(height as usize)
         .saturating_mul(4);
@@ -1131,7 +1656,7 @@ fn test_encoder_at_size(ffmpeg: &str, enc: &str, width: u32, height: u32) -> boo
             "-s",
             &size,
             "-r",
-            "30",
+            &fps_s,
             "-i",
             "pipe:0",
             "-frames:v",
@@ -1167,26 +1692,74 @@ fn resolve_encoder_for_recording(
     preferred: &str,
     width: u32,
     height: u32,
+    fps: u32,
 ) -> String {
     if preferred == "libx264" {
         return preferred.to_string();
     }
-    if test_encoder_at_size(ffmpeg, preferred, width, height) {
+    if test_encoder_at_size(ffmpeg, preferred, width, height, fps) {
         return preferred.to_string();
     }
     capture_log(&format!(
-        "WARN: {preferred} failed at {width}x{height}; falling back to libx264"
+        "WARN: {preferred} failed at {width}x{height} @ {fps}fps; falling back"
     ));
     for enc in ["h264_nvenc", "h264_amf", "h264_qsv"] {
         if enc == preferred {
             continue;
         }
-        if test_encoder_at_size(ffmpeg, enc, width, height) {
+        if test_encoder_at_size(ffmpeg, enc, width, height, fps) {
             capture_log(&format!("Using alternate hardware encoder: {enc}"));
             return enc.to_string();
         }
     }
     "libx264".to_string()
+}
+
+fn x264_preset(width: u32, height: u32, fps: u32) -> &'static str {
+    let load = crate::geometry::pixel_load(width, height, fps);
+    if load >= 3840 * 2160 * 55 || load >= 3840 * 2160 * 28 {
+        "ultrafast"
+    } else if load >= 2560 * 1440 * 55 {
+        "ultrafast"
+    } else if load >= 1920 * 1080 * 55 || fps >= 55 {
+        "veryfast"
+    } else {
+        "fast"
+    }
+}
+
+fn nvenc_preset(width: u32, height: u32, fps: u32) -> &'static str {
+    let load = crate::geometry::pixel_load(width, height, fps);
+    if load >= 3840 * 2160 * 55 {
+        "p1"
+    } else if load >= 3840 * 2160 * 28 || load >= 2560 * 1440 * 55 {
+        "p2"
+    } else if load >= 1920 * 1080 * 55 {
+        "p3"
+    } else {
+        "p4"
+    }
+}
+
+fn qsv_preset(width: u32, height: u32, fps: u32) -> &'static str {
+    let load = crate::geometry::pixel_load(width, height, fps);
+    if load >= 3840 * 2160 * 28 || load >= 2560 * 1440 * 55 || fps >= 55 {
+        "veryfast"
+    } else {
+        "fast"
+    }
+}
+
+fn x264_crf(width: u32, height: u32) -> &'static str {
+    if width * height >= 3840 * 2160 {
+        "20"
+    } else if width * height >= 2560 * 1440 {
+        "19"
+    } else if width <= 720 {
+        "20"
+    } else {
+        "18"
+    }
 }
 
 fn spawn_ffmpeg_with_encoder(
@@ -1205,7 +1778,7 @@ fn spawn_ffmpeg_with_encoder(
     let bitrate = format!("{}k", bitrate_kbps.max(500));
     let bufsize = format!("{}k", bitrate_kbps.saturating_mul(2).max(1000));
     let gop = fps.saturating_mul(2).max(30).to_string();
-    let crf = if width <= 720 { "20" } else { "18" };
+    let crf = x264_crf(width, height);
 
     let mut cmd = ffmpeg_command(ffmpeg);
     cmd.args([
@@ -1231,17 +1804,21 @@ fn spawn_ffmpeg_with_encoder(
         "libx264" => {
             cmd.args([
                 "-preset",
-                "fast",
+                x264_preset(width, height, fps),
                 "-tune",
                 "zerolatency",
                 "-crf",
                 crf,
                 "-g",
                 &gop,
+                "-x264-params",
+                "nal-hrd=cbr:force-cfr=1",
             ]);
         }
         "h264_amf" => {
             cmd.args([
+                "-usage",
+                "ultralowlatency",
                 "-quality",
                 "speed",
                 "-b:v",
@@ -1254,10 +1831,34 @@ fn spawn_ffmpeg_with_encoder(
                 &gop,
             ]);
         }
+        "h264_nvenc" => {
+            let mut nvenc_args = vec![
+                "-preset",
+                nvenc_preset(width, height, fps),
+                "-tune",
+                "ll",
+                "-zerolatency",
+                "1",
+                "-b:v",
+                &bitrate,
+                "-maxrate",
+                &bitrate,
+                "-bufsize",
+                &bufsize,
+                "-g",
+                &gop,
+                "-bf",
+                "0",
+            ];
+            if width * height >= 3840 * 2160 {
+                nvenc_args.extend(["-spatial-aq", "0", "-temporal-aq", "0", "-rc-lookahead", "0"]);
+            }
+            cmd.args(nvenc_args);
+        }
         _ => {
             cmd.args([
                 "-preset",
-                if enc == "h264_nvenc" { "p4" } else { "veryfast" },
+                qsv_preset(width, height, fps),
                 "-tune",
                 "ll",
                 "-b:v",

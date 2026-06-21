@@ -9,6 +9,7 @@ import { FilmDock, type FilmDockHandle } from "./components/FilmDock";
 import { Account } from "./components/Account";
 import { Info } from "./components/Info";
 import { Hotkeys } from "./components/Hotkeys";
+import { HardwareRecHint } from "./components/HardwareRecHint";
 import { Paywall } from "./components/Paywall";
 import { UpdateModal } from "./components/UpdateModal";
 import { isDesktop } from "./lib/bridge";
@@ -34,6 +35,7 @@ export function App() {
     ready,
     tab,
     setTab,
+    ensureLibrarySelection,
     init,
     recording,
     arming,
@@ -42,8 +44,10 @@ export function App() {
     setLibrarySelected,
     paywallOpen,
     setPaywallOpen,
+    promoMode,
     recordingSettings,
     recordings,
+    hardwareProfile,
   } = useStore();
   const { isPro } = useAuth();
   const [expanded, setExpanded] = useState(true);
@@ -52,11 +56,13 @@ export function App() {
   const [updateOffer, setUpdateOffer] = useState<{ version: string } | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [trayToast, setTrayToast] = useState<string | null>(null);
+  const hidingToTrayRef = useRef(false);
 
   // Live capture = countdown or recording: the overlay owns the desktop, so the
-  // dock hides entirely. Finalizing is different — we keep the dock on screen and
-  // surface a "Processing" panel so the user knows their take is being saved.
-  const liveCapture = recording || arming;
+  // dock hides entirely — unless promo recording (marketing mode keeps the app up).
+  const promoSession = Boolean(promoMode) && (recording || arming);
+  const liveCapture = (recording || arming) && !promoSession;
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const restoreExpanded = useRef(expanded);
@@ -65,23 +71,30 @@ export function App() {
   const filmOrientation =
     selectedRecording?.orientation ?? recordingSettings.orientation;
 
+  const libraryTab = tab === "preview";
+
   const { sidebarPx } = useDockLayout({
     ready,
     expanded,
     capturing: liveCapture,
-    libraryTab: tab === "preview",
-    filmSelected: !!librarySelectedId,
-    filmVisible: filmExtended,
+    libraryTab,
+    filmSelected: libraryTab && !!librarySelectedId,
+    filmVisible: libraryTab && filmExtended,
     filmOrientation,
   });
 
   useEffect(() => {
+    if (promoSession) {
+      restoreExpanded.current = expandedRef.current;
+      setExpanded(true);
+      return;
+    }
     if (liveCapture) {
       restoreExpanded.current = expandedRef.current;
       setExpanded(false);
       setLibrarySelected(null);
     }
-  }, [liveCapture, setLibrarySelected]);
+  }, [liveCapture, promoSession, setLibrarySelected]);
 
   // Pop the panel open so the processing state is visible the moment we stop.
   useEffect(() => {
@@ -119,6 +132,17 @@ export function App() {
     }
   }
 
+  async function hideToTray() {
+    if (!isDesktop || hidingToTrayRef.current) return;
+    hidingToTrayRef.current = true;
+    setTrayToast("Running in the system tray");
+    await new Promise((resolve) => window.setTimeout(resolve, 2200));
+    setTrayToast(null);
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().hide();
+    hidingToTrayRef.current = false;
+  }
+
   function retractFilmThen(action: () => void) {
     if (tab === "preview" && librarySelectedId) {
       void filmRef.current?.fadeOut().then(() => {
@@ -133,6 +157,7 @@ export function App() {
   function openTab(id: TabId) {
     if (id === tab) {
       if (!expanded) setExpanded(true);
+      if (id === "preview") ensureLibrarySelection();
       return;
     }
     if (retractFilmThen(() => {
@@ -155,12 +180,12 @@ export function App() {
   }
 
   const previewLabel = "Library";
-  const formatSub =
-    recordingSettings.orientation === "landscape"
-      ? "Frame your shot, then record in true 16×9."
-      : "Frame your shot, then record in true 9×16.";
+  const studioRec =
+    hardwareProfile?.[
+      recordingSettings.orientation === "landscape" ? "landscape" : "portrait"
+    ] ?? null;
   const headings: Record<TabId, { title: string; sub: string }> = {
-    studio: { title: "Studio", sub: formatSub },
+    studio: { title: "Studio", sub: "" },
     preview: {
       title: previewLabel,
       sub: isPro ? "Review, export, and manage your takes." : "Preview takes — upgrade to export.",
@@ -173,14 +198,14 @@ export function App() {
   return (
     <div className="shell">
       <aside
-        className={`sidebar ${expanded ? "expanded" : "collapsed"} ${liveCapture ? "capturing" : ""}`}
+        className={`sidebar ${expanded ? "expanded" : "collapsed"} ${liveCapture ? "capturing" : ""} ${promoSession ? "promo-capturing" : ""}`}
       >
         <nav className="rail" aria-label="Primary">
           <div className="rail-win">
             <WindowButton label="Close" onClick={() => void closeWindow()}>
               <CloseIcon size={16} />
             </WindowButton>
-            <WindowButton label="Minimize" onClick={() => void minimizeWindow()}>
+            <WindowButton label="Minimize" onClick={() => void hideToTray()}>
               <MinimizeIcon size={16} />
             </WindowButton>
           </div>
@@ -214,9 +239,18 @@ export function App() {
           <header className="panel-head">
             <div className="panel-head-text">
               <h1 className="panel-title">{finalizing ? "Processing" : headings[tab as TabId].title}</h1>
-              <p className="panel-sub">
-                {finalizing ? "Saving your recording — hang tight." : headings[tab as TabId].sub}
-              </p>
+              {finalizing ? (
+                <p className="panel-sub">Saving your recording — hang tight.</p>
+              ) : tab === "studio" ? (
+                <HardwareRecHint
+                  orientation={recordingSettings.orientation}
+                  quality={recordingSettings.quality}
+                  fps={recordingSettings.fps}
+                  recommendation={studioRec}
+                />
+              ) : (
+                <p className="panel-sub">{headings[tab as TabId].sub}</p>
+              )}
             </div>
             {tab === "studio" && !finalizing && <RecordControl />}
           </header>
@@ -234,7 +268,7 @@ export function App() {
         </button>
       </aside>
 
-      <FilmDock ref={filmRef} onExtendedChange={setFilmExtended} />
+      {libraryTab && <FilmDock ref={filmRef} onExtendedChange={setFilmExtended} />}
 
       {!ready && (
         <div className="boot" style={{ width: sidebarPx }}>
@@ -254,14 +288,10 @@ export function App() {
           onUpdate={() => void handleInstallUpdate()}
         />
       )}
+
+      {trayToast && <div className="toast">{trayToast}</div>}
     </div>
   );
-}
-
-async function minimizeWindow() {
-  if (!isDesktop) return;
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  await getCurrentWindow().hide();
 }
 
 async function closeWindow() {
@@ -316,8 +346,33 @@ function RailTab({
 
 /** The square coral record control that lives in the Studio header. */
 function RecordControl() {
-  const { recording, finalizing, arming, startRecording, stopRecording, cancelRecordingCountdown } =
-    useStore();
+  const {
+    recording,
+    finalizing,
+    arming,
+    promoMode,
+    promoInnerActive,
+    startRecording,
+    stopRecording,
+    cancelRecordingCountdown,
+    cancelPromoSession,
+  } = useStore();
+
+  const promoUsageOnly = Boolean(promoMode) && recording && !promoInnerActive && !arming;
+
+  if (arming && promoMode) {
+    return (
+      <button
+        type="button"
+        className="rec-btn"
+        title="Cancel promo recording"
+        aria-label="Cancel promo recording"
+        onClick={() => cancelPromoSession()}
+      >
+        <CloseIcon size={22} />
+      </button>
+    );
+  }
 
   if (arming) {
     return (
@@ -329,6 +384,20 @@ function RecordControl() {
         onClick={() => cancelRecordingCountdown()}
       >
         <CloseIcon size={22} />
+      </button>
+    );
+  }
+
+  if (promoUsageOnly) {
+    return (
+      <button
+        type="button"
+        className="rec-btn"
+        title="Start nested take"
+        aria-label="Start nested take"
+        onClick={() => startRecording()}
+      >
+        REC
       </button>
     );
   }

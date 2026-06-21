@@ -1,5 +1,7 @@
 import Link from "next/link";
 import type { LandingPageConfig } from "@/content/landingPages";
+import { getRelatedLandingPages } from "@/content/landingPages";
+import { getLandingPageLinkLabel } from "@/content/landingPages";
 import { breadcrumbJsonLd, webPageJsonLd } from "@/lib/seo/jsonLd";
 import { JsonLd } from "@/components/JsonLd";
 
@@ -9,6 +11,7 @@ type SeoLandingPageProps = {
 
 export function SeoLandingPage({ page }: SeoLandingPageProps) {
   const path = `/${page.slug}`;
+  const related = getRelatedLandingPages(page);
 
   return (
     <div className="mx-auto max-w-4xl px-5 pb-20 pt-10">
@@ -21,6 +24,7 @@ export function SeoLandingPage({ page }: SeoLandingPageProps) {
           }),
           breadcrumbJsonLd([
             { name: "Home", path: "/" },
+            { name: "Guides", path: "/solutions" },
             { name: page.h1, path },
           ]),
         ]}
@@ -29,6 +33,10 @@ export function SeoLandingPage({ page }: SeoLandingPageProps) {
       <nav className="font-mono text-xs text-inkfaint">
         <Link href="/" className="hover:text-inksoft">
           Home
+        </Link>
+        <span className="mx-2">/</span>
+        <Link href="/solutions" className="hover:text-inksoft">
+          Guides
         </Link>
         <span className="mx-2">/</span>
         <span className="text-inksoft">{page.kicker}</span>
@@ -69,16 +77,13 @@ export function SeoLandingPage({ page }: SeoLandingPageProps) {
       <aside className="ns-card ns-card--flat mt-14 p-6">
         <h2 className="font-display text-lg">Related</h2>
         <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
-          <li>
-            <Link href="/vertical-screen-recorder" className="ns-link">
-              Vertical 9×16 screen recorder
-            </Link>
-          </li>
-          <li>
-            <Link href="/landscape-screen-recorder" className="ns-link">
-              Landscape 16×9 screen recorder
-            </Link>
-          </li>
+          {related.map((entry) => (
+            <li key={entry.slug}>
+              <Link href={`/${entry.slug}`} className="ns-link">
+                {getLandingPageLinkLabel(entry)}
+              </Link>
+            </li>
+          ))}
           <li>
             <Link href="/compare/obs" className="ns-link">
               ninesixteen vs OBS

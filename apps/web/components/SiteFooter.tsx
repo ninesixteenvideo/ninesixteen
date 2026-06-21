@@ -1,22 +1,45 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
+import {
+  getFeaturedUseCasePages,
+  getLandingPageLinkLabel,
+} from "@/content/landingPages";
 
 export function SiteFooter() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
+  const featured = getFeaturedUseCasePages();
+
+  if (isHome) {
+    return (
+      <footer className="home-footer home-footer--dock">
+        <div className="home-footer__bar">
+          <span>© {new Date().getFullYear()} ninesixteen.video</span>
+          <div className="home-footer__legal">
+            <Link href="/terms">Terms</Link>
+            <Link href="/privacy">Privacy</Link>
+          </div>
+        </div>
+      </footer>
+    );
+  }
+
   return (
     <footer className="mt-8 border-t border-line bg-bgalt">
       <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <Wordmark size={26} showSuffix />
           <p className="mt-4 max-w-xs font-body text-sm leading-relaxed text-inksoft">
-            Native 9×16 and 16×9 screen recorder for Windows. Frame with your cursor, record
-            locally, and export clean MP4s with Pro.
+            Native 9×16 and 16×9 screen recorder for Windows.
           </p>
         </div>
         <div>
           <h4 className="font-display text-sm uppercase tracking-wide text-ink">Product</h4>
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
             <li><Link href="/features" className="hover:text-ink">Features</Link></li>
-            <li><Link href="/#how-it-works" className="hover:text-ink">How it works</Link></li>
             <li><Link href="/vertical-screen-recorder" className="hover:text-ink">9×16 recorder</Link></li>
             <li><Link href="/landscape-screen-recorder" className="hover:text-ink">16×9 recorder</Link></li>
             <li><Link href="/compare/obs" className="hover:text-ink">vs OBS</Link></li>
@@ -29,9 +52,13 @@ export function SiteFooter() {
         <div>
           <h4 className="font-display text-sm uppercase tracking-wide text-ink">Use cases</h4>
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
-            <li><Link href="/tiktok-screen-recorder" className="hover:text-ink">TikTok recorder</Link></li>
-            <li><Link href="/youtube-shorts-screen-recorder" className="hover:text-ink">YouTube Shorts</Link></li>
-            <li><Link href="/saas-demo-recorder" className="hover:text-ink">SaaS demos</Link></li>
+            {featured.map((page) => (
+              <li key={page.slug}>
+                <Link href={`/${page.slug}`} className="hover:text-ink">
+                  {getLandingPageLinkLabel(page)}
+                </Link>
+              </li>
+            ))}
           </ul>
           <h4 className="mt-6 font-display text-sm uppercase tracking-wide text-ink">Account</h4>
           <ul className="mt-3 space-y-2 font-body text-sm text-inksoft">
@@ -49,13 +76,13 @@ export function SiteFooter() {
           </ul>
         </div>
       </div>
+
       <div className="border-t border-linesoft">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-5 font-mono text-xs text-inkfaint sm:flex-row">
-          <span className="text-[0.8em]">© {new Date().getFullYear()} ninesixteen.video</span>
+          <span>© {new Date().getFullYear()} ninesixteen.video</span>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <Link href="/terms" className="hover:text-inksoft">Terms</Link>
             <Link href="/privacy" className="hover:text-inksoft">Privacy</Link>
-            <span>Windows · 9×16 &amp; 16×9 · local-first</span>
           </div>
         </div>
       </div>

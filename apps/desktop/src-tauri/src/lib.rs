@@ -7,6 +7,7 @@ mod entitlement_store;
 mod export;
 mod feedback;
 mod geometry;
+mod hardware;
 mod click_audio;
 mod cursor;
 mod hotkeys;
@@ -26,6 +27,10 @@ mod stream;
 mod ffmpeg_util;
 #[cfg(windows)]
 mod file_record;
+#[cfg(windows)]
+mod hw_encode;
+#[cfg(windows)]
+mod promo;
 #[cfg(windows)]
 mod camera;
 mod log;
@@ -377,6 +382,8 @@ pub fn run() {
                 (Modifiers::ALT, Code::KeyR, "Alt+R (record)"),
                 (Modifiers::ALT, Code::KeyV, "Alt+V (frame)"),
                 (Modifiers::ALT, Code::KeyF, "Alt+F (freeze frame)"),
+                (Modifiers::ALT, Code::KeyP, "Alt+P (promo portrait)"),
+                (Modifiers::ALT, Code::KeyL, "Alt+L (promo landscape)"),
                 (Modifiers::ALT, Code::ArrowUp, "Alt+↑ (zoom in)"),
                 (Modifiers::ALT, Code::ArrowDown, "Alt+↓ (zoom out)"),
             ] {
@@ -488,6 +495,8 @@ pub fn run() {
             commands::nudge_viewport,
             commands::set_zoom,
             commands::start_recording,
+            commands::start_promo_recording,
+            commands::cancel_promo_session,
             commands::cancel_recording_countdown,
             commands::stop_recording,
             commands::start_camera,
@@ -510,6 +519,8 @@ pub fn run() {
             commands::notify_app_ready,
             commands::sync_dock_window,
             commands::set_input_settings,
+            commands::get_input_settings,
+            commands::get_hardware_profile,
             commands::set_recording_settings,
             commands::list_audio_devices,
             commands::get_audio_settings,

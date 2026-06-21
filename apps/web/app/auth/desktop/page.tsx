@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Wordmark } from "@ninesixteen/brand/Wordmark";
+import { WordmarkTv } from "@/components/WordmarkTv";
 import { AuthForm } from "@/components/AuthForm";
 import { useAuth } from "@/lib/auth";
 
@@ -48,75 +48,81 @@ function DesktopAuthInner() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-5 py-16 text-center">
-      <Wordmark size={36} showSuffix />
-      <h1 className="mt-6 font-display text-2xl">Sign in for desktop</h1>
-      <p className="mt-3 font-body text-sm text-inksoft">
-        Complete sign-in here to link your account to the ninesixteen desktop app.
-      </p>
+    <div className="home-auth home-auth--page">
+      <div className="mb-8 flex justify-center">
+        <WordmarkTv size={36} showSuffix wrapClassName="ns-wm-tv--nav" />
+      </div>
 
-      {/* Step 1 — sign in (if not already). */}
-      {code && !user && !loading && (
-        <div className="mt-8 text-left">
-          <AuthForm mode="sign-in" onAuthenticated={() => {}} />
-        </div>
-      )}
+      <div className="home-auth__console">
+        <p className="home-auth__kicker">Desktop link</p>
+        <h1 className="home-auth__heading">Sign in for desktop</h1>
+        <p className="home-auth__lede">
+          Complete sign-in here to link your account to the ninesixteen desktop app.
+        </p>
 
-      {loading && (
-        <p className="mt-8 font-mono text-xs text-inksoft">Loading…</p>
-      )}
+        {!code && error ? <p className="home-auth__error">{error}</p> : null}
 
-      {/* Step 2 — confirm the code shown in the desktop app. */}
-      {code && user && status !== "done" && (
-        <form onSubmit={approve} className="mt-8 text-left">
-          <label className="block font-body text-sm">
-            <span className="text-inksoft">
-              Enter the code shown in your ninesixteen desktop app
-            </span>
-            <input
-              value={verifier}
-              onChange={(e) => setVerifier(e.target.value.toUpperCase())}
-              placeholder="ABC123"
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={12}
-              className="ns-input mt-2 text-center font-mono text-lg tracking-[0.3em]"
-            />
-          </label>
-          <p className="mt-3 font-body text-xs text-inksoft">
-            Only enter a code that your own ninesixteen desktop app is showing.
-            Never enter a code that someone sent you — doing so could give them
-            access to your account.
-          </p>
-          <button
-            type="submit"
-            disabled={!canSubmit || status === "linking"}
-            className="ns-cta ns-cta--primary mt-5 w-full disabled:opacity-50"
-          >
-            {status === "linking" ? "Linking…" : "Link desktop app"}
-          </button>
-        </form>
-      )}
+        {code && !user && !loading ? (
+          <div className="home-panel__auth">
+            <AuthForm mode="sign-in" embedded onAuthenticated={() => {}} />
+          </div>
+        ) : null}
 
-      {status === "done" && (
-        <div className="ns-banner ns-card mt-8 p-5 font-body text-sm">
-          You&rsquo;re signed in. Return to the ninesixteen desktop app.
-        </div>
-      )}
+        {loading ? <p className="home-auth__meta">Loading…</p> : null}
 
-      {error && (
-        <div className="ns-banner ns-card mt-8 border-danger/30 p-5 font-body text-sm text-inksoft">
-          {error}
-        </div>
-      )}
+        {code && user && status !== "done" ? (
+          <form onSubmit={approve} className="home-auth__form home-auth__form--spaced">
+            <label className="home-auth__field">
+              <span className="home-auth__label">Desktop code</span>
+              <input
+                value={verifier}
+                onChange={(e) => setVerifier(e.target.value.toUpperCase())}
+                placeholder="ABC123"
+                autoFocus
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={12}
+                className="home-auth__input home-auth__input--code"
+              />
+            </label>
+            <p className="home-auth__hint">
+              Only enter a code that your own ninesixteen desktop app is showing. Never enter a
+              code that someone sent you — doing so could give them access to your account.
+            </p>
+            {error ? <p className="home-auth__error">{error}</p> : null}
+            <button
+              type="submit"
+              disabled={!canSubmit || status === "linking"}
+              className="home-auth__action home-auth__action--mint"
+            >
+              <span className="home-auth__action-eyebrow">Desktop link</span>
+              <span className="home-auth__action-title">
+                {status === "linking" ? "Linking…" : "Link desktop app"}
+              </span>
+              <span className="home-auth__action-meta">Confirm the code above</span>
+            </button>
+          </form>
+        ) : null}
+
+        {status === "done" ? (
+          <div className="home-auth__notice home-auth__notice--success">
+            You&apos;re signed in. Return to the ninesixteen desktop app.
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 export default function DesktopAuthPage() {
   return (
-    <Suspense fallback={<div className="py-24 text-center font-mono text-inksoft">Loading…</div>}>
+    <Suspense
+      fallback={
+        <div className="home-auth home-auth--page">
+          <p className="home-auth__meta">Loading…</p>
+        </div>
+      }
+    >
       <DesktopAuthInner />
     </Suspense>
   );

@@ -13,7 +13,7 @@ export default function robots(): MetadataRoute.Robots {
       },
       {
         userAgent: ["GPTBot", "ChatGPT-User", "ClaudeBot", "PerplexityBot", "Google-Extended"],
-        allow: ["/", "/faq", "/features", "/changelog", "/download", "/pricing", "/llms.txt", "/llms-full.txt"],
+        allow: ["/", "/faq", "/features", "/changelog", "/download", "/pricing", "/solutions", "/llms.txt", "/llms-full.txt"],
         disallow: ["/api/", "/dashboard", "/checkout", "/auth/", "/sign-in", "/sign-up"],
       },
     ],

@@ -2,34 +2,40 @@
 
 #[cfg(windows)]
 mod imp {
-    use crate::geometry::{clamp, frame_layout, FrameLayout};
+    use crate::geometry::{clamp, frame_layout, FrameLayout, OneEuro1d};
     use crate::state::{AppState, SharedState, Viewport};
     use image::imageops::FilterType;
     use image::RgbaImage;
     use parking_lot::Mutex;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, OnceLock};
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     /// Follow-thread gate — avoids locking `state` while `viewport` is held (AB-BA deadlock).
     static FOLLOW_CAPTURE: AtomicBool = AtomicBool::new(false);
     static SESSION_START: Mutex<Option<Instant>> = Mutex::new(None);
+    static LAST_HOOK_AT: Mutex<Option<Instant>> = Mutex::new(None);
 
     const RING_CAP: usize = 2048;
     const CURSOR_PNG: &[u8] = include_bytes!("../resources/cursor/default.png");
 
     /// One Euro filter — smooth takeoff/landing, responsive mid-flight (Screen Studio class).
-    const EURO_MIN_CUTOFF: f64 = 1.2;
-    const EURO_BETA: f64 = 0.05;
+    const EURO_MIN_CUTOFF: f64 = 0.72;
+    const EURO_BETA: f64 = 0.022;
 
     /// Motion-state thresholds (px/s) with hysteresis.
-    const MOVE_ON_SPEED: f64 = 85.0;
-    const MOVE_OFF_SPEED: f64 = 48.0;
+    const MOVE_ON_SPEED: f64 = 88.0;
+    const MOVE_OFF_SPEED: f64 = 32.0;
 
     /// Jerk/accel limits during travel — caps speed wobble on straight drags.
-    const MAX_ACCEL: f64 = 16_000.0;
-    const MAX_JERK: f64 = 140_000.0;
-    const EURO_TRACK_BLEND: f64 = 0.38;
+    const MAX_ACCEL: f64 = 9_000.0;
+    const MAX_JERK: f64 = 85_000.0;
+    const EURO_TRACK_BLEND: f64 = 0.32;
+
+    /// Output-space smoothing when zoom/pan changes remap monitor coords frame-to-frame.
+    const OUTPUT_EURO_MIN: f64 = 1.4;
+    const OUTPUT_EURO_BETA: f64 = 0.012;
+    const HOOK_SAMPLE_PRIORITY_MS: u64 = 40;
 
     #[derive(Clone, Copy)]
     struct CaptureSpace {
@@ -208,57 +214,6 @@ mod imp {
         }
     }
 
-    /// 1D One Euro filter (Casiez et al.) — adaptive low-pass keyed on speed.
-    struct OneEuro1d {
-        min_cutoff: f64,
-        beta: f64,
-        d_cutoff: f64,
-        x_prev: Option<f64>,
-        dx_prev: f64,
-        t_prev: Option<f64>,
-    }
-
-    impl OneEuro1d {
-        fn new(min_cutoff: f64, beta: f64) -> Self {
-            Self {
-                min_cutoff,
-                beta,
-                d_cutoff: 1.0,
-                x_prev: None,
-                dx_prev: 0.0,
-                t_prev: None,
-            }
-        }
-
-        fn alpha(dt: f64, cutoff: f64) -> f64 {
-            let tau = 1.0 / (2.0 * std::f64::consts::PI * cutoff);
-            1.0 / (1.0 + tau / dt.max(1.0 / 2000.0))
-        }
-
-        fn filter(&mut self, x: f64, t: f64) -> f64 {
-            match (self.x_prev, self.t_prev) {
-                (Some(x_prev), Some(t_prev)) => {
-                    let dt = (t - t_prev).max(1.0 / 2000.0);
-                    let dx = (x - x_prev) / dt;
-                    let a_d = Self::alpha(dt, self.d_cutoff);
-                    let dx_hat = a_d * dx + (1.0 - a_d) * self.dx_prev;
-                    let cutoff = self.min_cutoff + self.beta * dx_hat.abs();
-                    let a = Self::alpha(dt, cutoff);
-                    let x_hat = a * x + (1.0 - a) * x_prev;
-                    self.dx_prev = dx_hat;
-                    self.x_prev = Some(x_hat);
-                    self.t_prev = Some(t);
-                    x_hat
-                }
-                _ => {
-                    self.x_prev = Some(x);
-                    self.t_prev = Some(t);
-                    x
-                }
-            }
-        }
-    }
-
     #[derive(Clone, Copy)]
     struct EuroKeyframe {
         t_secs: f64,
@@ -351,8 +306,9 @@ mod imp {
             }
 
             if !self.moving {
-                self.x = next.x;
-                self.y = next.y;
+                let lock = (1.0 - (-10.0 * dt).exp()) * 0.42;
+                self.x += (next.x - self.x) * lock;
+                self.y += (next.y - self.y) * lock;
                 self.vx = 0.0;
                 self.vy = 0.0;
                 self.ax = 0.0;
@@ -421,6 +377,124 @@ mod imp {
         motion_smoothed_at(&frames)
     }
 
+    struct CfrPlayback {
+        last_slot_t: Option<f64>,
+        fx: OneEuro1d,
+        fy: OneEuro1d,
+        motion: MotionSmoother,
+        last_kf: Option<EuroKeyframe>,
+        x: f64,
+        y: f64,
+        buttons: u8,
+    }
+
+    impl CfrPlayback {
+        fn new() -> Self {
+            Self {
+                last_slot_t: None,
+                fx: OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA),
+                fy: OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA),
+                motion: MotionSmoother::new(0.0, 0.0),
+                last_kf: None,
+                x: 0.0,
+                y: 0.0,
+                buttons: 0,
+            }
+        }
+
+        fn sample(&mut self, samples: &[Sample], slot_t_secs: f64) -> Option<(f64, f64, u8)> {
+            let (rx, ry, buttons) = Ring::raw_linear_at(samples, slot_t_secs)?;
+            if self
+                .last_slot_t
+                .is_some_and(|prev| slot_t_secs + 1.0e-6 < prev)
+            {
+                return filtered_at(samples, slot_t_secs).map(|(x, y, b)| {
+                    self.reset_from(x, y, b, slot_t_secs);
+                    (x, y, b)
+                });
+            }
+
+            let ex = self.fx.filter(rx, slot_t_secs);
+            let ey = self.fy.filter(ry, slot_t_secs);
+            let kf = EuroKeyframe {
+                t_secs: slot_t_secs,
+                x: ex,
+                y: ey,
+                buttons,
+            };
+            if let Some(prev) = self.last_kf {
+                self.motion.step(&prev, &kf);
+                self.x = self.motion.x;
+                self.y = self.motion.y;
+            } else {
+                self.motion = MotionSmoother::new(ex, ey);
+                self.x = ex;
+                self.y = ey;
+            }
+            self.last_kf = Some(kf);
+            self.last_slot_t = Some(slot_t_secs);
+            self.buttons = buttons;
+            Some((self.x, self.y, buttons))
+        }
+
+        fn reset_from(&mut self, x: f64, y: f64, buttons: u8, slot_t_secs: f64) {
+            self.fx = OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA);
+            self.fy = OneEuro1d::new(EURO_MIN_CUTOFF, EURO_BETA);
+            self.motion = MotionSmoother::new(x, y);
+            self.last_kf = Some(EuroKeyframe {
+                t_secs: slot_t_secs,
+                x,
+                y,
+                buttons,
+            });
+            self.x = x;
+            self.y = y;
+            self.buttons = buttons;
+            self.last_slot_t = Some(slot_t_secs);
+        }
+    }
+
+    struct OutputSmooth {
+        ox: OneEuro1d,
+        oy: OneEuro1d,
+    }
+
+    impl OutputSmooth {
+        fn new() -> Self {
+            Self {
+                ox: OneEuro1d::new(OUTPUT_EURO_MIN, OUTPUT_EURO_BETA),
+                oy: OneEuro1d::new(OUTPUT_EURO_MIN, OUTPUT_EURO_BETA),
+            }
+        }
+
+        fn filter(&mut self, ox: f64, oy: f64, slot_t_secs: f64) -> (f64, f64) {
+            (
+                self.ox.filter(ox, slot_t_secs),
+                self.oy.filter(oy, slot_t_secs),
+            )
+        }
+    }
+
+    static CFR_PLAYBACK: Mutex<Option<CfrPlayback>> = Mutex::new(None);
+    static OUTPUT_SMOOTH: Mutex<Option<OutputSmooth>> = Mutex::new(None);
+
+    fn cfr_sample_at(slot_t_secs: f64) -> Option<(f64, f64, u8)> {
+        let ring = ring().lock();
+        let samples = ring.chronological();
+        if samples.is_empty() {
+            return ring.latest.map(|(x, y, b)| (x, y, b));
+        }
+        let mut playback = CFR_PLAYBACK.lock();
+        let state = playback.get_or_insert_with(CfrPlayback::new);
+        state.sample(&samples, slot_t_secs)
+    }
+
+    fn smooth_output_xy(ox: f64, oy: f64, slot_t_secs: f64) -> (f64, f64) {
+        let mut smooth = OUTPUT_SMOOTH.lock();
+        let state = smooth.get_or_insert_with(OutputSmooth::new);
+        state.filter(ox, oy, slot_t_secs)
+    }
+
     static RING: OnceLock<Mutex<Ring>> = OnceLock::new();
 
     fn ring() -> &'static Mutex<Ring> {
@@ -453,6 +527,9 @@ mod imp {
         r.len = 0;
         r.latest = None;
         *CAPTURE_SPACE.lock() = None;
+        *LAST_HOOK_AT.lock() = None;
+        *CFR_PLAYBACK.lock() = None;
+        *OUTPUT_SMOOTH.lock() = None;
     }
 
     pub fn set_capture_space(origin_x: i32, origin_y: i32, width: u32, height: u32) {
@@ -488,6 +565,7 @@ mod imp {
         );
         let session = *SESSION_START.lock();
         record_sample(session, x, y, pointer_button_state());
+        *LAST_HOOK_AT.lock() = Some(Instant::now());
     }
 
     /// Call whenever recording/arming/cinematic settings change (never from follow thread).
@@ -510,6 +588,12 @@ mod imp {
     /// Hot-path sample from cursor-follow thread — no `state` lock.
     pub fn record_follow_sample(x: f64, y: f64, buttons: u8) {
         if !FOLLOW_CAPTURE.load(Ordering::Acquire) {
+            return;
+        }
+        if LAST_HOOK_AT
+            .lock()
+            .is_some_and(|t| t.elapsed() < Duration::from_millis(HOOK_SAMPLE_PRIORITY_MS))
+        {
             return;
         }
         let session = *SESSION_START.lock();
@@ -553,7 +637,7 @@ mod imp {
         ))
     }
 
-    fn scaled_sprite(spr: &CursorSprite, sw: u32, sh: u32) -> Arc<RgbaImage> {
+    fn scaled_sprite(spr: &CursorSprite, sw: u32, sh: u32, out_short: u32) -> Arc<RgbaImage> {
         if sw == spr.rgba.width() && sh == spr.rgba.height() {
             return Arc::new(spr.rgba.clone());
         }
@@ -563,7 +647,12 @@ mod imp {
                 return Arc::clone(&cached.rgba);
             }
         }
-        let resized = Arc::new(image::imageops::resize(&spr.rgba, sw, sh, FilterType::Lanczos3));
+        let filter = if out_short >= 1440 {
+            FilterType::Triangle
+        } else {
+            FilterType::Lanczos3
+        };
+        let resized = Arc::new(image::imageops::resize(&spr.rgba, sw, sh, filter));
         *cache = Some(ScaledCache {
             w: sw,
             h: sh,
@@ -653,7 +742,8 @@ mod imp {
         let left = cx - hx;
         let top = cy - hy;
         let row_bytes = out_w as usize * 4;
-        let sprite = scaled_sprite(spr, sw, sh);
+        let out_short = out_w.min(out_h);
+        let sprite = scaled_sprite(spr, sw, sh, out_short);
 
         for y in 0..sh {
             for x in 0..sw {
@@ -697,6 +787,58 @@ mod imp {
         }
     }
 
+    /// GPU overlay placement — mirrors CPU `stamp_sprite` geometry without splatting pixels.
+    #[derive(Clone, Copy, Debug)]
+    pub struct GpuOverlay {
+        pub left: f32,
+        pub top: f32,
+        pub width: f32,
+        pub height: f32,
+        pub click: bool,
+    }
+
+    pub fn gpu_overlay_at(
+        slot_t_secs: f64,
+        vp: &Viewport,
+        src_w: u32,
+        src_h: u32,
+        out_w: u32,
+        out_h: u32,
+    ) -> Option<GpuOverlay> {
+        let Some((mx, my, buttons)) = cfr_sample_at(slot_t_secs) else {
+            return None;
+        };
+        let layout = frame_layout(vp, src_w, src_h, out_w, out_h);
+        let Some((ox, oy)) = monitor_to_output(mx, my, &layout) else {
+            return None;
+        };
+        let (ox, oy) = smooth_output_xy(ox, oy, slot_t_secs);
+        let click = buttons & 0x1 != 0;
+        let spr = sprite();
+        let short = out_w.min(out_h).max(1) as f64;
+        let mut scale = (short * 0.062).clamp(40.0, 124.0) / spr.rgba.height().max(1) as f64;
+        if click {
+            scale *= 0.88;
+        }
+        let sw = (spr.rgba.width() as f64 * scale).round().max(1.0) as f32;
+        let sh = (spr.rgba.height() as f64 * scale).round().max(1.0) as f32;
+        let hx = spr.hotspot_x as f64 * scale;
+        let hy = spr.hotspot_y as f64 * scale;
+        Some(GpuOverlay {
+            left: (ox - hx) as f32,
+            top: (oy - hy) as f32,
+            width: sw,
+            height: sh,
+            click,
+        })
+    }
+
+    /// Raw RGBA bytes for uploading the cursor sprite to a D3D11 texture.
+    pub fn cursor_rgba_bytes() -> (u32, u32, &'static [u8]) {
+        let spr = sprite();
+        (spr.rgba.width(), spr.rgba.height(), spr.rgba.as_raw())
+    }
+
     /// Reuse `out` as the stamped frame buffer (resizes + copies desktop, then draws cursor).
     pub fn stamp_into_buffer(
         out: &mut Vec<u8>,
@@ -720,13 +862,14 @@ mod imp {
         }
         out.copy_from_slice(desktop);
 
-        let Some((mx, my, buttons)) = sample_at(slot_t_secs) else {
+        let Some((mx, my, buttons)) = cfr_sample_at(slot_t_secs) else {
             return;
         };
         let layout = frame_layout(vp, src_w, src_h, out_w, out_h);
         let Some((ox, oy)) = monitor_to_output(mx, my, &layout) else {
             return;
         };
+        let (ox, oy) = smooth_output_xy(ox, oy, slot_t_secs);
         let click = buttons & 0x1 != 0;
         stamp_sprite(out, out_w, out_h, sprite(), ox, oy, click);
     }
@@ -877,8 +1020,9 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{
-    cinematic_enabled, latest_monitor_pos, record_follow_sample, record_hook_move, record_sample,
-    reset_session, set_capture_space, stamp_into_buffer, sync_follow_gate_from_state,
+    cinematic_enabled, cursor_rgba_bytes, gpu_overlay_at, latest_monitor_pos, record_follow_sample,
+    record_hook_move, record_sample, reset_session, set_capture_space, stamp_into_buffer,
+    sync_follow_gate_from_state, GpuOverlay,
 };
 
 #[cfg(not(windows))]

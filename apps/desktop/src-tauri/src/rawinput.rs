@@ -4,13 +4,16 @@ use crate::state::{SharedState, SharedViewport};
 mod imp {
     use super::*;
     use crate::geometry::{
-        advance_pan_follow, apply_edge_soft_pan, clamp, edge_soft_zone_px, frame_layout,
-        normalize_zoom, output_dims, pan_max_speed_for_zoom, smooth_toward_capped,
-        viewport_center_bounds, zoom_max_vel_for_level, zoom_min_for, ZOOM_SNAP_EPS,
+        advance_pan_follow, apply_edge_soft_pan, clamp, clamp_zoom, converge_center_to_bounds,
+        ease_in_out_cubic, edge_soft_zone_px, frame_layout, magnet_zoom_target, output_dims,
+        pan_follow_profile, pan_max_speed_for_zoom, viewport_center_bounds,
+        zoom_canonical_step_scale, zoom_from_gesture_ticks,
+        zoom_gesture_duration_secs, zoom_min_for, crosses_canonical_zoom, OneEuro2d,
+        CANONICAL_ZOOM_EASE_SECS, smooth_toward,
+        ZOOM_TICKS_PER_NOTCH,
     };
-    use crate::state::Orientation;
+    use crate::state::{Orientation, PromoMode, Viewport, ViewportState};
     use crate::log::capture_log;
-    use crate::state::ViewportState;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::OnceLock;
     use std::time::{Duration, Instant};
@@ -44,38 +47,50 @@ mod imp {
     /// When `PENDING_FULL_LOCK` was last engaged (ms since epoch). Used purely as a
     /// safety deadline so the latch can never stay stuck and swallow Alt+scroll.
     static PENDING_FULL_LOCK_SINCE_MS: AtomicU64 = AtomicU64::new(0);
-    /// Wheel deltas queued by the hook; drained on the follow thread only.
-    static PENDING_WHEEL_DELTA: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
+    /// Wheel notches queued by the hook; drained on the follow thread only.
+    static PENDING_WHEEL_NOTCHES: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
+    /// Gesture anchor zoom (when the current scroll burst started).
+    static GESTURE_ANCHOR_ZOOM: parking_lot::Mutex<Option<f64>> = parking_lot::Mutex::new(None);
+    /// Accumulated virtual ticks for the active gesture (notches × 13).
+    static GESTURE_TICKS: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.0);
+    /// Cubic ease-in-out animation toward `zoom_target`.
+    static ZOOM_EASE_FROM: parking_lot::Mutex<f64> = parking_lot::Mutex::new(1.0);
+    static ZOOM_EASE_TO: parking_lot::Mutex<f64> = parking_lot::Mutex::new(1.0);
+    static ZOOM_EASE_START: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
+    static ZOOM_EASE_DUR: parking_lot::Mutex<f64> = parking_lot::Mutex::new(0.5);
     static LAST_ALT_DEBUG_MS: AtomicU64 = AtomicU64::new(0);
     /// Cached so the mouse hook never locks the viewport mutex (that starved pan follow).
     static ZOOM_AT_MIN: AtomicBool = AtomicBool::new(false);
     static VIEWPORT_DIRTY: AtomicBool = AtomicBool::new(false);
+    /// Low-pass the raw cursor before pan follow — removes micro-jitter from polling.
+    static PAN_CURSOR_FILTER: parking_lot::Mutex<Option<((f64, f64), OneEuro2d, f64)>> =
+        parking_lot::Mutex::new(None);
 
     const CURSOR_TICK_MS: u64 = 8;
-    // Lower Hz = longer ease-in before the velocity cap engages (cinematic ramp).
-    const PAN_SMOOTH_HZ: f64 = 6.2;
-    const PAN_SMOOTH_HZ_ALT: f64 = 7.0;
+    // Baselines — overridden per frame by `pan_follow_profile` from Studio settings.
+    const PAN_SMOOTH_HZ: f64 = 5.2;
+    const PAN_SMOOTH_HZ_ALT: f64 = 5.8;
+    /// One Euro on live cursor — smooth at rest, responsive on fast drags (defaults).
+    const PAN_EURO_MIN_CUTOFF: f64 = 0.85;
+    const PAN_EURO_BETA: f64 = 0.035;
     const UNFREEZE_PAN_HZ_START: f64 = 1.5;
     const UNFREEZE_SPEED_START: f64 = 0.09;
     const UNFREEZE_EASE_DURATION: Duration = Duration::from_millis(3600);
     const UNFREEZE_ARRIVED_PX: f64 = 10.0;
-    // Lower = creamier zoom glide toward the target.
-    const ZOOM_SMOOTH_HZ: f64 = 3.0;
-    /// Base max zoom change per second at zoom 1.0; scaled by level below.
-    const ZOOM_MAX_VEL_BASE: f64 = 0.55;
-    const ZOOM_VEL_MIN_SCALE: f64 = 0.82;
-    const ZOOM_VEL_MAX_SCALE: f64 = 2.6;
-    // Soft zone: crawl while the cursor is near the current frame center.
-    const PAN_SOFT_INNER_PX: f64 = 42.0;
-    const PAN_SOFT_OUTER_PX: f64 = 265.0;
-    const PAN_SOFT_INNER_SCALE: f64 = 0.16;
+    // Soft zone: gentle crawl near frame center, long ramp to full follow speed.
+    const PAN_SOFT_INNER_PX: f64 = 55.0;
+    const PAN_SOFT_OUTER_PX: f64 = 340.0;
+    const PAN_SOFT_INNER_SCALE: f64 = 0.32;
     /// Base pan cap at zoom 1.0 (monitor px/s); scaled down when wide, up when tight.
-    const PAN_MAX_SPEED_BASE: f64 = 860.0;
+    const PAN_MAX_SPEED_BASE: f64 = 760.0;
     const PAN_MAX_SPEED_WIDE_SCALE: f64 = 0.72;
     const PAN_MAX_SPEED_TIGHT_SCALE: f64 = 1.28;
-    // Gentler per-notch magnitude so each scroll step eases rather than jumps.
-    const WHEEL_ZOOM_STEP: f64 = 0.075;
+    /// Max queued notches (×13 virtual ticks each) before clamping a fast spin.
+    const MAX_PENDING_NOTCHES: f64 = 24.0;
     const FULL_FRAME_SETTLE: f64 = 0.012;
+    const ZOOM_SETTLE_EPS: f64 = 0.0008;
+    const ZOOM_CREEP_HZ: f64 = 5.0;
+    /// While easing to full 9×16, bounds shrink every frame — pull center in if pan lags.
     const FULL_FRAME_LOCK: Duration = Duration::from_millis(400);
     /// Hard safety bound for the easing-to-full latch. Easing to full 9×16 settles
     /// in well under a second; if the latch is somehow still set after this long
@@ -97,6 +112,128 @@ mod imp {
         }
     }
 
+    fn clear_gesture_zoom_state() {
+        *PENDING_WHEEL_NOTCHES.lock() = 0.0;
+        *GESTURE_ANCHOR_ZOOM.lock() = None;
+        *GESTURE_TICKS.lock() = 0.0;
+        *ZOOM_EASE_START.lock() = None;
+    }
+
+    fn gesture_session_active() -> bool {
+        GESTURE_ANCHOR_ZOOM.lock().is_some()
+    }
+
+    /// Hold the ease slot open at the settled zoom so staggered wheel notches
+    /// retarget smoothly instead of cold-starting a new ease-in-out segment.
+    fn park_zoom_ease(at: f64) {
+        *ZOOM_EASE_FROM.lock() = at;
+        *ZOOM_EASE_TO.lock() = at;
+        *ZOOM_EASE_START.lock() = Some(Instant::now());
+        *ZOOM_EASE_DUR.lock() = 0.05;
+    }
+
+    fn zoom_ease_mid_flight() -> bool {
+        ZOOM_EASE_START.lock().is_some()
+            && (*ZOOM_EASE_FROM.lock() - *ZOOM_EASE_TO.lock()).abs() > ZOOM_SETTLE_EPS
+    }
+
+    fn restart_zoom_ease(from: f64, to: f64, total_ticks: f64) {
+        *ZOOM_EASE_FROM.lock() = from;
+        *ZOOM_EASE_TO.lock() = to;
+        *ZOOM_EASE_START.lock() = Some(Instant::now());
+        *ZOOM_EASE_DUR.lock() = zoom_gesture_duration_secs(from, to, total_ticks);
+    }
+
+    /// Redirect or extend an in-flight ease without jolting — keeps accel/decel continuity.
+    fn retarget_zoom_ease(
+        current: f64,
+        new_to: f64,
+        total_ticks: f64,
+        added_ticks: f64,
+        canonical_snap: bool,
+    ) {
+        let segment_dur = if canonical_snap {
+            CANONICAL_ZOOM_EASE_SECS
+        } else {
+            zoom_gesture_duration_secs(current, new_to, added_ticks.max(1.0))
+        };
+
+        if zoom_ease_mid_flight() {
+            let started = ZOOM_EASE_START.lock().expect("ease start");
+            let elapsed = started.elapsed().as_secs_f64();
+            let old_dur = (*ZOOM_EASE_DUR.lock()).max(0.05);
+            let remaining = (old_dur - elapsed).max(0.0);
+            let new_dur = (segment_dur + remaining * 0.5).clamp(0.55, 3.6);
+            *ZOOM_EASE_FROM.lock() = current;
+            *ZOOM_EASE_TO.lock() = new_to;
+            *ZOOM_EASE_START.lock() = Some(Instant::now());
+            *ZOOM_EASE_DUR.lock() = new_dur;
+        } else if gesture_session_active() {
+            let new_dur = segment_dur.clamp(0.55, 3.6);
+            *ZOOM_EASE_FROM.lock() = current;
+            *ZOOM_EASE_TO.lock() = new_to;
+            *ZOOM_EASE_START.lock() = Some(Instant::now());
+            *ZOOM_EASE_DUR.lock() = new_dur;
+        } else {
+            restart_zoom_ease(current, new_to, total_ticks);
+            if canonical_snap {
+                *ZOOM_EASE_DUR.lock() = CANONICAL_ZOOM_EASE_SECS;
+            }
+        }
+    }
+
+    fn zoom_ease_active() -> bool {
+        zoom_ease_mid_flight()
+    }
+
+    fn advance_zoom_ease(vp: &mut ViewportState, dt_secs: f64) -> bool {
+        let start = *ZOOM_EASE_START.lock();
+        let Some(started) = start else {
+            return false;
+        };
+        let from = *ZOOM_EASE_FROM.lock();
+        let to = *ZOOM_EASE_TO.lock();
+        let dur = (*ZOOM_EASE_DUR.lock()).max(0.05);
+        let orientation = vp.viewport.orientation;
+        let segment_span = (from - to).abs().max(0.02);
+        let t = (started.elapsed().as_secs_f64() / dur).clamp(0.0, 1.0);
+        let current = vp.viewport.zoom;
+
+        if (from - to).abs() <= ZOOM_SETTLE_EPS {
+            return false;
+        }
+
+        if t < 1.0 {
+            let desired = from + (to - from) * ease_in_out_cubic(t);
+            let step = desired - current;
+            let scale = zoom_canonical_step_scale(current, step, to, orientation, segment_span);
+            vp.viewport.zoom = current + step * scale;
+        } else {
+            let remain = to - current;
+            if remain.abs() > ZOOM_SETTLE_EPS {
+                let scale = zoom_canonical_step_scale(current, remain, to, orientation, segment_span);
+                let eff_hz = ZOOM_CREEP_HZ * scale.max(crate::geometry::SOFT_APPROACH_FLOOR);
+                vp.viewport.zoom = smooth_toward(current, to, eff_hz, dt_secs.max(1.0 / 240.0));
+                return false;
+            }
+            let snapped = magnet_zoom_target(to, orientation);
+            vp.viewport.zoom = snapped;
+            vp.zoom_target = snapped;
+            sync_zoom_at_min(snapped, orientation);
+            const MIN_NOTCH: f64 = 1.0e-4;
+            if gesture_session_active()
+                && PENDING_WHEEL_NOTCHES.lock().abs() < MIN_NOTCH
+                && !pending_full_lock_active()
+            {
+                park_zoom_ease(snapped);
+                return false;
+            }
+            *ZOOM_EASE_START.lock() = None;
+            return true;
+        }
+        false
+    }
+
     fn scroll_block_reason() -> &'static str {
         if zoom_hold_active() {
             "full-frame-hold"
@@ -116,6 +253,31 @@ mod imp {
 
     fn mark_viewport_dirty() {
         VIEWPORT_DIRTY.store(true, Ordering::Release);
+    }
+
+    fn reset_pan_cursor_filter() {
+        *PAN_CURSOR_FILTER.lock() = None;
+    }
+
+    pub fn reset_pan_follow_tuning() {
+        reset_pan_cursor_filter();
+    }
+
+    fn filter_pan_cursor(
+        raw_x: f64,
+        raw_y: f64,
+        dt_secs: f64,
+        min_cutoff: f64,
+        beta: f64,
+    ) -> (f64, f64) {
+        let mut slot = PAN_CURSOR_FILTER.lock();
+        let cfg = (min_cutoff, beta);
+        if slot.as_ref().map(|(c, _, _)| *c) != Some(cfg) {
+            *slot = Some((cfg, OneEuro2d::new(min_cutoff, beta), 0.0));
+        }
+        let (_cfg, filter, t) = slot.as_mut().expect("pan cursor filter");
+        *t += dt_secs;
+        filter.filter(raw_x, raw_y, *t)
     }
 
     pub fn take_viewport_dirty() -> bool {
@@ -147,7 +309,8 @@ mod imp {
         let since = PENDING_FULL_LOCK_SINCE_MS.load(Ordering::Acquire);
         if since != 0 && now_ms().saturating_sub(since) > MAX_PENDING_FULL_MS {
             set_pending_full_lock(false);
-            *PENDING_WHEEL_DELTA.lock() = 0.0;
+            *PENDING_WHEEL_NOTCHES.lock() = 0.0;
+            clear_gesture_zoom_state();
             alt_log("recovered stuck easing-to-full latch — Alt+scroll re-armed");
             return false;
         }
@@ -172,13 +335,13 @@ mod imp {
     }
 
     fn release_alt_zoom_state() {
-        let pending = *PENDING_WHEEL_DELTA.lock();
+        let pending = *PENDING_WHEEL_NOTCHES.lock();
         set_pending_full_lock(false);
-        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        clear_gesture_zoom_state();
         *ZOOM_LOCK_UNTIL.lock() = None;
         let _ = alt_held();
         if pending.abs() > f64::EPSILON {
-            alt_log(&format!("key up — cleared pending wheel delta {pending:.3}"));
+            alt_log(&format!("key up — cleared pending wheel notches {pending:.3}"));
         } else {
             alt_log("key up — zoom state reset");
         }
@@ -186,8 +349,9 @@ mod imp {
 
     fn reset_zoom_input_state(viewport: &SharedViewport) {
         set_pending_full_lock(false);
-        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        clear_gesture_zoom_state();
         *ZOOM_LOCK_UNTIL.lock() = None;
+        reset_pan_cursor_filter();
         let _ = alt_held();
         let vp = viewport.lock();
         sync_zoom_at_min(vp.zoom_target, vp.viewport.orientation);
@@ -213,7 +377,7 @@ mod imp {
 
     fn engage_full_frame_hold() {
         set_pending_full_lock(false);
-        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        clear_gesture_zoom_state();
         *ZOOM_LOCK_UNTIL.lock() = Some(Instant::now() + FULL_FRAME_LOCK);
         alt_log("landed full 9×16 — 0.4s scroll lock");
     }
@@ -221,23 +385,18 @@ mod imp {
     fn aim_full_frame(vp: &mut ViewportState) {
         vp.zoom_target = 1.0;
         set_pending_full_lock(true);
-        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        clear_gesture_zoom_state();
+        restart_zoom_ease(vp.viewport.zoom, 1.0, ZOOM_TICKS_PER_NOTCH);
         alt_log("snap toward full 9×16");
     }
 
-    fn hits_full_frame_snap(prev: f64, raw_next: f64) -> bool {
-        if (raw_next - 1.0).abs() <= ZOOM_SNAP_EPS {
-            return true;
-        }
-        (prev - 1.0) * (raw_next - 1.0) < 0.0
+    enum WheelApply {
+        Applied,
+        Ignored,
     }
 
-    /// Per-press keyboard zoom step. Precision-touchpad two-finger scroll is
-    /// never delivered to global mouse hooks (Windows routes it as pointer /
-    /// gesture messages to the focused window), so `Alt` + `↑`/`↓` is the
-    /// device-independent zoom path. Holding the key auto-repeats for a smooth
-    /// continuous zoom.
-    const KEY_ZOOM_STEP: f64 = 0.7;
+    /// Per-press keyboard zoom — one key repeat = one wheel notch (13 virtual ticks).
+    const KEY_ZOOM_NOTCHES: f64 = 1.0;
 
     fn zoom_key_dir(vk: u32) -> Option<f64> {
         if vk == VK_UP.0 as u32 {
@@ -249,8 +408,21 @@ mod imp {
         }
     }
 
+    fn promo_blocks_zoom() -> bool {
+        let Some(ctx) = CTX.get() else {
+            return false;
+        };
+        let st = ctx.state.lock();
+        // Block zoom only during the demo-only phase (P/L badge). Allow during inner countdown + take.
+        st.promo_mode.is_some() && !st.promo_inner_active && !st.recording_armed
+    }
+
     /// Queue a zoom step (shared by the low-level hook and global shortcuts).
     fn queue_zoom_step(dir: f64) -> bool {
+        if promo_blocks_zoom() {
+            alt_log_throttled("zoom blocked during promo usage phase", 400);
+            return true;
+        }
         if dir < 0.0 && ZOOM_AT_MIN.load(Ordering::Acquire) {
             alt_log_throttled("key zoom-out dropped — already at min zoom (full desktop)", 600);
             return true;
@@ -262,13 +434,16 @@ mod imp {
             );
             return true;
         }
-        let step = dir * KEY_ZOOM_STEP;
+        let step = dir * KEY_ZOOM_NOTCHES;
         let queued = {
-            let mut acc = PENDING_WHEEL_DELTA.lock();
-            *acc = (*acc + step).clamp(-12.0, 12.0);
+            let mut acc = PENDING_WHEEL_NOTCHES.lock();
+            *acc = (*acc + step).clamp(-MAX_PENDING_NOTCHES, MAX_PENDING_NOTCHES);
             *acc
         };
-        alt_log(&format!("key zoom step {step:.2} (total pending {queued:.3})"));
+        alt_log(&format!(
+            "key zoom notch {step:.2} ({:.0} virtual ticks pending)",
+            queued * ZOOM_TICKS_PER_NOTCH
+        ));
         true
     }
 
@@ -359,14 +534,13 @@ mod imp {
                         }
                     }
                     let queued = {
-                        let mut acc = PENDING_WHEEL_DELTA.lock();
-                        // Clamp the backlog so a fast spin (or a trackpad flick that
-                        // out-paces the drain) can't build an unbounded zoom burst.
-                        *acc = (*acc + delta).clamp(-12.0, 12.0);
+                        let mut acc = PENDING_WHEEL_NOTCHES.lock();
+                        *acc = (*acc + delta).clamp(-MAX_PENDING_NOTCHES, MAX_PENDING_NOTCHES);
                         *acc
                     };
                     alt_log(&format!(
-                        "wheel queued delta {delta:.3} (total pending {queued:.3}, hwheel={})",
+                        "wheel queued {delta:.3} notches ({:.0} virtual ticks total, hwheel={})",
+                        queued * ZOOM_TICKS_PER_NOTCH,
                         msg == WM_MOUSEHWHEEL
                     ));
                 }
@@ -386,15 +560,15 @@ mod imp {
         CallNextHookEx(None, code, wparam, lparam)
     }
 
-    /// Follow thread: apply queued wheel deltas (single owner of viewport pan/zoom).
+    /// Follow thread: merge queued notches into the active gesture target.
     fn drain_pending_wheel(ctx: &Ctx) -> bool {
         if scroll_input_blocked() {
-            let dropped = *PENDING_WHEEL_DELTA.lock();
+            let dropped = *PENDING_WHEEL_NOTCHES.lock();
             if dropped.abs() > f64::EPSILON {
-                *PENDING_WHEEL_DELTA.lock() = 0.0;
+                clear_gesture_zoom_state();
                 alt_log_throttled(
                     &format!(
-                        "dropped pending delta {dropped:.3} while blocked ({})",
+                        "dropped pending {dropped:.3} notches while blocked ({})",
                         scroll_block_reason()
                     ),
                     400,
@@ -403,78 +577,107 @@ mod imp {
             return false;
         }
 
-        // Apply the *actual* accumulated delta (fractional for trackpads, whole
-        // notches for mice), capped per tick so a big backlog eases in smoothly
-        // instead of jolting. Using signum here silently cancelled the small
-        // fractional deltas trackpads emit, so Alt+scroll never zoomed on a
-        // touchpad — apply the real value instead.
-        const MAX_PER_TICK: f64 = 3.0;
-        const MIN_APPLY: f64 = 1.0e-3;
-        let delta = {
-            let mut acc = PENDING_WHEEL_DELTA.lock();
-            if acc.abs() < MIN_APPLY {
-                *acc = 0.0;
+        const MIN_NOTCH: f64 = 1.0e-4;
+        let notches = {
+            let mut acc = PENDING_WHEEL_NOTCHES.lock();
+            if acc.abs() < MIN_NOTCH {
                 return false;
             }
-            let take = acc.clamp(-MAX_PER_TICK, MAX_PER_TICK);
-            *acc -= take;
+            let take = *acc;
+            *acc = 0.0;
             take
         };
-        apply_wheel_delta(ctx, delta)
+        match apply_wheel_notches(ctx, notches) {
+            WheelApply::Applied => true,
+            WheelApply::Ignored => false,
+        }
     }
 
-    fn apply_wheel_delta(ctx: &Ctx, delta: f64) -> bool {
-        if delta.abs() < f64::EPSILON {
-            return false;
+    fn apply_wheel_notches(ctx: &Ctx, notches: f64) -> WheelApply {
+        if notches.abs() < f64::EPSILON {
+            return WheelApply::Ignored;
         }
 
         let mut vp = ctx.viewport.lock();
-
-        // Note: we deliberately do NOT snap the viewport center to the cursor on
-        // each wheel notch. The pan system in `advance_viewport` already eases the
-        // center toward the live cursor every frame, so letting that lazy follow
-        // lead — while zoom animates independently toward `zoom_target` — keeps the
-        // glide smooth instead of teleporting the box on every notch.
-
-        let factor = 1.0 + delta * WHEEL_ZOOM_STEP * vp.zoom_sensitivity;
-        let prev = vp.zoom_target;
-        let raw_next = prev * factor;
-
         let orientation = vp.viewport.orientation;
+        let sensitivity = vp.zoom_sensitivity;
 
-        if hits_full_frame_snap(prev, raw_next) {
-            aim_full_frame(&mut vp);
-            sync_zoom_at_min(vp.zoom_target, orientation);
-            mark_viewport_dirty();
-            return true;
+        if notches < 0.0 && vp.viewport.zoom <= zoom_min_for(orientation) + 0.001 {
+            alt_log_throttled(
+                if orientation == Orientation::Landscape {
+                    "wheel ignored — already at min zoom (full 16×9)"
+                } else {
+                    "wheel ignored — already at min zoom (full desktop)"
+                },
+                600,
+            );
+            return WheelApply::Ignored;
         }
 
-        let next = normalize_zoom(raw_next, orientation);
-        if (next - prev).abs() <= f64::EPSILON {
-            if prev <= zoom_min_for(orientation) + 0.001 && delta < 0.0 {
-                alt_log_throttled(
-                    if orientation == Orientation::Landscape {
-                        "wheel ignored — already at min zoom (full 16×9)"
-                    } else {
-                        "wheel ignored — already at min zoom (full desktop)"
-                    },
-                    600,
-                );
-            } else if prev >= crate::geometry::ZOOM_MAX - 0.001 && delta > 0.0 {
+        let mut ticks = *GESTURE_TICKS.lock();
+        let mut anchor = *GESTURE_ANCHOR_ZOOM.lock();
+
+        if anchor.is_none() {
+            anchor = Some(vp.viewport.zoom);
+            *GESTURE_ANCHOR_ZOOM.lock() = anchor;
+        }
+        let anchor = anchor.unwrap_or(vp.viewport.zoom);
+
+        let prev_ticks = ticks;
+        ticks += notches * ZOOM_TICKS_PER_NOTCH;
+        *GESTURE_TICKS.lock() = ticks;
+
+        let prev_target = vp.zoom_target;
+        let raw_target = zoom_from_gesture_ticks(anchor, ticks, sensitivity, orientation);
+
+        if let Some(canonical) = crosses_canonical_zoom(prev_target, raw_target, orientation) {
+            if (canonical - 1.0).abs() <= crate::geometry::ZOOM_SNAP_EPS {
+                set_pending_full_lock(true);
+            } else {
+                set_pending_full_lock(false);
+            }
+            vp.zoom_target = canonical;
+            sync_zoom_at_min(canonical, orientation);
+            retarget_zoom_ease(
+                vp.viewport.zoom,
+                canonical,
+                ticks,
+                notches.abs() * ZOOM_TICKS_PER_NOTCH,
+                true,
+            );
+            mark_viewport_dirty();
+            return WheelApply::Applied;
+        }
+
+        let next = clamp_zoom(raw_target, orientation);
+        if (next - prev_target).abs() <= f64::EPSILON && (next - vp.viewport.zoom).abs() <= f64::EPSILON {
+            if vp.viewport.zoom >= crate::geometry::ZOOM_MAX - 0.001 && notches > 0.0 {
                 alt_log_throttled("wheel ignored — already at max zoom", 600);
             } else {
-                alt_log_throttled(&format!("wheel ignored — zoom clamped at {prev:.2}"), 800);
+                alt_log_throttled(&format!("wheel ignored — zoom clamped at {next:.2}"), 800);
             }
-            return false;
+            *GESTURE_TICKS.lock() = prev_ticks;
+            return WheelApply::Ignored;
         }
 
         set_pending_full_lock(false);
         vp.zoom_target = next;
         sync_zoom_at_min(next, orientation);
+
+        retarget_zoom_ease(
+            vp.viewport.zoom,
+            next,
+            ticks,
+            notches.abs() * ZOOM_TICKS_PER_NOTCH,
+            false,
+        );
+
         let (x, y, z) = (vp.viewport.x, vp.viewport.y, vp.viewport.zoom);
-        alt_log(&format!("zoom target {prev:.2} → {next:.2} (viewport @ {x:.0},{y:.0} zoom {z:.2})"));
+        alt_log(&format!(
+            "zoom gesture {prev_ticks:.0}→{ticks:.0} ticks → target {prev_target:.2}→{next:.2} (now {z:.2} @ {x:.0},{y:.0})"
+        ));
         mark_viewport_dirty();
-        true
+        WheelApply::Applied
     }
 
     pub fn start(app: AppHandle, viewport: SharedViewport, state: SharedState) {
@@ -559,9 +762,14 @@ mod imp {
         None
     }
 
-    fn advance_viewport(viewport: &SharedViewport, dt_secs: f64) -> (bool, Option<(f64, f64)>) {
+    fn advance_viewport(viewport: &SharedViewport, state: &SharedState, dt_secs: f64) -> (bool, Option<(f64, f64)>) {
         let hold = zoom_hold_active();
         let pending = PENDING_FULL_LOCK.load(Ordering::Acquire);
+        let (input, _promo_inner_active) = {
+            let st = state.lock();
+            (st.input_settings, st.promo_inner_active)
+        };
+        let follow = pan_follow_profile(input.follow_speed);
 
         let mut sample_pos = None;
         let mut vp = viewport.lock();
@@ -579,6 +787,13 @@ mod imp {
                     m.width as f64,
                     m.height as f64,
                 ) {
+                    let (tx, ty) = filter_pan_cursor(
+                        tx,
+                        ty,
+                        dt_secs,
+                        follow.euro_min_cutoff,
+                        follow.euro_beta,
+                    );
                     sample_pos = Some((tx, ty));
                     let (pan_hz, speed_mult) = if let Some(at) = vp.frame_unfreeze_at {
                         let elapsed = Instant::now().duration_since(at).as_secs_f64();
@@ -586,9 +801,9 @@ mod imp {
                         if elapsed >= dur {
                             vp.frame_unfreeze_at = None;
                             let hz = if alt_held() {
-                                PAN_SMOOTH_HZ_ALT
+                                follow.smooth_hz_alt
                             } else {
-                                PAN_SMOOTH_HZ
+                                follow.smooth_hz
                             };
                             (hz, 1.0)
                         } else {
@@ -596,9 +811,9 @@ mod imp {
                             let t = (elapsed / dur).clamp(0.0, 1.0);
                             let ease = t * t;
                             let target_hz = if alt_held() {
-                                PAN_SMOOTH_HZ_ALT
+                                follow.smooth_hz_alt
                             } else {
-                                PAN_SMOOTH_HZ
+                                follow.smooth_hz
                             };
                             (
                                 UNFREEZE_PAN_HZ_START + (target_hz - UNFREEZE_PAN_HZ_START) * ease,
@@ -606,9 +821,9 @@ mod imp {
                             )
                         }
                     } else if alt_held() {
-                        (PAN_SMOOTH_HZ_ALT, 1.0)
+                        (follow.smooth_hz_alt, 1.0)
                     } else {
-                        (PAN_SMOOTH_HZ, 1.0)
+                        (follow.smooth_hz, 1.0)
                     };
 
                     let max_pan_speed = pan_max_speed_for_zoom(
@@ -616,7 +831,8 @@ mod imp {
                         PAN_MAX_SPEED_BASE,
                         PAN_MAX_SPEED_WIDE_SCALE,
                         PAN_MAX_SPEED_TIGHT_SCALE,
-                    ) * speed_mult;
+                    ) * speed_mult
+                        * follow.max_speed_mult;
 
                     let (nx, ny) = advance_pan_follow(
                         vp.viewport.x,
@@ -625,9 +841,9 @@ mod imp {
                         ty,
                         pan_hz,
                         dt_secs,
-                        PAN_SOFT_INNER_PX,
-                        PAN_SOFT_OUTER_PX,
-                        PAN_SOFT_INNER_SCALE,
+                        follow.soft_inner_px,
+                        follow.soft_outer_px,
+                        follow.soft_inner_scale,
                         max_pan_speed,
                     );
                     let (out_w, out_h) = output_dims(vp.viewport.orientation, 1080);
@@ -635,7 +851,7 @@ mod imp {
                     let soft = edge_soft_zone_px(layout.crop.w, layout.crop.h);
                     let (min_x, max_x, min_y, max_y) =
                         viewport_center_bounds(&vp.viewport, m.width, m.height);
-                    let (nx, ny) = apply_edge_soft_pan(
+                    let (mut nx, mut ny) = apply_edge_soft_pan(
                         vp.viewport.x,
                         vp.viewport.y,
                         nx,
@@ -646,8 +862,59 @@ mod imp {
                         max_y,
                         soft,
                     );
+                    let zoom_easing = zoom_ease_active();
+                    if pending || zoom_easing {
+                        (nx, ny) = converge_center_to_bounds(
+                            nx,
+                            ny,
+                            min_x,
+                            max_x,
+                            min_y,
+                            max_y,
+                            follow.bounds_converge_hz,
+                            dt_secs,
+                        );
+                    }
                     vp.viewport.x = nx;
                     vp.viewport.y = ny;
+
+                    if let Some(usage) = vp.promo_usage_viewport.as_mut() {
+                        // Usage track always stays full-frame — never mirror inner pan/zoom
+                        // (including during the inner countdown while the overlay shows the crop).
+                        let mut usage_vp = *usage;
+                        usage_vp.zoom = 1.0;
+                        let (out_w, out_h) = output_dims(usage.orientation, 1080);
+                        let layout = frame_layout(&usage_vp, m.width, m.height, out_w, out_h);
+                        let soft = edge_soft_zone_px(layout.crop.w, layout.crop.h);
+                        let (min_x, max_x, min_y, max_y) =
+                            viewport_center_bounds(&usage_vp, m.width, m.height);
+                        let (ux, uy) = advance_pan_follow(
+                            usage.x,
+                            usage.y,
+                            tx,
+                            ty,
+                            pan_hz,
+                            dt_secs,
+                            follow.soft_inner_px,
+                            follow.soft_outer_px,
+                            follow.soft_inner_scale,
+                            max_pan_speed,
+                        );
+                        let (ux, uy) = apply_edge_soft_pan(
+                            usage.x,
+                            usage.y,
+                            ux,
+                            uy,
+                            min_x,
+                            max_x,
+                            min_y,
+                            max_y,
+                            soft,
+                        );
+                        usage.x = ux;
+                        usage.y = uy;
+                        usage.zoom = 1.0;
+                    }
 
                     let dist = (vp.viewport.x - tx).abs() + (vp.viewport.y - ty).abs();
                     if dist <= UNFREEZE_ARRIVED_PX {
@@ -664,27 +931,22 @@ mod imp {
         if hold {
             vp.zoom_target = 1.0;
             vp.viewport.zoom = 1.0;
-        } else {
-            vp.viewport.zoom = smooth_toward_capped(
-                vp.viewport.zoom,
-                vp.zoom_target,
-                ZOOM_SMOOTH_HZ,
-                dt_secs,
-                zoom_max_vel_for_level(
-                    vp.viewport.zoom,
-                    ZOOM_MAX_VEL_BASE,
-                    ZOOM_VEL_MIN_SCALE,
-                    ZOOM_VEL_MAX_SCALE,
-                ),
-            );
+            *ZOOM_EASE_START.lock() = None;
+        } else if zoom_ease_active() {
+            let settled = advance_zoom_ease(&mut vp, dt_secs);
 
-            if pending && (vp.viewport.zoom - 1.0).abs() <= FULL_FRAME_SETTLE {
+            if pending && settled && (vp.viewport.zoom - 1.0).abs() <= FULL_FRAME_SETTLE {
                 vp.viewport.zoom = 1.0;
                 vp.zoom_target = 1.0;
+                *ZOOM_EASE_START.lock() = None;
                 drop(vp);
                 engage_full_frame_hold();
                 return (true, sample_pos);
             }
+        } else if (vp.viewport.zoom - vp.zoom_target).abs() > FULL_FRAME_SETTLE {
+            let ticks = *GESTURE_TICKS.lock();
+            restart_zoom_ease(vp.viewport.zoom, vp.zoom_target, ticks);
+            let _ = advance_zoom_ease(&mut vp, dt_secs);
         }
 
         let pan = (vp.viewport.x - ox).abs() + (vp.viewport.y - oy).abs();
@@ -700,11 +962,14 @@ mod imp {
         if zoom_hold_active() {
             return false;
         }
+        if zoom_ease_active() {
+            return true;
+        }
         let vp = viewport.lock();
         (vp.viewport.zoom - vp.zoom_target).abs() > FULL_FRAME_SETTLE
     }
 
-    pub fn advance_viewport_follow(viewport: &SharedViewport, _state: &SharedState) -> bool {
+    pub fn advance_viewport_follow(viewport: &SharedViewport, state: &SharedState) -> bool {
         let now = Instant::now();
         let dt = {
             let mut last = LAST_FOLLOW.lock();
@@ -720,7 +985,7 @@ mod imp {
             let _ = drain_pending_wheel(ctx);
         }
 
-        let (moved, sample_pos) = advance_viewport(viewport, dt);
+        let (moved, sample_pos) = advance_viewport(viewport, state, dt);
         if let Some((x, y)) = sample_pos {
             crate::cursor::record_follow_sample(x, y, pointer_button_state());
         }
@@ -773,6 +1038,33 @@ mod imp {
         let mut vp = viewport.lock();
         vp.frame_frozen = false;
         vp.frame_unfreeze_at = None;
+        vp.promo_usage_viewport = None;
+        vp.promo_inner_viewport = None;
+        mark_viewport_dirty();
+    }
+
+    /// Keep the usage-track viewport alive for the whole promo session.
+    pub fn ensure_promo_usage_viewport(viewport: &SharedViewport, mode: PromoMode) {
+        let mut vp = viewport.lock();
+        if vp.promo_usage_viewport.is_some() {
+            return;
+        }
+        let orientation = match mode {
+            PromoMode::Portrait => Orientation::Portrait,
+            PromoMode::Landscape => Orientation::Landscape,
+        };
+        let (cx, cy) = vp
+            .monitor
+            .as_ref()
+            .map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0))
+            .unwrap_or((vp.viewport.x, vp.viewport.y));
+        vp.promo_usage_viewport = Some(Viewport {
+            x: cx,
+            y: cy,
+            zoom: 1.0,
+            rotation: 0.0,
+            orientation,
+        });
         mark_viewport_dirty();
     }
 
@@ -780,11 +1072,12 @@ mod imp {
     /// input latch and returns the frame to full 9×16 centered on the monitor —
     /// so a clip that ended zoomed all the way out (or any stuck snap/hold/
     /// at-min latch) can never carry over and swallow Alt+↑/↓ on the next take.
-    pub fn reset_for_new_recording(viewport: &SharedViewport) {
+    pub fn reset_for_new_recording(viewport: &SharedViewport, mode: Option<PromoMode>) {
         set_pending_full_lock(false);
-        *PENDING_WHEEL_DELTA.lock() = 0.0;
+        clear_gesture_zoom_state();
         *ZOOM_LOCK_UNTIL.lock() = None;
         *LAST_FOLLOW.lock() = None;
+        reset_pan_cursor_filter();
         // Re-sync Alt to the physical key (drops any stale held=true).
         let _ = alt_held();
 
@@ -794,10 +1087,32 @@ mod imp {
             vp.frame_unfreeze_at = None;
             vp.zoom_target = 1.0;
             vp.viewport.zoom = 1.0;
-            let center = vp.monitor.as_ref().map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0));
+            let center = vp
+                .monitor
+                .as_ref()
+                .map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0));
             if let Some((cx, cy)) = center {
                 vp.viewport.x = cx;
                 vp.viewport.y = cy;
+            }
+            if let Some(mode) = mode {
+                let orientation = match mode {
+                    PromoMode::Portrait => Orientation::Portrait,
+                    PromoMode::Landscape => Orientation::Landscape,
+                };
+                vp.viewport.orientation = orientation;
+                vp.promo_usage_viewport = Some(Viewport {
+                    x: vp.viewport.x,
+                    y: vp.viewport.y,
+                    zoom: 1.0,
+                    rotation: 0.0,
+                    orientation,
+                });
+                crate::log::capture_log(
+                    "Promo recording — usage track locked at full frame; pan follows cursor",
+                );
+            } else {
+                vp.promo_usage_viewport = None;
             }
         }
 
@@ -810,14 +1125,17 @@ mod imp {
 
 #[cfg(windows)]
 pub use imp::{
-    queue_keyboard_zoom, reset_for_new_recording, reset_frame_follow, start, start_cursor_follow,
-    toggle_frame_frozen,
+    ensure_promo_usage_viewport, queue_keyboard_zoom, reset_for_new_recording, reset_frame_follow,
+    reset_pan_follow_tuning, start, start_cursor_follow, toggle_frame_frozen,
 };
 
 #[cfg(not(windows))]
 pub fn queue_keyboard_zoom(_dir: f64) -> bool {
     false
 }
+
+#[cfg(not(windows))]
+pub fn reset_pan_follow_tuning() {}
 
 #[cfg(not(windows))]
 pub fn take_viewport_dirty() -> bool {
@@ -830,10 +1148,13 @@ pub fn toggle_frame_frozen() -> Option<bool> {
 }
 
 #[cfg(not(windows))]
-pub fn reset_frame_follow(_viewport: SharedViewport) {}
+pub fn ensure_promo_usage_viewport(_viewport: SharedViewport, _mode: crate::state::PromoMode) {}
 
 #[cfg(not(windows))]
-pub fn reset_for_new_recording(_viewport: SharedViewport) {}
+pub fn reset_frame_follow(_viewport: &SharedViewport) {}
+
+#[cfg(not(windows))]
+pub fn reset_for_new_recording(_viewport: SharedViewport, _mode: Option<crate::state::PromoMode>) {}
 
 #[cfg(not(windows))]
 pub fn start(_app: tauri::AppHandle, _viewport: SharedViewport, _state: SharedState) {}

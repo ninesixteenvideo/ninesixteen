@@ -11,7 +11,11 @@
 - [FAQ](https://ninesixteen.video/faq)
 - [Changelog](https://ninesixteen.video/changelog)
 
-## Use-case pages
+## Recording guides
+
+Full topic index (101 guides): [ninesixteen.video/solutions](https://ninesixteen.video/solutions)
+
+Featured:
 
 - [Vertical 9×16 screen recorder](https://ninesixteen.video/vertical-screen-recorder)
 - [Landscape 16×9 screen recorder](https://ninesixteen.video/landscape-screen-recorder)

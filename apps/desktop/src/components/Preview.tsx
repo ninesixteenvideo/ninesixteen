@@ -48,10 +48,9 @@ export function Preview() {
   const selected = recordings.find((r) => r.id === selectedId) ?? null;
 
   useEffect(() => {
-    if (selectedId && !recordings.some((r) => r.id === selectedId)) {
-      setLibrarySelected(null);
-    }
-  }, [recordings, selectedId, setLibrarySelected]);
+    const { ensureLibrarySelection } = useStore.getState();
+    ensureLibrarySelection();
+  }, [recordings, selectedId]);
 
   useEffect(() => {
     if (selectedId) prefetchMediaSrc(selectedId);

@@ -1,18 +1,29 @@
 use crate::geometry::{
-    apply_edge_soft_pan, edge_soft_zone_px, frame_layout, normalize_zoom, output_dims,
-    viewport_center_bounds,
+    apply_edge_soft_pan, edge_soft_zone_px, frame_layout, normalize_quality, normalize_zoom,
+    output_dims, viewport_center_bounds,
 };
 use crate::state::{
     AppHandles, AppState, AudioDeviceInfo, AudioLevels, AudioSettings, CaptureState,
-    InputSettings, MonitorInfo, Orientation, OverlayFrame, RecordingInfo, RecordingSettings,
-    SharedState, StreamSettings, Viewport, ViewportState,
+    InputSettings, MonitorInfo, Orientation, OverlayFrame, PromoMode, RecordingInfo,
+    RecordingSettings, SharedState, StreamSettings, Viewport, ViewportState,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 use crate::state::SharedViewport;
 use crate::{audio, capture, monitors, recordings, screenshot};
+
+fn normalize_recording_settings(settings: &mut RecordingSettings) {
+    settings.quality = normalize_quality(settings.quality, settings.orientation);
+    if settings.quality >= crate::geometry::QUALITY_1440
+        && settings.orientation == Orientation::Landscape
+        && !crate::state::global_entitlement().lock().is_pro()
+    {
+        settings.quality = crate::geometry::QUALITY_1080;
+    }
+    settings.fps = crate::file_record::normalize_recording_fps(settings.fps);
+}
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// v1 ships recording-only; the DirectShow virtual camera is deferred to v1.1.
@@ -31,20 +42,84 @@ fn overlay_frame_changed(prev: &OverlayFrame, next: &OverlayFrame) -> bool {
         || (prev.zoom - next.zoom).abs() > 0.001
 }
 
-fn overlay_frame(vp: &ViewportState, quality: u32) -> Option<OverlayFrame> {
-    let m = vp.monitor.as_ref()?;
-    let (out_w, out_h) = output_dims(vp.viewport.orientation, quality);
-    let crop = frame_layout(&vp.viewport, m.width, m.height, out_w, out_h).crop;
+fn overlay_frame_for_viewport(vp: &Viewport, m: &MonitorInfo, quality: u32) -> OverlayFrame {
+    let (out_w, out_h) = output_dims(vp.orientation, quality);
+    let crop = frame_layout(vp, m.width, m.height, out_w, out_h).crop;
     let (cursor_x, cursor_y) = crate::cursor::latest_monitor_pos().unzip();
-    Some(OverlayFrame {
+    OverlayFrame {
         x: crop.x,
         y: crop.y,
         w: crop.w,
         h: crop.h,
-        zoom: vp.viewport.zoom,
+        zoom: vp.zoom,
         cursor_x,
         cursor_y,
-    })
+    }
+}
+
+fn overlay_frame(
+    vp: &ViewportState,
+    quality: u32,
+    promo_mode: Option<PromoMode>,
+    promo_inner_active: bool,
+    recording_armed: bool,
+) -> Option<OverlayFrame> {
+    if promo_mode.is_some() && !promo_inner_active && !recording_armed {
+        return None;
+    }
+    let m = vp.monitor.as_ref()?;
+    let q = if promo_mode.is_some() {
+        720
+    } else {
+        quality
+    };
+    Some(overlay_frame_for_viewport(
+        promo_framing_viewport(vp, promo_mode, promo_inner_active, recording_armed),
+        m,
+        q,
+    ))
+}
+
+fn promo_framing_viewport(
+    vp: &ViewportState,
+    promo_mode: Option<PromoMode>,
+    promo_inner_active: bool,
+    recording_armed: bool,
+) -> &Viewport {
+    if promo_mode.is_some() && promo_inner_active {
+        return &vp.viewport;
+    }
+    if promo_mode.is_some() && recording_armed {
+        return &vp.viewport;
+    }
+    &vp.viewport
+}
+
+/// Arm inner take: store inner crop separately — demo viewport stays untouched until inner starts.
+fn arm_promo_inner(handles: &AppHandles, mode: PromoMode) {
+    let (cx, cy) = {
+        let vp = handles.viewport.lock();
+        vp.monitor
+            .as_ref()
+            .map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0))
+            .unwrap_or((vp.viewport.x, vp.viewport.y))
+    };
+    let inner_vp = crate::promo::init_inner_viewport(mode, cx, cy);
+    {
+        let mut vp = handles.viewport.lock();
+        vp.promo_inner_viewport = Some(inner_vp);
+        // Route pan/zoom to the inner crop during countdown (usage track stays on promo_usage_viewport).
+        vp.viewport = inner_vp;
+        vp.zoom_target = inner_vp.zoom;
+    }
+    crate::rawinput::ensure_promo_usage_viewport(&handles.viewport, mode);
+}
+
+/// Inner take is live — keep countdown pan/zoom; sync the armed snapshot for capture.
+fn activate_promo_inner(handles: &AppHandles) {
+    let mut vp = handles.viewport.lock();
+    vp.promo_inner_viewport = Some(vp.viewport);
+    vp.zoom_target = vp.viewport.zoom;
 }
 
 fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
@@ -73,15 +148,28 @@ fn capture_state(st: &AppState, vp: &ViewportState) -> CaptureState {
         camera_connected: st.camera_connected,
         recording_armed: st.recording_armed,
         countdown_seconds: st.countdown_seconds,
-        overlay_frame: overlay_frame(vp, st.recording_settings.quality),
+        overlay_frame: overlay_frame(
+            vp,
+            st.recording_settings.quality,
+            st.promo_mode,
+            st.promo_inner_active,
+            st.recording_armed,
+        ),
         capture_cursor: st.recording_settings.capture_cursor,
         cinematic_cursor: st.recording_settings.cinematic_cursor,
         frame_frozen: vp.frame_frozen,
+        promo_mode: st.promo_mode,
+        promo_inner_active: st.promo_inner_active,
+        promo_enabled: st.recording_settings.promo_enabled,
     }
 }
 
 fn merged_capture_state(handles: &AppHandles) -> CaptureState {
-    capture_state(&handles.state.lock(), &handles.viewport.lock())
+    // Never hold state + viewport at once — overlay refresh uses state→viewport;
+    // nesting the other way deadlocks the main thread (AppHangB1).
+    let vp = handles.viewport.lock().clone();
+    let st = handles.state.lock();
+    capture_state(&st, &vp)
 }
 
 /// Overlay forced on while recording, streaming, or counting down to record.
@@ -141,10 +229,17 @@ fn finish_recording_ui(app: &AppHandle, state: &SharedState, result: Result<Opti
 
 pub fn apply_overlay_visibility(app: &AppHandle, st: &AppState) {
     if overlay_force_visible(st) || st.overlay_visible {
-        ensure_overlay(app);
+        ensure_overlay_for_state(app, st);
     } else if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.hide();
     }
+}
+
+/// During promo inner countdown only — frame overlay in WGC for the on-screen preview.
+/// Inner take excludes overlay from capture so the composited "final take" act is clean.
+/// Demo-only promo keeps overlay excluded (P/L badge stays on desktop, not in export).
+fn overlay_include_in_capture(st: &AppState) -> bool {
+    st.promo_mode.is_some() && st.recording_armed
 }
 
 /// Apply overlay visibility from a background/worker thread. WebView window ops
@@ -167,13 +262,26 @@ pub fn emit_viewport_update(app: &AppHandle, viewport: Viewport) {
 }
 
 /// Push the latest crop rect to the overlay webview only. Must run on the main thread.
-fn emit_overlay_frame(app: &AppHandle, viewport_state: &ViewportState, quality: u32) {
-    let Some(frame) = overlay_frame(viewport_state, quality) else {
+fn emit_overlay_frame(
+    app: &AppHandle,
+    viewport_state: &ViewportState,
+    quality: u32,
+    promo_mode: Option<PromoMode>,
+    promo_inner_active: bool,
+    recording_armed: bool,
+) {
+    let Some(frame) = overlay_frame(
+        viewport_state,
+        quality,
+        promo_mode,
+        promo_inner_active,
+        recording_armed,
+    ) else {
         return;
     };
     *LAST_OVERLAY_FRAME
         .get_or_init(|| Mutex::new(None))
-        .lock() = Some(frame);
+        .lock() = Some(frame.clone());
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.emit("overlay:frame", frame);
     }
@@ -184,14 +292,31 @@ pub fn emit_viewport_sync(
     viewport_state: &ViewportState,
     quality: u32,
     framing_active: bool,
+    promo_mode: Option<PromoMode>,
+    promo_inner_active: bool,
+    recording_armed: bool,
 ) {
-    if framing_active {
-        // Main window is minimized during capture — skip global viewport:update so
-        // React doesn't re-render at 60 Hz and starve the overlay webview / main loop.
-        emit_overlay_frame(app, viewport_state, quality);
+    let overlay_only =
+        framing_active && (promo_mode.is_none() || promo_inner_active || recording_armed);
+    if overlay_only {
+        emit_overlay_frame(
+            app,
+            viewport_state,
+            quality,
+            promo_mode,
+            promo_inner_active,
+            recording_armed,
+        );
     } else {
         emit_viewport_update(app, viewport_state.viewport);
-        emit_overlay_frame(app, viewport_state, quality);
+        emit_overlay_frame(
+            app,
+            viewport_state,
+            quality,
+            promo_mode,
+            promo_inner_active,
+            recording_armed,
+        );
     }
 }
 
@@ -199,12 +324,26 @@ pub fn emit_viewport_from_handles(app: &AppHandle, handles: &AppHandles) {
     // LOCK ORDER: state before viewport, and never hold both at once. The reverse
     // order here (viewport then state) collides with merged_capture_state's
     // state→viewport order on a worker thread → AB-BA deadlock (AppHangB1).
-    let (quality, framing) = {
+    let (quality, framing, promo_mode, promo_inner_active, recording_armed) = {
         let st = handles.state.lock();
-        (st.recording_settings.quality, capture_framing_active(&st))
+        (
+            st.recording_settings.quality,
+            capture_framing_active(&st),
+            st.promo_mode,
+            st.promo_inner_active,
+            st.recording_armed,
+        )
     };
     let vp = handles.viewport.lock();
-    emit_viewport_sync(app, &vp, quality, framing);
+    emit_viewport_sync(
+        app,
+        &vp,
+        quality,
+        framing,
+        promo_mode,
+        promo_inner_active,
+        recording_armed,
+    );
 }
 
 /// Main-thread overlay pump: cursor follow only updates shared viewport state;
@@ -226,9 +365,24 @@ pub fn start_overlay_refresh_loop(app: AppHandle, state: SharedState, viewport: 
             let viewport = viewport.clone();
             let _ = app.run_on_main_thread(move || {
                 // LOCK ORDER: state before viewport (see emit_viewport_from_handles).
-                let quality = state.lock().recording_settings.quality;
+                let (quality, promo_mode, promo_inner_active, recording_armed) = {
+                    let st = state.lock();
+                    (
+                        st.recording_settings.quality,
+                        st.promo_mode,
+                        st.promo_inner_active,
+                        st.recording_armed,
+                    )
+                };
                 let vp = viewport.lock();
-                emit_overlay_frame(&app_main, &vp, quality);
+                emit_overlay_frame(
+                    &app_main,
+                    &vp,
+                    quality,
+                    promo_mode,
+                    promo_inner_active,
+                    recording_armed,
+                );
             });
         })
         .ok();
@@ -338,19 +492,22 @@ fn defer_countdown(app: &AppHandle, seconds: u8) {
 
 const RECORD_COUNTDOWN_SECS: u8 = 5;
 
-fn run_recording_countdown(app: AppHandle, state: SharedState) {
+fn run_recording_countdown(app: AppHandle, state: SharedState, handles: Option<AppHandles>, promo_countdown: bool) {
     for remaining in (1..=RECORD_COUNTDOWN_SECS).rev() {
         {
             let mut st = state.lock();
             if !st.recording_armed {
                 st.countdown_seconds = 0;
+                let promo = st.promo_mode;
                 drop(st);
                 defer_countdown(&app, 0);
-                defer_recording_state(
-                    &app,
-                    serde_json::json!({ "recording": false, "arming": false }),
-                );
-                defer_overlay_visibility(&app, &state);
+                if promo.is_none() {
+                    defer_recording_state(
+                        &app,
+                        serde_json::json!({ "recording": false, "arming": false }),
+                    );
+                    defer_overlay_visibility(&app, &state);
+                }
                 return;
             }
             st.countdown_seconds = remaining;
@@ -361,11 +518,69 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
 
     if !state.lock().recording_armed {
         defer_countdown(&app, 0);
-        defer_recording_state(
-            &app,
-            serde_json::json!({ "recording": false, "arming": false }),
-        );
-        defer_overlay_visibility(&app, &state);
+        if state.lock().promo_mode.is_none() {
+            defer_recording_state(
+                &app,
+                serde_json::json!({ "recording": false, "arming": false }),
+            );
+            defer_overlay_visibility(&app, &state);
+        }
+        return;
+    }
+
+    if promo_countdown {
+        let Some(handles) = handles else {
+            crate::log::capture_log("Promo countdown finished without handles");
+            return;
+        };
+        let mode = state.lock().promo_mode.ok_or(()).ok();
+        let Some(mode) = mode else {
+            return;
+        };
+        crate::log::capture_log("Promo countdown finished — starting inner take");
+        let inner_path =
+            std::env::temp_dir().join(format!("ns-promo-inner-{}.mp4", chrono::Local::now().format("%Y-%m-%d_%H-%M-%S")));
+        match crate::promo::start_inner_recorder(mode, inner_path.clone()) {
+            Ok(()) => {
+                {
+                    let mut st = state.lock();
+                    st.recording_armed = false;
+                    st.countdown_seconds = 0;
+                    st.promo_inner_active = true;
+                    st.promo_inner_path = Some(inner_path);
+                    st.promo_inner_started_at = Some(Instant::now());
+                    st.overlay_visible = true;
+                    crate::cursor::sync_follow_gate_from_state(&st);
+                    crate::click_audio::sync_click_gate_from_state(&st);
+                }
+                defer_countdown(&app, 0);
+                crate::rawinput::ensure_promo_usage_viewport(&handles.viewport, mode);
+                activate_promo_inner(&handles);
+                let promo_mode = match mode {
+                    PromoMode::Portrait => "portrait",
+                    PromoMode::Landscape => "landscape",
+                };
+                defer_recording_state(
+                    &app,
+                    serde_json::json!({
+                        "recording": true,
+                        "arming": false,
+                        "promoInnerActive": true,
+                        "promoMode": promo_mode,
+                    }),
+                );
+                let app_main = app.clone();
+                let handles = handles.clone();
+                let _ = app.run_on_main_thread(move || {
+                    apply_overlay_visibility(&app_main, &handles.state.lock());
+                    emit_viewport_from_handles(&app_main, &handles);
+                });
+            }
+            Err(e) => {
+                crate::log::capture_log(&format!("Promo inner start failed: {e}"));
+                let _ = cancel_promo_session_inner(&app, &handles);
+            }
+        }
         return;
     }
 
@@ -377,8 +592,6 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
                 crate::cursor::sync_follow_gate_from_state(&st);
-    crate::click_audio::sync_click_gate_from_state(&st);
-        crate::click_audio::sync_click_gate_from_state(&st);
                 crate::click_audio::sync_click_gate_from_state(&st);
             }
             defer_countdown(&app, 0);
@@ -394,8 +607,6 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
                 st.recording_armed = false;
                 st.countdown_seconds = 0;
                 crate::cursor::sync_follow_gate_from_state(&st);
-    crate::click_audio::sync_click_gate_from_state(&st);
-        crate::click_audio::sync_click_gate_from_state(&st);
                 crate::click_audio::sync_click_gate_from_state(&st);
             }
             defer_countdown(&app, 0);
@@ -409,6 +620,241 @@ fn run_recording_countdown(app: AppHandle, state: SharedState) {
     }
 }
 
+fn arm_recording_countdown(
+    app: &AppHandle,
+    handles: &AppHandles,
+    promo_inner: bool,
+) -> Result<CaptureState, String> {
+    if promo_inner {
+        let mode = handles
+            .state
+            .lock()
+            .promo_mode
+            .ok_or_else(|| "Promo mode not set".to_string())?;
+        arm_promo_inner(handles, mode);
+    } else {
+        let orientation = handles.state.lock().recording_settings.orientation;
+        handles.viewport.lock().viewport.orientation = orientation;
+    }
+
+    {
+        let mut st = handles.state.lock();
+        st.recording_armed = true;
+        st.countdown_seconds = RECORD_COUNTDOWN_SECS;
+        crate::cursor::sync_follow_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+    }
+
+    if !promo_inner {
+        crate::rawinput::reset_for_new_recording(&handles.viewport, None);
+    }
+    emit_viewport_from_handles(app, handles);
+
+    crate::log::capture_log(if promo_inner {
+        "Promo inner countdown armed (5s)"
+    } else {
+        "Record countdown armed (5s)"
+    });
+    emit_recording_state(
+        app,
+        serde_json::json!({ "recording": promo_inner, "arming": true }),
+    );
+
+    let shared: SharedState = handles.state.clone();
+    capture::ensure_capture_session(shared.clone());
+
+    let include_overlay_in_capture = promo_inner;
+    ensure_overlay_with_capture(app, include_overlay_in_capture);
+    if promo_inner {
+        if let Some(win) = app.get_webview_window("main") {
+            let _ = win.unminimize();
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    } else {
+        minimize_main_window(app);
+    }
+
+    defer_overlay_visibility(app, &handles.state);
+
+    let app_bg = app.clone();
+    let handles_bg = handles.clone();
+    std::thread::Builder::new()
+        .name("record-countdown".into())
+        .spawn(move || {
+            run_recording_countdown(
+                app_bg,
+                shared,
+                if promo_inner { Some(handles_bg) } else { None },
+                promo_inner,
+            );
+        })
+        .map_err(|e| format!("spawn countdown thread: {e}"))?;
+
+    Ok(merged_capture_state(handles))
+}
+
+fn cancel_promo_session_inner(app: &AppHandle, handles: &AppHandles) -> Result<(), String> {
+    {
+        let mut st = handles.state.lock();
+        st.recording_armed = false;
+        st.countdown_seconds = 0;
+        st.overlay_visible = false;
+        st.promo_inner_started_at = None;
+        crate::cursor::sync_follow_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+    }
+    emit_countdown(app, 0);
+    crate::rawinput::reset_frame_follow(&handles.viewport);
+    let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
+    capture::cancel_promo_recording(handles.state.clone()).map_err(|e| e.to_string())?;
+    handles.viewport.lock().promo_usage_viewport = None;
+    handles.viewport.lock().promo_inner_viewport = None;
+    emit_recording_state(
+        app,
+        serde_json::json!({ "recording": false, "arming": false, "promoMode": null, "promoInnerActive": false }),
+    );
+    apply_overlay_visibility(app, &handles.state.lock());
+    emit_viewport_from_handles(app, handles);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_promo_session(
+    app: AppHandle,
+    handles: State<AppHandles>,
+) -> Result<CaptureState, String> {
+    {
+        let st = handles.state.lock();
+        if st.promo_mode.is_none() {
+            return Ok(merged_capture_state(handles.inner()));
+        }
+    }
+    cancel_promo_session_inner(&app, handles.inner())?;
+    Ok(merged_capture_state(handles.inner()))
+}
+
+#[tauri::command]
+pub fn start_promo_recording(
+    app: AppHandle,
+    handles: State<AppHandles>,
+    mode: PromoMode,
+) -> Result<CaptureState, String> {
+    {
+        let st = handles.state.lock();
+        if !st.recording_settings.promo_enabled {
+            return Err("Promo recording is not enabled.".into());
+        }
+        if st.promo_mode == Some(mode) {
+            drop(st);
+            return cancel_promo_session(app, handles);
+        }
+        if st.promo_mode.is_some() {
+            return Err("Promo session already active.".into());
+        }
+        if st.recording || st.recording_armed {
+            return Err("Already recording or counting down.".into());
+        }
+        let audio = &st.audio_settings;
+        if crate::audio::source_active(audio.source) && !audio.calibrated {
+            return Err(
+                "Audio is not ready — re-select your audio source in Studio.".into(),
+            );
+        }
+    }
+
+    let orientation = match mode {
+        PromoMode::Portrait => Orientation::Portrait,
+        PromoMode::Landscape => Orientation::Landscape,
+    };
+
+    {
+        let mut st = handles.state.lock();
+        st.promo_mode = Some(mode);
+        st.promo_inner_active = false;
+        st.promo_inner_path = None;
+        st.recording_settings.quality = 720;
+        st.recording_settings.fps = 60;
+        st.recording_settings.orientation = orientation;
+        crate::cursor::sync_follow_gate_from_state(&st);
+        crate::click_audio::sync_click_gate_from_state(&st);
+    }
+
+    crate::rawinput::reset_for_new_recording(&handles.viewport, Some(mode));
+    emit_viewport_from_handles(&app, handles.inner());
+
+    let shared: SharedState = handles.inner().state.clone();
+    let viewport = handles.inner().viewport.clone();
+    capture::ensure_capture_session(shared.clone());
+
+    // Keep the main window visible for promo — must run inline (commands are on the UI thread;
+    // `run_on_main_thread` here deadlocks waiting on the same thread).
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+
+    let promo_mode_label = match mode {
+        PromoMode::Portrait => "portrait".to_string(),
+        PromoMode::Landscape => "landscape".to_string(),
+    };
+    let app_bg = app.clone();
+    std::thread::Builder::new()
+        .name("promo-start".into())
+        .spawn(move || {
+            let result = capture::start_promo_recording(shared.clone());
+            let app_emit = app_bg.clone();
+            let app_overlay = app_bg.clone();
+            let shared_ui = shared.clone();
+            let viewport_ui = viewport.clone();
+            let promo_label = promo_mode_label.clone();
+            let _ = app_bg.run_on_main_thread(move || {
+                match result {
+                    Ok(()) => {
+                        emit_recording_state(
+                            &app_emit,
+                            serde_json::json!({
+                                "recording": true,
+                                "arming": false,
+                                "promoMode": promo_label,
+                                "promoInnerActive": false,
+                            }),
+                        );
+                        defer_overlay_visibility(&app_overlay, &shared_ui);
+                    }
+                    Err(e) => {
+                        let msg = e.to_string();
+                        {
+                            let mut st = shared_ui.lock();
+                            st.promo_mode = None;
+                            st.recording = false;
+                            st.current_path = None;
+                            crate::cursor::sync_follow_gate_from_state(&st);
+                            crate::click_audio::sync_click_gate_from_state(&st);
+                        }
+                        {
+                            let mut vs = viewport_ui.lock();
+                            vs.promo_usage_viewport = None;
+                            vs.promo_inner_viewport = None;
+                        }
+                        let _ = app_emit.emit("app:log", msg);
+                        emit_recording_state(
+                            &app_emit,
+                            serde_json::json!({
+                                "recording": false,
+                                "promoMode": null,
+                            }),
+                        );
+                    }
+                }
+            });
+        })
+        .map_err(|e| format!("spawn promo-start thread: {e}"))?;
+
+    Ok(merged_capture_state(handles.inner()))
+}
+
 #[tauri::command]
 pub fn start_recording(
     app: AppHandle,
@@ -417,6 +863,18 @@ pub fn start_recording(
 ) -> Result<CaptureState, String> {
     {
         let st = handles.state.lock();
+        if let Some(_mode) = st.promo_mode {
+            if st.recording && !st.promo_inner_active && !st.recording_armed {
+                drop(st);
+                return arm_recording_countdown(&app, handles.inner(), true);
+            }
+            if st.promo_inner_active {
+                return Err("Inner promo take already recording.".into());
+            }
+            if st.recording_armed {
+                return Err("Already counting down.".into());
+            }
+        }
         let audio = &st.audio_settings;
         if crate::audio::source_active(audio.source) && !audio.calibrated {
             return Err(
@@ -427,55 +885,14 @@ pub fn start_recording(
             return Err("Already recording or counting down.".into());
         }
     }
+
     {
         let mut st = handles.state.lock();
         st.recording_settings = settings;
-        st.recording_settings.quality = if st.recording_settings.quality <= 720 {
-            720
-        } else {
-            1080
-        };
-        st.recording_armed = true;
-        st.countdown_seconds = RECORD_COUNTDOWN_SECS;
-        let orientation = st.recording_settings.orientation;
-        crate::cursor::sync_follow_gate_from_state(&st);
-    crate::click_audio::sync_click_gate_from_state(&st);
-        crate::click_audio::sync_click_gate_from_state(&st);
-        drop(st);
-        handles.viewport.lock().viewport.orientation = orientation;
+        normalize_recording_settings(&mut st.recording_settings);
     }
-    // Every new recording starts from full 9×16, centered — and with all zoom/pan
-    // input latches cleared, so Alt+↑/↓ is always live (the user can still reframe
-    // during the 5s countdown).
-    crate::rawinput::reset_for_new_recording(&handles.viewport);
-    emit_viewport_from_handles(&app, handles.inner());
 
-    crate::log::capture_log("Record countdown armed (5s)");
-    emit_recording_state(
-        &app,
-        serde_json::json!({ "recording": false, "arming": true }),
-    );
-
-    let shared: SharedState = handles.inner().state.clone();
-    capture::ensure_capture_session(shared.clone());
-
-    // Window operations (show overlay, minimize main) MUST run on the main thread on
-    // Windows — doing them from a worker/background thread can deadlock the WebView.
-    let app_win = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        ensure_overlay(&app_win);
-        minimize_main_window(&app_win);
-    });
-
-    let app_bg = app.clone();
-    std::thread::Builder::new()
-        .name("record-countdown".into())
-        .spawn(move || {
-            run_recording_countdown(app_bg, shared);
-        })
-        .map_err(|e| format!("spawn countdown thread: {e}"))?;
-
-    Ok(merged_capture_state(handles.inner()))
+    arm_recording_countdown(&app, handles.inner(), false)
 }
 
 #[tauri::command]
@@ -484,14 +901,20 @@ pub fn cancel_recording_countdown(
     handles: State<AppHandles>,
 ) -> Result<CaptureState, String> {
     {
-        let mut st = handles.state.lock();
+        let st = handles.state.lock();
+        if st.promo_mode.is_some() {
+            drop(st);
+            return cancel_promo_session(app, handles);
+        }
         if !st.recording_armed {
             return Ok(merged_capture_state(handles.inner()));
         }
+    }
+    {
+        let mut st = handles.state.lock();
         st.recording_armed = false;
         st.countdown_seconds = 0;
         crate::cursor::sync_follow_gate_from_state(&st);
-    crate::click_audio::sync_click_gate_from_state(&st);
         crate::click_audio::sync_click_gate_from_state(&st);
     }
     crate::rawinput::reset_frame_follow(&handles.viewport);
@@ -586,11 +1009,7 @@ pub fn start_both(
     {
         let mut st = handles.state.lock();
         st.recording_settings = recording_settings;
-        st.recording_settings.quality = if st.recording_settings.quality <= 720 {
-            720
-        } else {
-            1080
-        };
+        normalize_recording_settings(&mut st.recording_settings);
         st.stream_settings = stream_settings;
         if st.stream_settings.stream_key.trim().is_empty() {
             return Err("Add your stream key in Settings before going live.".into());
@@ -805,6 +1224,16 @@ pub fn open_recordings_folder() {
 }
 
 #[tauri::command]
+pub fn get_hardware_profile() -> crate::hardware::HardwareProfile {
+    crate::hardware::hardware_profile()
+}
+
+#[tauri::command]
+pub fn get_input_settings(handles: State<AppHandles>) -> InputSettings {
+    handles.state.lock().input_settings
+}
+
+#[tauri::command]
 pub fn set_input_settings(
     handles: State<AppHandles>,
     mut settings: InputSettings,
@@ -815,8 +1244,14 @@ pub fn set_input_settings(
         settings.zoom_sensitivity = 1.0;
     }
     settings.zoom_sensitivity = settings.zoom_sensitivity.clamp(0.2, 3.0);
+    if !settings.follow_speed.is_finite() {
+        settings.follow_speed = 1.0;
+    }
+    settings.follow_speed = settings.follow_speed.clamp(0.75, 1.25);
     handles.state.lock().input_settings = settings;
     handles.viewport.lock().zoom_sensitivity = settings.zoom_sensitivity;
+    #[cfg(windows)]
+    crate::rawinput::reset_pan_follow_tuning();
 }
 
 #[tauri::command]
@@ -827,11 +1262,7 @@ pub fn set_recording_settings(
 ) {
     let mut st = handles.state.lock();
     st.recording_settings = settings;
-    st.recording_settings.quality = if st.recording_settings.quality <= 720 {
-        720
-    } else {
-        1080
-    };
+    normalize_recording_settings(&mut st.recording_settings);
     let orientation = st.recording_settings.orientation;
     let capture_cursor = st.recording_settings.capture_cursor;
     let cinematic_cursor = st.recording_settings.cinematic_cursor;
@@ -933,6 +1364,14 @@ pub fn preview_mouse_click_audio(volume: f64) -> Result<(), String> {
 }
 
 pub fn ensure_overlay(app: &AppHandle) {
+    ensure_overlay_with_capture(app, false);
+}
+
+fn ensure_overlay_for_state(app: &AppHandle, st: &AppState) {
+    ensure_overlay_with_capture(app, overlay_include_in_capture(st));
+}
+
+fn ensure_overlay_with_capture(app: &AppHandle, include_in_capture: bool) {
     let Some(win) = app.get_webview_window("overlay") else {
         return;
     };
@@ -945,7 +1384,7 @@ pub fn ensure_overlay(app: &AppHandle) {
     let _ = win.show();
 
     #[cfg(windows)]
-    exclude_from_capture(&win);
+    set_overlay_capture_excluded(&win, !include_in_capture);
 }
 
 fn minimize_main_window(app: &AppHandle) {
@@ -1000,13 +1439,20 @@ pub fn set_overlay_visible(
 }
 
 #[cfg(windows)]
-fn exclude_from_capture(win: &tauri::WebviewWindow) {
+fn set_overlay_capture_excluded(win: &tauri::WebviewWindow, excluded: bool) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    };
     if let Ok(handle) = win.hwnd() {
         let hwnd = HWND(handle.0 as *mut core::ffi::c_void);
+        let affinity = if excluded {
+            WDA_EXCLUDEFROMCAPTURE
+        } else {
+            WDA_NONE
+        };
         unsafe {
-            let _ = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            let _ = SetWindowDisplayAffinity(hwnd, affinity);
         }
     }
 }

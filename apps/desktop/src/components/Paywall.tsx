@@ -6,7 +6,7 @@ import { CheckIcon, CloseIcon } from "./icons";
 const PRO_FEATURES = [
   "Export & save unlimited videos",
   "No watermark",
-  "1080p / 60fps encoding",
+  "4K / 1440p landscape · 60fps encoding",
   "Free updates & priority support",
 ];
 

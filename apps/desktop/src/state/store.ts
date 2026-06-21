@@ -1,12 +1,13 @@
 import { create } from "zustand";
 import { invoke, listen } from "../lib/bridge";
-import { normalizeZoom } from "../lib/geometry";
+import { normalizeQuality, normalizeZoom } from "../lib/geometry";
 import type {
   AudioDeviceInfo,
   AudioLevels,
   AudioSettings,
   CaptureState,
   InputSettings,
+  HardwareProfile,
   MonitorInfo,
   RecordingInfo,
   RecordingSettings,
@@ -33,6 +34,16 @@ const DEFAULT_VIEWPORT: Viewport = {
 /** Drops stale `set_audio_settings` responses when sliders move quickly. */
 let audioSettingsRequest = 0;
 
+/** Keep the current take when still present; otherwise select the newest recording. */
+export function pickLibrarySelection(
+  recordings: RecordingInfo[],
+  current: string | null,
+): string | null {
+  if (recordings.length === 0) return null;
+  if (current && recordings.some((r) => r.id === current)) return current;
+  return recordings[0].id;
+}
+
 interface Store {
   ready: boolean;
   monitors: MonitorInfo[];
@@ -52,7 +63,10 @@ interface Store {
   error: string | null;
   recordings: RecordingInfo[];
   inputSettings: InputSettings;
+  hardwareProfile: HardwareProfile | null;
   recordingSettings: RecordingSettings;
+  promoMode: "portrait" | "landscape" | null;
+  promoInnerActive: boolean;
   overlayVisible: boolean;
   tab: "studio" | "preview" | "hotkeys" | "account" | "info";
   librarySelectedId: string | null;
@@ -64,11 +78,14 @@ interface Store {
   init: () => Promise<void>;
   setTab: (t: Store["tab"]) => void;
   setLibrarySelected: (id: string | null) => void;
+  ensureLibrarySelection: () => void;
   setPaywallOpen: (open: boolean) => void;
   setViewport: (v: Partial<Viewport>) => Promise<void>;
   setZoom: (z: number) => Promise<void>;
   startRecording: () => Promise<void>;
+  startPromoRecording: (mode: "portrait" | "landscape") => Promise<void>;
   cancelRecordingCountdown: () => Promise<void>;
+  cancelPromoSession: () => Promise<void>;
   stopRecording: () => Promise<void>;
   startCamera: () => Promise<void>;
   stopCamera: () => Promise<void>;
@@ -102,7 +119,8 @@ export const useStore = create<Store>((set, get) => ({
   sizeBytes: 0,
   error: null,
   recordings: [],
-  inputSettings: { zoomSensitivity: 1 },
+  inputSettings: { zoomSensitivity: 1, followSpeed: 1 },
+  hardwareProfile: null,
   recordingSettings: {
     orientation: "portrait",
     fps: 30,
@@ -111,7 +129,10 @@ export const useStore = create<Store>((set, get) => ({
     cinematicCursor: true,
     mouseClickAudio: false,
     mouseClickVolume: 1,
+    promoEnabled: false,
   },
+  promoMode: null,
+  promoInnerActive: false,
   overlayVisible: false,
   tab: "studio",
   librarySelectedId: null,
@@ -134,17 +155,42 @@ export const useStore = create<Store>((set, get) => ({
         overlayVisible: p.seconds > 0 ? true : get().overlayVisible,
       })
     );
-    listen("recording:state", (p: { recording: boolean; finalizing?: boolean; arming?: boolean }) =>
-      set({
+    listen("recording:state", (p: {
+      recording: boolean;
+      finalizing?: boolean;
+      arming?: boolean;
+      promoMode?: "portrait" | "landscape" | null;
+      promoInnerActive?: boolean;
+    }) =>
+      set((s) => ({
         recording: p.recording,
         finalizing: p.finalizing ?? false,
-        saveProgress: p.finalizing ? get().saveProgress : 0,
-        savePhase: p.finalizing ? get().savePhase : "",
-        arming: p.arming ?? (p.recording ? false : get().arming),
-        countdownSeconds: p.recording || p.arming === false ? 0 : get().countdownSeconds,
-        overlayVisible: p.recording || p.arming ? true : p.finalizing ? false : get().overlayVisible,
-        frameFrozen: p.recording || p.arming ? get().frameFrozen : false,
-      })
+        saveProgress: p.finalizing ? s.saveProgress : 0,
+        savePhase: p.finalizing ? s.savePhase : "",
+        arming: p.arming ?? (p.recording ? false : s.arming),
+        countdownSeconds: p.recording || p.arming === false ? 0 : s.countdownSeconds,
+        overlayVisible:
+          p.recording || p.arming
+            ? s.promoMode
+              ? p.promoInnerActive ?? s.promoInnerActive
+              : true
+            : p.finalizing
+              ? false
+              : s.overlayVisible,
+        frameFrozen: p.recording || p.arming ? s.frameFrozen : false,
+        promoMode:
+          p.promoMode !== undefined
+            ? p.promoMode
+            : p.recording || p.arming
+              ? s.promoMode
+              : null,
+        promoInnerActive:
+          p.promoInnerActive !== undefined
+            ? p.promoInnerActive
+            : p.recording
+              ? s.promoInnerActive
+              : false,
+      }))
     );
     listen("recording:save-progress", (p: { percent: number; phase: string }) =>
       set((state) => {
@@ -168,9 +214,43 @@ export const useStore = create<Store>((set, get) => ({
     listen("hotkey:toggle-recording", () => {
       const s = get();
       if (s.finalizing) return;
+      if (s.promoMode && s.arming) {
+        void s.cancelPromoSession().catch(() => {});
+        return;
+      }
+      if (s.promoMode && s.recording && !s.promoInnerActive) {
+        void s.startRecording().catch(() => {});
+        return;
+      }
+      if (s.promoMode && s.promoInnerActive && s.recording) {
+        void s.stopRecording();
+        return;
+      }
       if (s.recording) void s.stopRecording();
       else if (s.arming) void s.cancelRecordingCountdown();
       else void s.startRecording().catch(() => {});
+    });
+    listen("hotkey:promo-portrait", () => {
+      const s = get();
+      if (s.finalizing) return;
+      if (!s.recordingSettings.promoEnabled) return;
+      if (s.promoMode === "portrait") {
+        void s.cancelPromoSession().catch(() => {});
+        return;
+      }
+      if (s.promoMode || s.arming || s.recording) return;
+      void s.startPromoRecording("portrait").catch(() => {});
+    });
+    listen("hotkey:promo-landscape", () => {
+      const s = get();
+      if (s.finalizing) return;
+      if (!s.recordingSettings.promoEnabled) return;
+      if (s.promoMode === "landscape") {
+        void s.cancelPromoSession().catch(() => {});
+        return;
+      }
+      if (s.promoMode || s.arming || s.recording) return;
+      void s.startPromoRecording("landscape").catch(() => {});
     });
     listen("hotkey:toggle-overlay", () => {
       const s = get();
@@ -181,10 +261,12 @@ export const useStore = create<Store>((set, get) => ({
 
     set({ ready: true });
 
-    const [monitors, state, audioSettings] = await Promise.all([
+    const [monitors, state, audioSettings, inputSettings, hardwareProfile] = await Promise.all([
       invoke<MonitorInfo[]>("list_monitors"),
       invoke<CaptureState>("get_state"),
       invoke<AudioSettings>("get_audio_settings"),
+      invoke<InputSettings>("get_input_settings"),
+      invoke<HardwareProfile>("get_hardware_profile"),
     ]);
 
     set({
@@ -199,7 +281,15 @@ export const useStore = create<Store>((set, get) => ({
       cameraConnected: state.cameraConnected ?? false,
       elapsed: state.elapsed,
       overlayVisible: state.overlayVisible ?? false,
+      promoMode: state.promoMode ?? null,
+      promoInnerActive: state.promoInnerActive ?? false,
+      recordingSettings: {
+        ...get().recordingSettings,
+        promoEnabled: state.promoEnabled ?? get().recordingSettings.promoEnabled,
+      },
       audioSettings,
+      inputSettings,
+      hardwareProfile,
     });
 
     void invoke<AudioDeviceInfo[]>("list_audio_devices")
@@ -216,9 +306,22 @@ export const useStore = create<Store>((set, get) => ({
     void get().refreshRecordings();
   },
 
-  setTab: (tab) => set({ tab }),
+  setTab: (tab) => {
+    set({ tab });
+    if (tab === "preview") {
+      const { recordings, librarySelectedId } = get();
+      const next = pickLibrarySelection(recordings, librarySelectedId);
+      if (next !== librarySelectedId) set({ librarySelectedId: next });
+    }
+  },
 
   setLibrarySelected: (id) => set({ librarySelectedId: id }),
+
+  ensureLibrarySelection: () => {
+    const { recordings, librarySelectedId } = get();
+    const next = pickLibrarySelection(recordings, librarySelectedId);
+    if (next !== librarySelectedId) set({ librarySelectedId: next });
+  },
 
   setPaywallOpen: (open) => set({ paywallOpen: open }),
 
@@ -235,6 +338,31 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   startRecording: async () => {
+    const s = get();
+    if (s.promoMode && s.recording && !s.promoInnerActive && !s.arming) {
+      set({
+        error: null,
+        arming: true,
+        countdownSeconds: 5,
+        overlayVisible: true,
+      });
+      try {
+        const state = await invoke<CaptureState>("start_recording", {
+          settings: s.recordingSettings,
+        });
+        set({
+          arming: state.recordingArmed,
+          countdownSeconds: state.countdownSeconds,
+          overlayVisible: true,
+          viewport: state.viewport,
+        });
+      } catch (e) {
+        set({ error: String(e), arming: false, countdownSeconds: 0 });
+        throw e;
+      }
+      return;
+    }
+
     set({
       error: null,
       elapsed: 0,
@@ -257,7 +385,43 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  startPromoRecording: async (mode) => {
+    set({
+      error: null,
+      elapsed: 0,
+      sizeBytes: 0,
+      recording: true,
+      arming: false,
+      countdownSeconds: 0,
+      overlayVisible: false,
+      promoMode: mode,
+      promoInnerActive: false,
+    });
+    try {
+      const state = await invoke<CaptureState>("start_promo_recording", { mode });
+      set({
+        recording: state.recording,
+        promoMode: state.promoMode ?? mode,
+        promoInnerActive: state.promoInnerActive ?? false,
+        overlayVisible: false,
+        viewport: state.viewport,
+      });
+    } catch (e) {
+      set({
+        error: String(e),
+        recording: false,
+        promoMode: null,
+        promoInnerActive: false,
+      });
+      throw e;
+    }
+  },
+
   cancelRecordingCountdown: async () => {
+    const s = get();
+    if (s.promoMode) {
+      return get().cancelPromoSession();
+    }
     set({ error: null });
     try {
       const state = await invoke<CaptureState>("cancel_recording_countdown");
@@ -265,6 +429,23 @@ export const useStore = create<Store>((set, get) => ({
         arming: false,
         countdownSeconds: 0,
         overlayVisible: state.overlayVisible,
+      });
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
+  },
+
+  cancelPromoSession: async () => {
+    set({ error: null, arming: false, countdownSeconds: 0 });
+    try {
+      const state = await invoke<CaptureState>("cancel_promo_session");
+      set({
+        recording: false,
+        promoMode: null,
+        promoInnerActive: false,
+        overlayVisible: state.overlayVisible,
+        viewport: state.viewport,
       });
     } catch (e) {
       set({ error: String(e) });
@@ -296,6 +477,8 @@ export const useStore = create<Store>((set, get) => ({
         savePhase: "",
         arming: false,
         countdownSeconds: 0,
+        promoMode: null,
+        promoInnerActive: false,
         recordings: rec ? [rec, ...s.recordings] : s.recordings,
       }));
       const state = await invoke<CaptureState>("get_state");
@@ -342,17 +525,24 @@ export const useStore = create<Store>((set, get) => ({
 
   refreshRecordings: async () => {
     const recordings = await invoke<RecordingInfo[]>("list_recordings");
-    set({ recordings });
+    set((s) => ({
+      recordings,
+      librarySelectedId: pickLibrarySelection(recordings, s.librarySelectedId),
+    }));
   },
 
   deleteRecording: async (id) => {
     const { dropRecordingThumb } = await import("../lib/recordingThumb");
     dropRecordingThumb(id);
     await invoke("delete_recording", { id });
-    set((s) => ({
-      recordings: s.recordings.filter((r) => r.id !== id),
-      librarySelectedId: s.librarySelectedId === id ? null : s.librarySelectedId,
-    }));
+    set((s) => {
+      const recordings = s.recordings.filter((r) => r.id !== id);
+      const cleared = s.librarySelectedId === id ? null : s.librarySelectedId;
+      return {
+        recordings,
+        librarySelectedId: pickLibrarySelection(recordings, cleared),
+      };
+    });
   },
 
   renameRecording: async (id, filename) => {
@@ -374,8 +564,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setRecordingSettings: async (s) => {
     const merged = { ...get().recordingSettings, ...s };
-    const quality: 720 | 1080 = merged.quality <= 720 ? 720 : 1080;
-    const next = { ...merged, quality };
+    const orientation = merged.orientation;
+    const quality = normalizeQuality(merged.quality, orientation);
+    const fps = merged.fps >= 55 ? 60 : 30;
+    const next = { ...merged, quality, fps };
     set({ recordingSettings: next });
 
     if (s.orientation && s.orientation !== get().viewport.orientation) {

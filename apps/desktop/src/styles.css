@@ -112,6 +112,7 @@ button {
     box-shadow var(--dur) var(--ease);
 }
 .sidebar.collapsed {
+  box-shadow: none;
   transition:
     width var(--dur) var(--ease) 0.06s,
     box-shadow var(--dur) var(--ease) 0.06s;
@@ -124,6 +125,19 @@ button {
   pointer-events: none;
   transition: width var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
     opacity 0.4s var(--ease) 0.4s, transform 0.4s var(--ease) 0.4s;
+}
+/* Promo recording — app stays on screen for marketing takes. */
+.sidebar.promo-capturing {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.sidebar.promo-capturing.expanded .rail-win,
+.sidebar.promo-capturing.expanded .rail-tabs {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  max-height: 280px;
 }
 
 /* ── Rail (always present, 48px) ── */
@@ -212,6 +226,20 @@ button {
     margin 0.34s var(--ease) 0.04s,
     gap 0.34s var(--ease) 0.04s;
 }
+.sidebar.collapsed:not(.capturing) .rail-tabs {
+  opacity: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  max-height: 0;
+  margin-top: 0;
+  gap: 0;
+  transition:
+    opacity 0.26s var(--ease),
+    transform 0.3s var(--ease),
+    max-height 0.34s var(--ease) 0.04s,
+    margin 0.34s var(--ease) 0.04s,
+    gap 0.34s var(--ease) 0.04s;
+}
 .sidebar.expanded:not(.capturing) .rail-tabs {
   opacity: 1;
   transform: translateX(0);
@@ -284,6 +312,28 @@ button {
   place-items: center;
   margin-top: -1px;
   transform: translateY(-5px);
+  opacity: 1;
+  pointer-events: none;
+  transition:
+    opacity 0.28s var(--ease),
+    max-height 0.34s var(--ease),
+    height 0.34s var(--ease);
+}
+.sidebar.collapsed:not(.capturing) .rail-wordmark {
+  opacity: 0;
+  max-height: 0;
+  height: 0;
+  margin-top: 0;
+  overflow: hidden;
+}
+.sidebar.expanded:not(.capturing) .rail-wordmark {
+  opacity: 1;
+  max-height: 300px;
+  height: 300px;
+  transition:
+    opacity 0.36s var(--ease) 0.1s,
+    max-height 0.38s var(--ease) 0.04s,
+    height 0.38s var(--ease) 0.04s;
 }
 .rail-wordmark .vmark,
 .rail-wm {
@@ -426,6 +476,16 @@ button {
   margin-top: 3px;
   font-size: 0.82rem;
   color: var(--d-faint);
+}
+
+.hw-hint--pending {
+  color: var(--d-faint);
+}
+.hw-hint--within {
+  color: #6bc97a;
+}
+.hw-hint--over {
+  color: #d9b44a;
 }
 
 .panel-body {
@@ -645,6 +705,28 @@ button {
   gap: 12px;
 }
 
+.range-notch {
+  position: relative;
+  padding-top: 2px;
+}
+
+.range-notch input[type="range"] {
+  display: block;
+}
+
+.range-notch-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--d-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .field-card {
   display: flex;
   flex-direction: column;
@@ -719,6 +801,20 @@ button {
 }
 .toggle--slim + .toggle--slim {
   margin-top: 8px;
+}
+.toggle-opt--pro {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0.85;
+}
+.toggle-opt--pro:not(.active):hover {
+  opacity: 1;
+}
+.quality-dims {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Audio */

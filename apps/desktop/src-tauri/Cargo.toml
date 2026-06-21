@@ -72,6 +72,7 @@ windows = { version = "0.62", features = [
     "Win32_Storage_FileSystem",
     "Win32_Security",
     "Win32_System_WinRT_Direct3D11",
+    "Win32_System_SystemInformation",
     "Win32_Devices_HumanInterfaceDevice",
 ] }
 rml_rtmp = "0.8"

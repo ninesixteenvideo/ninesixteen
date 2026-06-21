@@ -41,7 +41,9 @@ mod imp {
     use crate::gpu_scale::GpuScaler;
     use crate::state::Orientation;
     use crate::camera::{self, camera_connected, camera_sink};
-    use crate::file_record::{effective_recording_fps, FileRecorder, publish_capture_frame};
+    use crate::file_record::{
+        recording_fps, FileRecorder, publish_capture_surface, recording_uses_hw_encode,
+    };
     use crate::recordings::new_recording_path;
     use crate::state::Viewport;
     use crate::stream::{StreamConfig, StreamPipeline};
@@ -127,6 +129,25 @@ mod imp {
     #[cfg(not(windows))]
     fn boost_glide_thread_priority() {}
 
+    #[cfg(windows)]
+    fn boost_capture_thread_priority() {
+        use windows::Win32::System::Threading::{
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+        };
+        unsafe {
+            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn boost_capture_thread_priority() {}
+
+    /// System cursor baked into WGC must read back on the same frame (no pipelining).
+    fn wgc_needs_sync_cursor(state: &SharedState) -> bool {
+        let st = state.lock();
+        st.recording_settings.capture_cursor && !st.recording_settings.cinematic_cursor
+    }
+
     /// Re-crop the cached monitor texture when pan/zoom moves between WGC frames.
     /// Runs on a dedicated pulse thread; D3D work is serialized through `gpu_bridge`.
     fn recording_glide_loop(state: SharedState, stop: Arc<AtomicBool>, period: Duration) {
@@ -142,8 +163,7 @@ mod imp {
             if viewport_changed_since_last_render() {
                 if let Some(mut bridge) = gpu_bridge().try_lock() {
                     if bridge.ready {
-                        if let Some(bgra) = render_from_cache(&mut bridge, &state, None, true) {
-                            publish_capture_frame(bgra);
+                        if capture_recording_output(&mut bridge, &state, None, true) {
                             REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
                             REC_GLIDE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
                         }
@@ -284,18 +304,182 @@ mod imp {
 
     pub fn render_output_frame(state: &SharedState) -> Option<Vec<u8>> {
         let mut bridge = gpu_bridge().lock();
-        render_with_bridge(&mut bridge, state)
+        let vp = shared_viewport().lock().viewport;
+        render_from_cache(&mut bridge, state, vp, None, false)
     }
 
-    fn render_with_bridge(bridge: &mut GpuBridge, state: &SharedState) -> Option<Vec<u8>> {
-        render_from_cache(bridge, state, None, false)
+    fn render_recording_frame(
+        bridge: &mut GpuBridge,
+        state: &SharedState,
+        live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
+        pipelined: bool,
+    ) -> Option<Vec<u8>> {
+        let vs = shared_viewport().lock();
+        let promo = state.lock().promo_mode.is_some();
+        let vp = if promo {
+            vs.promo_usage_viewport.unwrap_or(vs.viewport)
+        } else {
+            vs.viewport
+        };
+        drop(vs);
+        let sync_readback = pipelined && !recording_gpu_cursor(state);
+        render_from_cache(bridge, state, vp, live_tex, sync_readback)
+    }
+
+    /// Promo session: usage viewport → main recorder; inner viewport → nested track.
+    fn capture_promo_outputs(
+        bridge: &mut GpuBridge,
+        state: &SharedState,
+        live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
+        _pipelined: bool,
+    ) -> bool {
+        let (usage_vp, inner_vp, inner_active) = {
+            let vs = shared_viewport().lock();
+            let st = state.lock();
+            let usage = vs.promo_usage_viewport.unwrap_or(vs.viewport);
+            // Inner take must follow live pan/zoom on `viewport`, not the armed snapshot.
+            let inner = if st.promo_inner_active {
+                vs.viewport
+            } else {
+                vs.promo_inner_viewport.unwrap_or(vs.viewport)
+            };
+            (usage, inner, st.promo_inner_active)
+        };
+
+        let mut ok = false;
+
+        // Inner first (sync readback) so both tracks share the same WGC frame.
+        if inner_active {
+            let (iw, ih, stamp_cursor, src_w, src_h) = {
+                let vs = shared_viewport().lock();
+                let st = state.lock();
+                let (sw, sh) = vs
+                    .monitor
+                    .as_ref()
+                    .map(|m| (m.width, m.height))
+                    .unwrap_or((1920, 1080));
+                let stamp = st.recording_settings.capture_cursor
+                    && st.recording_settings.cinematic_cursor;
+                let (iw, ih) = st
+                    .promo_mode
+                    .map(crate::promo::promo_output_dims)
+                    .unwrap_or((720, 1280));
+                (iw, ih, stamp, sw, sh)
+            };
+            if let Some(bgra) = render_from_cache(bridge, state, inner_vp, live_tex, false) {
+                if stamp_cursor {
+                    let mut out = Vec::new();
+                    crate::cursor::stamp_into_buffer(
+                        &mut out,
+                        &bgra,
+                        iw,
+                        ih,
+                        &inner_vp,
+                        src_w,
+                        src_h,
+                        crate::file_record::session_t_secs(),
+                    );
+                    crate::promo::publish_inner_frame(out, iw, ih);
+                } else {
+                    crate::promo::publish_inner_frame(bgra, iw, ih);
+                }
+            }
+        }
+
+        if let Some(bgra) = render_from_cache(bridge, state, usage_vp, live_tex, false) {
+            crate::file_record::publish_capture_frame(bgra);
+            ok = true;
+        }
+
+        ok
+    }
+
+    fn recording_gpu_cursor(state: &SharedState) -> bool {
+        let st = state.lock();
+        st.recording_settings.capture_cursor
+            && st.recording_settings.cinematic_cursor
+            && st.promo_mode.is_none()
+    }
+
+    /// Publish one recording frame — MF GPU surface (zero-copy) or FFmpeg BGRA pipe.
+    fn capture_recording_output(
+        bridge: &mut GpuBridge,
+        state: &SharedState,
+        live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
+        pipelined: bool,
+    ) -> bool {
+        if state.lock().promo_mode.is_some() {
+            return capture_promo_outputs(bridge, state, live_tex, pipelined);
+        }
+        if recording_uses_hw_encode() {
+            return publish_recording_surface(bridge, state, live_tex, pipelined);
+        }
+        if let Some(bgra) = render_recording_frame(bridge, state, live_tex, pipelined) {
+            publish_recording_pixels(bgra, state);
+            return true;
+        }
+        false
+    }
+
+    fn publish_recording_surface(
+        bridge: &mut GpuBridge,
+        state: &SharedState,
+        live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
+        pipelined: bool,
+    ) -> bool {
+        if state.lock().promo_mode.is_some() {
+            return false;
+        }
+        let vp = shared_viewport().lock().viewport;
+        if !bridge.ready {
+            return false;
+        }
+        let ctx = match bridge.context.clone() {
+            Some(c) => c,
+            None => return false,
+        };
+        let device = match bridge.device.clone() {
+            Some(d) => d,
+            None => return false,
+        };
+        let src_w = bridge.src_w;
+        let src_h = bridge.src_h;
+        if ensure_gpu_scaler(&device, state, bridge).is_err() {
+            return false;
+        }
+        let scaler = match bridge.scaler.as_mut() {
+            Some(s) => s,
+            None => return false,
+        };
+        let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
+
+        let draw = if let Some(tex) = live_tex {
+            scaler.render(&ctx, &device, tex, src_w, src_h, &layout)
+        } else {
+            scaler.render_cached(&ctx, src_w, src_h, &layout)
+        };
+        if draw.is_err() {
+            return false;
+        }
+        let surface = match scaler.snap_encode_surface(&ctx) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        remember_vp(bridge, &vp);
+        publish_capture_surface(surface, false);
+        let _ = pipelined;
+        true
+    }
+
+    fn publish_recording_pixels(bgra: Vec<u8>, _state: &SharedState) {
+        crate::file_record::publish_capture_frame(bgra);
     }
 
     fn flush_gpu_readback_pipeline() {
         let mut bridge = gpu_bridge().lock();
         if let (Some(ctx), Some(scaler)) = (bridge.context.clone(), bridge.scaler.as_mut()) {
             if let Some(bgra) = scaler.flush_pipelined_readback(&ctx) {
-                publish_capture_frame(bgra);
+                crate::file_record::publish_capture_frame(bgra);
             }
             scaler.reset_readback_pipeline();
         }
@@ -303,12 +487,13 @@ mod imp {
 
     pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
         let vs = shared_viewport().lock();
+        let vp = vs.promo_usage_viewport.unwrap_or(vs.viewport);
         let (sw, sh) = vs
             .monitor
             .as_ref()
             .map(|m| (m.width, m.height))
             .unwrap_or((1920, 1080));
-        (vs.viewport, sw, sh)
+        (vp, sw, sh)
     }
 
     fn wgc_cursor_settings(state: &SharedState) -> CursorCaptureSettings {
@@ -330,13 +515,13 @@ mod imp {
     fn render_from_cache(
         bridge: &mut GpuBridge,
         state: &SharedState,
+        vp: crate::state::Viewport,
         live_tex: Option<&windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>,
         pipelined: bool,
     ) -> Option<Vec<u8>> {
         if !bridge.ready {
             return None;
         }
-        let vp = shared_viewport().lock().viewport;
         let ctx = bridge.context.clone()?;
         let device = bridge.device.clone()?;
         let src_w = bridge.src_w;
@@ -345,10 +530,29 @@ mod imp {
         let scaler = bridge.scaler.as_mut()?;
         let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
 
-        // Glide-only pipelining: pan/zoom re-crops overlap readback; WGC needs same-frame cursor.
-        let use_pipeline = pipelined && live_tex.is_none();
+        // Cinematic cursor is stamped on the CPU at CFR encode time — never pipelined
+        // readback (one frame behind) and never `cursor_pre_stamped` without pixels.
+        let use_pipeline_cached = pipelined && live_tex.is_none();
+        let use_pipeline_live = pipelined
+            && live_tex.is_some()
+            && !wgc_needs_sync_cursor(state)
+            && !recording_gpu_cursor(state);
 
-        if use_pipeline {
+        if use_pipeline_live {
+            let prev = scaler.take_pipelined_readback(&ctx);
+            let tex = live_tex.unwrap();
+            let draw = scaler.render(&ctx, &device, tex, src_w, src_h, &layout);
+            draw.ok()?;
+            scaler.queue_readback(&ctx);
+
+            if let Some(bgra) = prev {
+                remember_vp(bridge, &vp);
+                return Some(bgra);
+            }
+            return None;
+        }
+
+        if use_pipeline_cached {
             let prev = scaler.take_pipelined_readback(&ctx);
 
             let draw = scaler.render_cached(&ctx, src_w, src_h, &layout);
@@ -534,8 +738,19 @@ mod imp {
     /// True when pan/zoom moved since the last recording render (skip redundant GPU readbacks).
     pub fn viewport_changed_since_last_render() -> bool {
         let bridge = gpu_bridge().lock();
-        let vp = shared_viewport().lock().viewport;
-        viewport_changed_on_bridge(&bridge, &vp)
+        let vs = shared_viewport().lock();
+        if viewport_changed_on_bridge(&bridge, &vs.viewport) {
+            return true;
+        }
+        if let Some(usage) = vs.promo_usage_viewport {
+            if (usage.x - bridge.last_vp_x).abs() > 0.5
+                || (usage.y - bridge.last_vp_y).abs() > 0.5
+                || (usage.zoom - bridge.last_vp_zoom).abs() > 0.002
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn preview_render_interval_ms(streaming: bool, camera_connected: bool, fps: u32) -> u64 {
@@ -648,7 +863,7 @@ mod imp {
         let (out_w, out_h) =
             output_dims(viewport_orientation(), st.recording_settings.quality);
         let requested = st.recording_settings.fps.max(1);
-        let fps = effective_recording_fps(requested, out_w, out_h);
+        let fps = recording_fps(requested);
         let bitrate_kbps = (broadcast_bitrate(out_w, out_h, fps) / 1000).max(500);
         (out_w, out_h, fps, bitrate_kbps)
     }
@@ -666,14 +881,28 @@ mod imp {
         let bps = match (w, h, fps) {
             (720, 1280, 30) => 8_000_000,
             (720, 1280, 60) => 12_000_000,
+            (1280, 720, 30) => 8_000_000,
+            (1280, 720, 60) => 12_000_000,
             (1080, 1920, 30) => 15_000_000,
             (1080, 1920, 60) => 25_000_000,
             (1920, 1080, 30) => 15_000_000,
             (1920, 1080, 60) => 25_000_000,
+            (2560, 1440, 30) => 20_000_000,
+            (2560, 1440, 60) => 35_000_000,
+            (3840, 2160, 30) => 40_000_000,
+            (3840, 2160, 60) => 65_000_000,
             _ => {
-                let bpp = if w <= 720 { 0.18 } else { 0.16 };
+                let bpp = if w <= 720 {
+                    0.18
+                } else if w * h >= 3840 * 2160 {
+                    0.10
+                } else if w * h >= 2560 * 1440 {
+                    0.12
+                } else {
+                    0.16
+                };
                 ((w as u64 * h as u64 * fps as u64) as f64 * bpp)
-                    .clamp(6_000_000.0, 30_000_000.0) as u32
+                    .clamp(6_000_000.0, 80_000_000.0) as u32
             }
         };
         bps
@@ -696,6 +925,7 @@ mod imp {
         type Error = HandlerError;
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
+            boost_capture_thread_priority();
             let f = ctx.flags;
             Ok(Self {
                 state: f.state,
@@ -763,20 +993,23 @@ mod imp {
             let live = Some(src_tex);
 
             if recording {
-                if let Some(bgra) = render_from_cache(&mut bridge, &self.state, live, true) {
-                    if streaming {
-                        if let Some(stream) = stream_sink().lock().as_ref() {
-                            stream.push_frame(bgra.clone());
+                let streaming_now = streaming;
+                if capture_recording_output(&mut bridge, &self.state, live, true) {
+                    if streaming_now && !recording_uses_hw_encode() {
+                        if let Some(bgra) = render_recording_frame(&mut bridge, &self.state, live, false) {
+                            if let Some(stream) = stream_sink().lock().as_ref() {
+                                stream.push_frame(bgra);
+                            }
                         }
                     }
-                    publish_capture_frame(bgra);
                     REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
                     if !FIRST_REC_FRAME_LOGGED.swap(true, Ordering::Relaxed) {
                         capture_log("First recording frame published to encoder");
                     }
                 }
             } else if streaming || feed_cam {
-                if let Some(bgra) = render_from_cache(&mut bridge, &self.state, live, false) {
+                let vp = shared_viewport().lock().viewport;
+                if let Some(bgra) = render_from_cache(&mut bridge, &self.state, vp, live, false) {
                     dispatch_preview_outputs(bgra, streaming, &self.state);
                 }
             }
@@ -900,10 +1133,10 @@ mod imp {
         let viewport = shared_viewport().lock().viewport;
         let (out_w, out_h) = output_dims(viewport.orientation, settings_snapshot.quality);
         let requested_fps = settings_snapshot.fps.max(1);
-        let record_fps = effective_recording_fps(requested_fps, out_w, out_h);
+        let record_fps = recording_fps(requested_fps);
         let recording_active = state.lock().recording;
         let wgc_fps = if record_path.is_some() || has_stream || recording_active {
-            requested_fps
+            record_fps
         } else {
             // Camera-only idle: lower WGC rate until recording — saves GPU + WebView breathing room.
             requested_fps.min(20).max(10)
@@ -914,18 +1147,19 @@ mod imp {
         if let Some(ref path) = record_path {
             FIRST_REC_FRAME_LOGGED.store(false, Ordering::Relaxed);
             open_recorder(path, out_w, out_h, record_fps, bitrate_kbps, state.clone())?;
-            if record_fps != requested_fps {
-                capture_log(&format!(
-                    "Recording CFR capped at {record_fps}fps (requested {requested_fps}fps) for reliable A/V sync at {}x{}",
-                    out_w, out_h
-                ));
-            }
             capture_log(&format!(
-                "Recording to {} ({}x{} @ {}fps)",
+                "Recording to {} ({}x{} @ {}fps CFR{})",
                 path.display(),
                 out_w,
                 out_h,
-                record_fps
+                record_fps,
+                if out_w == 3840 && out_h == 2160 {
+                    ", 4K landscape"
+                } else if out_w == 2560 && out_h == 1440 {
+                    ", 1440p landscape"
+                } else {
+                    ""
+                }
             ));
         }
 
@@ -978,16 +1212,7 @@ mod imp {
                 *control_slot().lock() = Some(control);
                 start_paced_output(state.clone());
                 if record_path.is_some() || state.lock().recording {
-                    let glide_fps = if record_path.is_some() {
-                        record_fps
-                    } else {
-                        effective_recording_fps(
-                            state.lock().recording_settings.fps.max(1),
-                            out_w,
-                            out_h,
-                        )
-                    };
-                    start_recording_glide_pulse(state, glide_fps);
+                    start_recording_glide_pulse(state, record_fps);
                 }
                 Ok(())
             }
@@ -1109,6 +1334,57 @@ mod imp {
                 stop_capture();
             }
         }
+    }
+
+    pub fn start_promo_recording(state: SharedState) -> Result<(), CaptureError> {
+        crate::ffmpeg_util::require_ffmpeg().map_err(CaptureError::Other)?;
+        crate::file_record::warmup_encoder();
+
+        if capture_already_running() {
+            return attach_recording(state);
+        }
+
+        let (mode, settings_snapshot) = {
+            let st = state.lock();
+            let mode = st
+                .promo_mode
+                .ok_or_else(|| CaptureError::Other("promo mode not set".into()))?;
+            (mode, st.recording_settings)
+        };
+        let orientation = match mode {
+            crate::state::PromoMode::Portrait => Orientation::Portrait,
+            crate::state::PromoMode::Landscape => Orientation::Landscape,
+        };
+        let (out_w, out_h) = output_dims(orientation, settings_snapshot.quality);
+        let path = new_recording_path(orientation);
+
+        {
+            let mut st = state.lock();
+            st.current_path = Some(path.clone());
+            st.current_dims = (out_w, out_h);
+            st.recording = true;
+            st.promo_inner_active = false;
+            st.promo_inner_path = None;
+            st.promo_inner_started_at = None;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
+        }
+
+        if let Err(e) = begin_capture(state.clone(), Some(path), None) {
+            let mut st = state.lock();
+            st.recording = false;
+            st.current_path = None;
+            st.promo_mode = None;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
+            return Err(e);
+        }
+
+        capture_log(&format!(
+            "Promo recording started ({orientation:?} @ {}x{} {}fps)",
+            out_w, out_h, settings_snapshot.fps
+        ));
+        Ok(())
     }
 
     pub fn start_recording(state: SharedState) -> Result<(), CaptureError> {
@@ -1271,6 +1547,62 @@ mod imp {
         clear_gpu_bridge();
     }
 
+    pub fn cancel_promo_recording(state: SharedState) -> Result<(), CaptureError> {
+        let (was_streaming, was_camera, path) = {
+            let st = state.lock();
+            if st.promo_mode.is_none() {
+                return Ok(());
+            }
+            (
+                st.streaming,
+                st.camera_enabled,
+                st.current_path.clone(),
+            )
+        };
+
+        if state.lock().recording {
+            {
+                let mut st = state.lock();
+                st.recording = false;
+            }
+            let _ = close_recorder();
+        }
+
+        crate::promo::finish_inner_recorder().ok();
+
+        if let Some(p) = path {
+            let _ = std::fs::remove_file(p);
+        }
+
+        if !was_streaming && !was_camera {
+            stop_capture();
+        }
+
+        {
+            let mut st = state.lock();
+            st.current_path = None;
+            st.session_start = None;
+            st.current_start = None;
+            st.promo_mode = None;
+            st.promo_inner_active = false;
+            st.promo_inner_path = None;
+            st.promo_inner_started_at = None;
+            st.recording_armed = false;
+            st.countdown_seconds = 0;
+            st.finalizing = false;
+            crate::cursor::sync_follow_gate_from_state(&st);
+            crate::click_audio::sync_click_gate_from_state(&st);
+        }
+        {
+            let mut vs = shared_viewport().lock();
+            vs.promo_usage_viewport = None;
+            vs.promo_inner_viewport = None;
+        }
+
+        capture_log("Promo session cancelled — usage track discarded");
+        Ok(())
+    }
+
     pub fn stop_recording(
         state: SharedState,
         app: Option<tauri::AppHandle>,
@@ -1320,7 +1652,87 @@ mod imp {
         }
 
         crate::save_progress::report(8, "starting");
-        let (frames, size_bytes, duration) = close_recorder()?;
+        let (frames, mut size_bytes, mut duration) = close_recorder()?;
+
+        let (promo_mode, promo_inner_was_active, usage_has_audio, inner_started_at) = {
+            let st = state.lock();
+            let inner_started_at = st
+                .promo_inner_started_at
+                .and_then(|t| st.session_start.map(|s| t.duration_since(s).as_secs_f64()));
+            (
+                st.promo_mode,
+                st.promo_inner_active,
+                crate::audio::source_active(st.audio_settings.source),
+                inner_started_at,
+            )
+        };
+
+        if promo_mode.is_some() {
+            let should_composite = promo_inner_was_active || crate::promo::inner_recording_active();
+            if should_composite {
+                let inner_mp4 = match crate::promo::finish_inner_recorder() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        capture_log(&format!("WARN: promo inner finalize: {e}"));
+                        None
+                    }
+                };
+                let composite_tmp = path.with_extension("promo.tmp.mp4");
+                let inner_path = inner_mp4.as_ref().map(|(p, _, _)| p.as_path());
+                let inner_dur_hint = inner_mp4.as_ref().map(|(_, _, d)| *d);
+                match crate::promo::composite_promo_final(
+                    &path,
+                    inner_path,
+                    &composite_tmp,
+                    usage_has_audio,
+                    inner_started_at,
+                    Some(duration),
+                    inner_dur_hint,
+                    Some(dims),
+                ) {
+                    Ok(()) => {
+                        let _ = std::fs::remove_file(&path);
+                        if let Err(e) = std::fs::rename(&composite_tmp, &path) {
+                            capture_log(&format!("WARN: promo composite rename: {e}"));
+                        } else if let Some(composite_dur) = crate::promo::probe_duration_public(&path) {
+                            duration = composite_dur;
+                            if let Ok(len) = std::fs::metadata(&path).map(|m| m.len()) {
+                                size_bytes = len;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        capture_log(&format!("WARN: promo composite failed ({e}); keeping demo track"));
+                        let _ = std::fs::remove_file(&composite_tmp);
+                    }
+                }
+                if let Some((inner_path, _, _)) = inner_mp4 {
+                    let _ = std::fs::remove_file(inner_path);
+                }
+            } else {
+                let _ = std::fs::remove_file(&path);
+                if !was_streaming && !was_camera {
+                    stop_capture();
+                }
+                {
+                    let mut st = state.lock();
+                    st.current_path = None;
+                    st.session_start = None;
+                    st.current_start = None;
+                    st.promo_mode = None;
+                    st.promo_inner_active = false;
+                    st.promo_inner_path = None;
+                    crate::cursor::sync_follow_gate_from_state(&st);
+                    crate::click_audio::sync_click_gate_from_state(&st);
+                }
+                {
+                    let mut vs = shared_viewport().lock();
+                    vs.promo_usage_viewport = None;
+                    vs.promo_inner_viewport = None;
+                }
+                return Ok(None);
+            }
+        }
 
         if !was_streaming && !was_camera {
             stop_capture();
@@ -1331,8 +1743,17 @@ mod imp {
             st.current_path = None;
             st.session_start = None;
             st.current_start = None;
+            st.promo_mode = None;
+            st.promo_inner_active = false;
+            st.promo_inner_path = None;
+            st.promo_inner_started_at = None;
             crate::cursor::sync_follow_gate_from_state(&st);
             crate::click_audio::sync_click_gate_from_state(&st);
+        }
+        {
+            let mut vs = shared_viewport().lock();
+            vs.promo_usage_viewport = None;
+            vs.promo_inner_viewport = None;
         }
 
         if frames == 0 || size_bytes < 512 {
@@ -1486,11 +1907,12 @@ pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
 
 #[cfg(windows)]
 pub use imp::{
-    attach_camera, attach_recording, attach_stream, debug_lock_report, dispatch_recording_outputs,
+    attach_camera, attach_recording, attach_stream, cancel_promo_recording, debug_lock_report,
+    dispatch_recording_outputs,
     ensure_capture_session, is_capture_running, poll_camera_connected, recording_encoder_queue_depth,
     recording_encoder_queue_note_consumed, recording_encoder_queue_note_sent,
     recording_encoder_queue_reset, recording_pipeline_window_stats, register_virtual_camera,
-    render_output_frame, start_both, start_camera, start_recording,
+    render_output_frame, start_both, start_camera, start_promo_recording, start_recording,
     start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
     viewport_changed_since_last_render,
 };
@@ -1541,6 +1963,16 @@ pub fn render_recording_frame(_state: &SharedState) -> Option<Vec<u8>> {
 
 #[cfg(not(windows))]
 pub fn dispatch_recording_outputs(_bgra: Vec<u8>, _state: &SharedState) {}
+
+#[cfg(not(windows))]
+pub fn cancel_promo_recording(_state: SharedState) -> Result<(), CaptureError> {
+    Err(CaptureError::Unsupported)
+}
+
+#[cfg(not(windows))]
+pub fn start_promo_recording(_state: SharedState) -> Result<(), CaptureError> {
+    Err(CaptureError::Unsupported)
+}
 
 #[cfg(not(windows))]
 pub fn start_recording(_state: SharedState) -> Result<(), CaptureError> {

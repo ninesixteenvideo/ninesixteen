@@ -116,7 +116,7 @@ export function Info() {
           <ul className="card-sub" style={{ marginTop: 10, paddingLeft: 18, lineHeight: 1.6 }}>
             <li>True 9×16 and 16×9 capture from frame one</li>
             <li>System + mic audio, optional click sounds</li>
-            <li>Encrypted local recordings · virtual camera for OBS/Zoom</li>
+            <li>Up to 4K landscape · 1440p · 1080p portrait · 60fps with Pro</li>
             <li>Free to record and preview</li>
           </ul>
           <div className="row" style={{ gap: 8, justifyContent: "flex-start", flexWrap: "wrap", marginTop: 14 }}>

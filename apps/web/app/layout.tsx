@@ -6,6 +6,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SiteTvOverlay } from "@/components/SiteTvOverlay";
 import { JsonLd } from "@/components/JsonLd";
 import { organizationJsonLd, softwareApplicationJsonLd, webSiteJsonLd } from "@/lib/seo/jsonLd";
 import { rootMetadata } from "@/lib/seo/metadata";
@@ -65,7 +66,8 @@ twq('config','${xPixelId}');`}
           </Script>
         ) : null}
         <AuthProvider>
-          <div className="relative z-10 flex min-h-screen flex-col">
+          <SiteTvOverlay />
+          <div className="site-chrome relative z-10 flex min-h-screen flex-col">
             <SiteHeader />
             <main className="flex-1">{children}</main>
             <SiteFooter />

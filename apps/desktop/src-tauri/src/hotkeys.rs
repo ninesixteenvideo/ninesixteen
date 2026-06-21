@@ -17,5 +17,9 @@ pub fn handle(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
         let _ = crate::rawinput::queue_keyboard_zoom(1.0);
     } else if shortcut.matches(Modifiers::ALT, Code::ArrowDown) {
         let _ = crate::rawinput::queue_keyboard_zoom(-1.0);
+    } else if shortcut.matches(Modifiers::ALT, Code::KeyP) {
+        let _ = app.emit("hotkey:promo-portrait", ());
+    } else if shortcut.matches(Modifiers::ALT, Code::KeyL) {
+        let _ = app.emit("hotkey:promo-landscape", ());
     }
 }

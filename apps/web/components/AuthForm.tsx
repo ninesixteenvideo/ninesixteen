@@ -8,9 +8,13 @@ import { useAuth } from "@/lib/auth";
 function AuthFormInner({
   mode,
   onAuthenticated,
+  embedded = false,
+  onSwitchMode,
 }: {
   mode: "sign-in" | "sign-up";
-  onAuthenticated?: () => void;
+  onAuthenticated?: (next?: string) => void;
+  embedded?: boolean;
+  onSwitchMode?: (mode: "sign-in" | "sign-up") => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -24,6 +28,10 @@ function AuthFormInner({
   const isSignUp = mode === "sign-up";
 
   function afterAuth() {
+    if (onAuthenticated) {
+      onAuthenticated();
+      return;
+    }
     const next = searchParams.get("next");
     if (next?.startsWith("/")) {
       router.push(next);
@@ -62,124 +70,154 @@ function AuthFormInner({
     }
   }
 
-  return (
-    <div className="mx-auto flex max-w-md flex-col items-center px-5 py-8">
-      <div className="ns-card w-full p-7">
-        <h1 className="font-display text-2xl">
-          {isSignUp ? "Create your account" : "Welcome back"}
-        </h1>
-        <p className="mt-1 font-body text-sm text-inksoft">
-          {isSignUp
-            ? "Create an account to sync Pro across desktop and web."
-            : "Sign in to manage your account and export entitlements."}
-        </p>
+  const body = (
+    <>
+      {!embedded ? (
+        <>
+          <p className="home-auth__kicker">{isSignUp ? "New account" : "Welcome back"}</p>
+          <h1 className="home-auth__heading">
+            {isSignUp ? "Create your account" : "Sign in"}
+          </h1>
+          <p className="home-auth__lede">
+            {isSignUp
+              ? "Sync Pro across desktop and web."
+              : "Manage your license and exports."}
+          </p>
+        </>
+      ) : null}
 
-        {!firebaseEnabled && (
-          <div className="ns-banner mt-4 p-3 font-mono text-[11px] leading-relaxed text-inksoft">
-            Demo mode: Firebase isn’t configured yet, so accounts are stored locally
-            in this browser. Add your keys to <code>.env.local</code> to go live.
-          </div>
+      {!firebaseEnabled && (
+        <div className="home-auth__notice">
+          Demo mode: Firebase isn&apos;t configured — accounts stay in this browser only.
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onGoogle}
+        disabled={busy}
+        className="home-auth__action home-auth__action--oauth"
+      >
+        <span className="home-auth__action-eyebrow">One tap</span>
+        <span className="home-auth__action-main">
+          <GoogleGlyph />
+          <span className="home-auth__action-title home-auth__action-title--mono">Google</span>
+        </span>
+        <span className="home-auth__action-meta">Continue with Google</span>
+      </button>
+
+      <div className="home-auth__divider">
+        <span>or with email</span>
+      </div>
+
+      <form onSubmit={onSubmit} className="home-auth__form">
+        {isSignUp && (
+          <Field label="Name">
+            <input
+              className="home-auth__input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ada Lovelace"
+              autoComplete="name"
+            />
+          </Field>
         )}
+        <Field label="Email">
+          <input
+            className="home-auth__input"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@studio.com"
+            autoComplete="email"
+          />
+        </Field>
+        <Field label="Password">
+          <input
+            className="home-auth__input"
+            type="password"
+            required
+            minLength={6}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete={isSignUp ? "new-password" : "current-password"}
+          />
+        </Field>
+
+        {error ? <p className="home-auth__error">{error}</p> : null}
 
         <button
-          type="button"
-          onClick={onGoogle}
+          type="submit"
           disabled={busy}
-          className="ns-google-btn mt-5 flex w-full items-center justify-center gap-3 px-5 py-3 font-display text-base disabled:opacity-60"
+          className={`home-auth__action ${isSignUp ? "home-auth__action--coral" : "home-auth__action--mint"}`}
         >
-          <GoogleGlyph />
-          Continue with Google
-        </button>
-
-        <div className="my-5 flex items-center gap-3 font-mono text-[11px] uppercase tracking-wide text-inkfaint">
-          <span className="h-px flex-1 bg-line" />
-          or with email
-          <span className="h-px flex-1 bg-line" />
-        </div>
-
-        <form onSubmit={onSubmit} className="space-y-4">
-          {isSignUp && (
-            <Field label="Name">
-              <input
-                className="ns-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ada Lovelace"
-                autoComplete="name"
-              />
-            </Field>
-          )}
-          <Field label="Email">
-            <input
-              className="ns-input"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@studio.com"
-              autoComplete="email"
-            />
-          </Field>
-          <Field label="Password">
-            <input
-              className="ns-input"
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              autoComplete={isSignUp ? "new-password" : "current-password"}
-            />
-          </Field>
-
-          {error && (
-            <p className="rounded-[9px] border border-danger/40 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="ns-cta ns-cta--primary w-full disabled:opacity-60"
-          >
+          <span className="home-auth__action-eyebrow">
+            {isSignUp ? "New account" : "Welcome back"}
+          </span>
+          <span className="home-auth__action-title">
             {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
-          </button>
-        </form>
+          </span>
+          <span className="home-auth__action-meta">
+            {isSignUp ? "Sync Pro everywhere" : "Manage your license"}
+          </span>
+        </button>
+      </form>
 
-        {isSignUp && (
-          <p className="mt-5 text-center font-body text-sm text-inksoft">
-            By creating an account, you agree to our{" "}
-            <Link href="/terms" className="ns-link">
-              Terms of Use
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="ns-link">
-              Privacy Policy
-            </Link>
-            .
-          </p>
-        )}
+      {isSignUp && (
+        <p className="home-auth__fine">
+          By creating an account, you agree to our{" "}
+          <Link href="/terms" className="home-auth__link">
+            Terms
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="home-auth__link">
+            Privacy
+          </Link>
+          .
+        </p>
+      )}
 
-        <p className={`text-center font-body text-sm text-inksoft ${isSignUp ? "mt-3" : "mt-5"}`}>
-          {isSignUp ? (
-            <>
-              Already have an account?{" "}
-              <Link href="/sign-in" className="ns-link">
+      <p className="home-auth__switch">
+        {isSignUp ? (
+          <>
+            Already have an account?{" "}
+            {embedded && onSwitchMode ? (
+              <button type="button" className="home-auth__link-btn" onClick={() => onSwitchMode("sign-in")}>
+                Sign in
+              </button>
+            ) : (
+              <Link href="/?view=sign-in" className="home-auth__link">
                 Sign in
               </Link>
-            </>
-          ) : (
-            <>
-              New here?{" "}
-              <Link href="/sign-up" className="ns-link">
+            )}
+          </>
+        ) : (
+          <>
+            New here?{" "}
+            {embedded && onSwitchMode ? (
+              <button type="button" className="home-auth__link-btn" onClick={() => onSwitchMode("sign-up")}>
+                Create an account
+              </button>
+            ) : (
+              <Link href="/?view=sign-up" className="home-auth__link">
                 Create an account
               </Link>
-            </>
-          )}
-        </p>
-      </div>
+            )}
+          </>
+        )}
+      </p>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="home-auth home-auth--embedded">{body}</div>;
+  }
+
+  return (
+    <div className="home-auth home-auth--page">
+      <div className="home-auth__console">{body}</div>
     </div>
   );
 }
@@ -209,10 +247,8 @@ function GoogleGlyph() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="mb-1.5 block font-mono text-xs uppercase tracking-wide text-inksoft">
-        {label}
-      </span>
+    <label className="home-auth__field">
+      <span className="home-auth__label">{label}</span>
       {children}
     </label>
   );
@@ -221,19 +257,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function AuthForm({
   mode,
   onAuthenticated,
+  embedded = false,
+  onSwitchMode,
 }: {
   mode: "sign-in" | "sign-up";
-  onAuthenticated?: () => void;
+  onAuthenticated?: (next?: string) => void;
+  embedded?: boolean;
+  onSwitchMode?: (mode: "sign-in" | "sign-up") => void;
 }) {
   return (
     <Suspense
       fallback={
-        <div className="mx-auto max-w-md px-5 py-12 text-center font-mono text-inksoft">
-          Loading…
+        <div className="home-auth home-auth--page">
+          <p className="home-auth__meta">Loading…</p>
         </div>
       }
     >
-      <AuthFormInner mode={mode} onAuthenticated={onAuthenticated} />
+      <AuthFormInner
+        mode={mode}
+        onAuthenticated={onAuthenticated}
+        embedded={embedded}
+        onSwitchMode={onSwitchMode}
+      />
     </Suspense>
   );
 }

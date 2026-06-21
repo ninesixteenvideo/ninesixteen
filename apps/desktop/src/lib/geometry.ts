@@ -108,16 +108,77 @@ export function cropRect(
   return centeredCrop(vp.x, vp.y, cropW, cropH, sw, sh);
 }
 
+export const QUALITY_720 = 720;
+export const QUALITY_1080 = 1080;
+export const QUALITY_1440 = 1440;
+export const QUALITY_2160 = 2160;
+
+export type RecordingQuality = 720 | 1080 | 1440 | 2160;
+
+/** Snap to 720 / 1080 / 1440 / 4K (1440+4K are landscape-only). */
+export function normalizeQuality(quality: number, orientation: Orientation): RecordingQuality {
+  if (orientation === "landscape" && quality >= 1900) return QUALITY_2160;
+  if (orientation === "landscape" && quality >= 1400) return QUALITY_1440;
+  if (quality > 900) return QUALITY_1080;
+  return QUALITY_720;
+}
+
 /**
- * Output dimensions for an orientation + selected quality (the 9-side / short
- * edge: 720 or 1080). The 16-side is derived for an exact standard
- * resolution, e.g. 1080 → 1920×1080 (landscape) / 1080×1920 (portrait).
+ * Output dimensions for an orientation + quality tier (the 9-side / short edge).
+ * 4K landscape → 3840×2160; 1440 → 2560×1440; 1080 → 1920×1080 / 1080×1920.
  */
 export function outputDims(o: Orientation, shortEdge: number): { w: number; h: number } {
-  const capped = Math.min(Math.max(shortEdge, 720), 1080);
-  const long = Math.round((capped * 16) / 9) & ~1;
-  const short = capped & ~1;
-  return o === "landscape" ? { w: long, h: short } : { w: short, h: long };
+  const short = normalizeQuality(shortEdge, o);
+  const long = Math.round((short * 16) / 9) & ~1;
+  const s = short & ~1;
+  return o === "landscape" ? { w: long, h: s } : { w: s, h: long };
+}
+
+/** Infer quality tier from capture output dimensions. */
+export function qualityFromOutputDims(w: number, h: number): RecordingQuality {
+  const short = Math.min(w, h);
+  if (short >= 1900) return QUALITY_2160;
+  if (short >= 1400) return QUALITY_1440;
+  if (short >= 900) return QUALITY_1080;
+  return QUALITY_720;
+}
+
+/** UI label for a quality tier button. */
+export function qualityLabel(q: RecordingQuality): string {
+  return q === QUALITY_2160 ? "4K" : `${q}p`;
+}
+
+/** Pixel load for encoder budgeting — width × height × fps. */
+export function pixelLoad(width: number, height: number, fps: number): number {
+  return width * height * Math.max(1, fps);
+}
+
+export function recordingPixelLoad(
+  orientation: Orientation,
+  quality: number,
+  fps: number,
+): number {
+  const { w, h } = outputDims(orientation, quality);
+  return pixelLoad(w, h, fps);
+}
+
+export type RecordingLoadCompare = "within" | "over";
+
+export function compareRecordingLoad(
+  orientation: Orientation,
+  quality: number,
+  fps: number,
+  maxQuality: number,
+  maxFps: number,
+): RecordingLoadCompare {
+  const current = recordingPixelLoad(orientation, quality, fps);
+  const max = recordingPixelLoad(orientation, maxQuality, maxFps);
+  return current <= max ? "within" : "over";
+}
+
+export function hardwareRecLabel(quality: number, fps: number): string {
+  const label = qualityLabel(normalizeQuality(quality, "landscape"));
+  return `${label} ${fps}fps`;
 }
 
 /** Human-readable zoom label for the overlay chip. */

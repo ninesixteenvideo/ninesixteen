@@ -4,6 +4,7 @@ import type {
   AudioLevels,
   AudioSettings,
   CaptureState,
+  InputSettings,
   MonitorInfo,
   Orientation,
   RecordingInfo,
@@ -95,6 +96,10 @@ const mock = (() => {
   ];
   let audioLevels: AudioLevels = { system: 0, mic: 0 };
   let audioMonitor: ReturnType<typeof setInterval> | null = null;
+  let inputSettings: InputSettings = {
+    zoomSensitivity: 1,
+    followSpeed: 1,
+  };
 
   function emit(event: string, payload: any) {
     (listeners[event] || []).forEach((cb) => cb(payload));
@@ -276,6 +281,13 @@ const mock = (() => {
           return null as unknown as T;
         case "list_audio_devices":
           return audioDevices as unknown as T;
+        case "get_hardware_profile":
+          return {
+            portrait: { maxQuality: 1080, maxFps: 60 },
+            landscape: { maxQuality: 1440, maxFps: 60 },
+          } as unknown as T;
+        case "get_input_settings":
+          return inputSettings as unknown as T;
         case "get_audio_settings":
           return audioSettings as unknown as T;
         case "set_audio_settings": {
@@ -315,7 +327,10 @@ const mock = (() => {
         case "show_overlay":
         case "hide_overlay":
         case "open_recordings_folder":
-        case "set_input_settings":
+        case "set_input_settings": {
+          inputSettings = { ...(args.settings as InputSettings) };
+          return inputSettings as unknown as T;
+        }
         case "set_recording_settings":
         case "set_overlay_visible": {
           if (cmd === "set_overlay_visible") {

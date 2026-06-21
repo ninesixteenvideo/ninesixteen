@@ -59,12 +59,20 @@ pub struct MonitorInfo {
 #[serde(rename_all = "camelCase")]
 pub struct InputSettings {
     pub zoom_sensitivity: f64,
+    /// Pan follow pace — 1.0 = default, marginal slower/faster band (0.75–1.25).
+    #[serde(default = "default_follow_speed")]
+    pub follow_speed: f64,
+}
+
+fn default_follow_speed() -> f64 {
+    1.0
 }
 
 impl Default for InputSettings {
     fn default() -> Self {
         Self {
             zoom_sensitivity: 1.0,
+            follow_speed: 1.0,
         }
     }
 }
@@ -85,6 +93,9 @@ pub struct RecordingSettings {
     /// Playback/mix gain for mouse click SFX (0.0–2.0).
     #[serde(default = "default_mouse_click_volume")]
     pub mouse_click_volume: f64,
+    /// Owner-only promo capture — enables Alt+P / Alt+L marketing sessions.
+    #[serde(default, alias = "promoRecording")]
+    pub promo_enabled: bool,
 }
 
 fn default_mouse_click_volume() -> f64 {
@@ -132,6 +143,7 @@ impl Default for RecordingSettings {
             cinematic_cursor: true,
             mouse_click_audio: false,
             mouse_click_volume: default_mouse_click_volume(),
+            promo_enabled: false,
         }
     }
 }
@@ -194,6 +206,13 @@ pub struct AudioLevels {
     pub mic: f32,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PromoMode {
+    Portrait,
+    Landscape,
+}
+
 #[derive(Clone, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CaptureState {
@@ -220,6 +239,11 @@ pub struct CaptureState {
     pub cinematic_cursor: bool,
     /// True while Alt+F has paused cursor follow (crop stays fixed).
     pub frame_frozen: bool,
+    /// Promo marketing session active (Alt+P / Alt+L).
+    pub promo_mode: Option<PromoMode>,
+    /// Nested take is recording (user pressed Record during promo).
+    pub promo_inner_active: bool,
+    pub promo_enabled: bool,
 }
 
 #[derive(Clone, Copy, Serialize, Debug)]
@@ -249,16 +273,21 @@ pub struct RecordingInfo {
 }
 
 /// Live viewport + cursor-follow state — isolated mutex so pan never waits on capture/UI.
+#[derive(Clone)]
 pub struct ViewportState {
     pub viewport: Viewport,
     /// Scroll wheel adjusts this; `viewport.zoom` eases toward it each tick.
     pub zoom_target: f64,
     pub monitor: Option<MonitorInfo>,
     pub zoom_sensitivity: f64,
-    /// When true, pan follow is paused — the crop stays fixed until toggled off.
+    /// True while Alt+F has paused cursor follow (crop stays fixed).
     pub frame_frozen: bool,
     /// Set when unfreezing so pan eases back to the cursor more slowly.
     pub frame_unfreeze_at: Option<Instant>,
+    /// Usage-track viewport during promo (pan only, no zoom).
+    pub promo_usage_viewport: Option<Viewport>,
+    /// Inner-take crop — armed at countdown, applied to `viewport` only when inner starts.
+    pub promo_inner_viewport: Option<Viewport>,
 }
 
 impl Default for ViewportState {
@@ -270,6 +299,8 @@ impl Default for ViewportState {
             zoom_sensitivity: 1.0,
             frame_frozen: false,
             frame_unfreeze_at: None,
+            promo_usage_viewport: None,
+            promo_inner_viewport: None,
         }
     }
 }
@@ -298,7 +329,13 @@ pub struct AppState {
     /// True while FFmpeg/encrypt finalize runs after the user stops recording.
     pub finalizing: bool,
 
-    // Active recording session bookkeeping.
+    /// Active promo marketing session, if any.
+    pub promo_mode: Option<PromoMode>,
+    pub promo_inner_active: bool,
+    /// Temp path for nested inner take (video only).
+    pub promo_inner_path: Option<PathBuf>,
+    /// Wall clock when the nested inner take began (usage track keeps rolling until stop).
+    pub promo_inner_started_at: Option<Instant>,
     pub current_path: Option<PathBuf>,
     /// Wall clock when the user pressed Record (drives timer + CFR slots).
     pub session_start: Option<Instant>,
@@ -323,6 +360,10 @@ impl Default for AppState {
             recording_armed: false,
             countdown_seconds: 0,
             finalizing: false,
+            promo_mode: None,
+            promo_inner_active: false,
+            promo_inner_path: None,
+            promo_inner_started_at: None,
             current_path: None,
             session_start: None,
             current_start: None,

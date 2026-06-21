@@ -58,6 +58,9 @@ export interface CaptureState {
   captureCursor: boolean;
   cinematicCursor: boolean;
   frameFrozen: boolean;
+  promoMode?: "portrait" | "landscape" | null;
+  promoInnerActive?: boolean;
+  promoEnabled?: boolean;
 }
 
 export interface RecordingInfo {
@@ -74,16 +77,30 @@ export interface RecordingInfo {
 
 export interface InputSettings {
   zoomSensitivity: number;
+  /** 1.0 = default pan follow; marginal slower/faster (0.75–1.25). */
+  followSpeed: number;
+}
+
+export interface HardwareRecommendation {
+  maxQuality: number;
+  maxFps: number;
+}
+
+export interface HardwareProfile {
+  portrait: HardwareRecommendation;
+  landscape: HardwareRecommendation;
 }
 
 export interface RecordingSettings {
   orientation: Orientation;
   fps: number;
-  quality: 720 | 1080;
+  quality: 720 | 1080 | 1440 | 2160;
   captureCursor: boolean;
   cinematicCursor: boolean;
   mouseClickAudio: boolean;
   mouseClickVolume: number;
+  /** Owner-only — enables Alt+P / Alt+L promo sessions. */
+  promoEnabled?: boolean;
 }
 
 export type AudioSourceMode = "none" | "system" | "microphone" | "system_and_microphone";

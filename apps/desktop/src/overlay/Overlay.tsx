@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { invoke, listen } from "../lib/bridge";
-import { cropRect, formatLabel, zoomLabel } from "../lib/geometry";
+import { cropRect, formatLabel, qualityFromOutputDims, zoomLabel } from "../lib/geometry";
 import type { CaptureState, Orientation, OverlayFrame, Viewport } from "../lib/types";
 
 /**
@@ -26,6 +26,8 @@ export function Overlay() {
   const frameFrozen = useRef(false);
   const prevCountdown = useRef(0);
   const countdownChangedAt = useRef(0);
+  const promoMode = useRef<"portrait" | "landscape" | null>(null);
+  const promoInnerActive = useRef(false);
 
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -33,7 +35,7 @@ export function Overlay() {
       try {
         const st = await invoke<CaptureState>("get_state");
         if (st.monitor) monitor.current = { w: st.monitor.width, h: st.monitor.height };
-        shortEdge.current = st.outputWidth <= 720 ? 720 : 1080;
+        shortEdge.current = qualityFromOutputDims(st.outputWidth, st.outputHeight);
         if (st.overlayFrame) frame.current = st.overlayFrame;
         orientation.current = st.viewport?.orientation ?? "portrait";
         recording.current = st.recording;
@@ -42,6 +44,8 @@ export function Overlay() {
         captureCursor.current = st.captureCursor ?? true;
         cinematicCursor.current = st.cinematicCursor ?? true;
         frameFrozen.current = st.frameFrozen ?? false;
+        promoMode.current = st.promoMode ?? null;
+        promoInnerActive.current = st.promoInnerActive ?? false;
       } catch {
         /* mock / not ready */
       }
@@ -100,13 +104,24 @@ export function Overlay() {
         }),
       );
       unsubs.push(
-        await listen("recording:state", (p: { recording: boolean; arming?: boolean }) => {
+        await listen("recording:state", (p: {
+          recording: boolean;
+          arming?: boolean;
+          promoMode?: "portrait" | "landscape" | null;
+          promoInnerActive?: boolean;
+        }) => {
           recording.current = p.recording;
           if (p.arming !== undefined) {
             arming.current = p.arming;
           }
+          if (p.promoMode !== undefined) {
+            promoMode.current = p.promoMode;
+          }
+          if (p.promoInnerActive !== undefined) {
+            promoInnerActive.current = p.promoInnerActive;
+          }
           if (p.recording) {
-            countdown.current = 0;
+            if (!p.arming) countdown.current = 0;
             recordingStartedAt.current = performance.now();
           } else {
             recordingStartedAt.current = null;
@@ -141,6 +156,13 @@ export function Overlay() {
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const promoBadgeOnly =
+        promoMode.current && !promoInnerActive.current && !arming.current;
+      if (promoBadgeOnly) {
+        drawPromoBadge(ctx, canvas.width, canvas.height, dpr, promoMode.current!);
+        return;
+      }
 
       const scale = canvas.width / monitor.current.w;
       const f = frame.current;
@@ -276,7 +298,7 @@ export function Overlay() {
         prevCountdown.current = cd;
         countdownChangedAt.current = performance.now();
       }
-      if (cd > 0 && (arming.current || !recording.current)) {
+      if (cd > 0 && arming.current) {
         const since = (performance.now() - countdownChangedAt.current) / 1000;
         drawCountdown(ctx, cd, rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr, since);
       }
@@ -298,6 +320,33 @@ export function Overlay() {
  * depletes over each second, with a soft dark scrim for legibility. No colour,
  * no heavy outline — it matches the new desktop design language.
  */
+function drawPromoBadge(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  _height: number,
+  dpr: number,
+  mode: "portrait" | "landscape",
+) {
+  const label = mode === "portrait" ? "P" : "L";
+  const pulse = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(performance.now() / 280));
+  const padX = 10 * dpr;
+  ctx.font = `700 ${15 * dpr}px "IBM Plex Mono", monospace`;
+  const tw = ctx.measureText(label).width;
+  const chipW = tw + padX * 2;
+  const chipH = 24 * dpr;
+  const chipX = width - chipW - 14 * dpr;
+  const chipY = 14 * dpr;
+
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle = "rgba(10,10,16,0.82)";
+  roundRect(ctx, chipX, chipY, chipW, chipH, 7 * dpr);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, chipX + padX, chipY + chipH / 2);
+  ctx.globalAlpha = 1;
+}
+
 function drawCountdown(
   ctx: CanvasRenderingContext2D,
   seconds: number,
