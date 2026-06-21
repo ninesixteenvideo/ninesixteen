@@ -8,8 +8,9 @@ const ALPHA_BASE = 12;
 const ALPHA_RANGE = 22;
 const BURST_ALPHA_BASE = 28;
 const BURST_ALPHA_RANGE = 70;
-const BURST_MIN_DELAY_MS = 6000;
-const BURST_MAX_DELAY_MS = 14000;
+const BURST_MIN_DELAY_MS = 3800;
+const BURST_MAX_DELAY_MS = 9000;
+const BURST_DOUBLE_CHANCE = 0.25;
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -113,6 +114,9 @@ export function SiteTvOverlay() {
     const schedule = () => {
       pushTimer(() => {
         burst();
+        if (Math.random() < BURST_DOUBLE_CHANCE) {
+          pushTimer(burst, randomBetween(80, 180));
+        }
         schedule();
       }, randomBetween(BURST_MIN_DELAY_MS, BURST_MAX_DELAY_MS));
     };
