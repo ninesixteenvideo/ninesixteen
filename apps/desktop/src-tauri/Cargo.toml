@@ -1,6 +1,6 @@
 [package]
 name = "ninesixteen"
-version = "1.2.1"
+version = "1.2.2"
 description = "ninesixteen.video — native 9×16 & 16×9 Windows screen recorder with cursor-driven framing"
 authors = ["ninesixteen.video"]
 homepage = "https://ninesixteen.video"
