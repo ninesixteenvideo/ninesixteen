@@ -26,6 +26,7 @@ export const CORE_LANDING_PAGES: readonly LandingPageConfig[] = [
       "True 9×16 — not a center crop of a 16×9 recording",
       "Cursor-driven framing so the viewport tracks what you point at",
       "Alt + scroll zoom with rule-of-thirds guides, live while recording",
+      "Game mode for locked full-frame gameplay and walkthrough clips",
       "System + mic audio, optional click sounds, encrypted local storage",
       "Free to record and preview · $49 one-time for MP4 export",
     ],
@@ -50,9 +51,11 @@ export const CORE_LANDING_PAGES: readonly LandingPageConfig[] = [
     bullets: [
       "True 16×9 output — ready for YouTube, Loom-style demos, and course edits",
       "Same cursor follow and Alt + scroll zoom as portrait mode",
+      "Game mode locks full 16×9 for gameplay — system cursor, no zoom",
       "Library player and film dock adapt to landscape aspect",
-      "Up to 1080p at 30 or 60 fps",
-      "One app for both Shorts and widescreen — no subscription",
+      "Up to 4K landscape @ 60 fps and 1440p @ 60 fps — Pro export",
+      "Hardware-aware quality settings in Studio",
+      "One app for vertical and widescreen — no subscription",
     ],
     keywords: [
       "landscape screen recorder",
@@ -76,7 +79,7 @@ export const CORE_LANDING_PAGES: readonly LandingPageConfig[] = [
       "9×16 from the first frame — no black bars, no manual crop",
       "Frame tight on UI with cursor follow and live zoom",
       "System audio + voiceover in one take",
-      "Lightweight native app — not another Electron hog",
+      "Native Windows Graphics Capture — lower CPU than Electron recorders",
       "Record free, export with Pro when you are ready to post",
     ],
     keywords: [
@@ -113,27 +116,27 @@ export const CORE_LANDING_PAGES: readonly LandingPageConfig[] = [
   },
   {
     slug: "saas-demo-recorder",
-    title: "SaaS demo screen recorder for founders — 9×16 & 16×9",
+    title: "SaaS demo screen recorder — 9×16 & 16×9 on Windows",
     metaDescription:
-      "Record product demos and build-in-public clips in native 9×16 or 16×9. Cursor-driven framing for founders, indie hackers, and SaaS marketers on Windows.",
-    h1: "Product demos that look shot on purpose",
-    kicker: "Founders · SaaS · build in public",
+      "Record product demos in native 9×16 or 16×9. Cursor-driven framing and Game mode for founders and SaaS teams on Windows.",
+    h1: "Product demos in native aspect ratio",
+    kicker: "Founders · SaaS · product",
     linkLabel: "SaaS demos",
     category: "business",
     intro:
-      "Launch videos, feature drops, and progress updates need tight framing — not a shaky full-desktop screencast. ninesixteen.video follows your cursor, zooms with Alt + scroll, and exports portrait or landscape footage ready for X, LinkedIn, or your landing page.",
+      "Product walkthroughs need tight framing — not a full-desktop screencast reframed in post. ninesixteen.video follows your cursor, zooms with Alt + scroll, and exports portrait or landscape MP4s ready for your site or social channels.",
     bullets: [
       "Portrait for social clips · landscape for full product walkthroughs",
       "Cursor-driven viewport — viewers see what you point at",
-      "Low CPU native capture — record on a laptop without fan spin-up",
-      "Free to try before launch day — pay once when you need exports",
-      "Built by a solo dev who ships in public",
+      "Game mode for locked full-frame gameplay and walkthrough clips",
+      "Native Windows Graphics Capture — lower CPU than Electron recorders",
+      "Free to record · $49 one-time Pro export",
     ],
     keywords: [
       "saas demo recorder",
       "product demo screen recorder",
-      "build in public recorder",
       "startup demo video tool",
+      "native aspect demo recorder",
     ],
   },
 ] as const;
@@ -184,7 +187,7 @@ export const OBS_COMPARE = {
     "Compare ninesixteen.video and OBS for TikTok, Reels, and YouTube Shorts. Native 9×16 capture, cursor framing, and one-time pricing vs manual crop workflows.",
   h1: "ninesixteen.video vs OBS",
   intro:
-    "OBS is the Swiss Army knife of streaming — incredible, and overkill when you just need a tight vertical clip. Here is how ninesixteen.video compares for short-form and native-aspect screen recording on Windows.",
+    "ninesixteen.video records native 9×16 or 16×9 with cursor follow — built for short-form clips and product demos on Windows. OBS excels at live streaming and multi-source setups. Here is how they compare for aspect-native recording.",
   rows: [
     {
       topic: "Native 9×16 / 16×9",
@@ -212,11 +215,16 @@ export const OBS_COMPARE = {
       obs: "Free and open source",
     },
     {
+      topic: "Game mode",
+      ninesixteen: "Lock full 9×16 or 16×9 — Crosshair or horizontal pan, system cursor",
+      obs: "Manual crop or scene layout — no dedicated game framing mode",
+    },
+    {
       topic: "Best for",
-      ninesixteen: "TikTok, Reels, Shorts, SaaS demos, tutorials",
+      ninesixteen: "TikTok, Reels, Shorts, gameplay clips, SaaS demos, tutorials",
       obs: "Live streaming, multi-source productions, advanced setups",
     },
   ],
   verdict:
-    "Use OBS when you need streams, multiple scenes, and plugins. Use ninesixteen.video when you want native vertical or landscape clips fast — without a crop step — and you are willing to pay once for clean exports.",
+    "Use OBS when you need streams, multiple scenes, and plugins. Use ninesixteen.video when you want native 9×16 or 16×9 clips — with cursor framing, Game mode, and no crop step — and a one-time $49 Pro export.",
 } as const;

@@ -64,7 +64,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     id: "desktop",
     title: "4c. Desktop app usage",
     paragraphs: [
-      `The desktop app captures screen content, optional microphone and/or system audio, cursor position, and settings you choose (resolution up to 1080p, frame rate, zoom sensitivity, and similar options) to perform recording features.`,
+      `The desktop app captures screen content, optional microphone and/or system audio, cursor position, and settings you choose (resolution up to 1080p portrait or 4K landscape, frame rate, Game mode, zoom sensitivity, and similar options) to perform recording features.`,
       `This capture data is processed on your device. Recordings are written to local storage on your computer in an encrypted format for the free tier. We do not receive your raw recordings unless you explicitly use a feature that sends data elsewhere (such as Google Drive export).`,
       `The desktop app may store sign-in session tokens, Google Drive access tokens (when you connect Drive), and preferences locally on your device.`,
     ],

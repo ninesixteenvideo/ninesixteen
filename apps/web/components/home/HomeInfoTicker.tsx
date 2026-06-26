@@ -1,4 +1,5 @@
 import { HOME_TICKER_ITEMS } from "@/lib/site";
+import { LATEST_VERSION } from "@/content/releases";
 
 const TICKER_COPIES = 2;
 
@@ -8,7 +9,7 @@ export function HomeInfoTicker() {
     <div className="home-ticker" aria-hidden>
       <div className="home-ticker__live">
         <span className="home-ticker__dot" />
-        Live
+        v{LATEST_VERSION}
       </div>
       <div className="home-ticker__track">
         <div className="home-ticker__marquee">

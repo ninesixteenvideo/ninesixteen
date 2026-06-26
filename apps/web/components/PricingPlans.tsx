@@ -4,14 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
-const FEATURES = [
-  "All features, present and future",
-  "Save locally or straight to Google Drive",
-  "Up to 1080p · 60fps encoding",
-  "Account links to desktop app",
-  "Free updates, forever",
-  "Priority support from the developer",
-];
+import { PRO_PRICING_FEATURES } from "@/lib/site";
 
 export function PricingPlans() {
   const { user, isPro } = useAuth();
@@ -45,7 +38,7 @@ export function PricingPlans() {
         </p>
 
         <ul className="mt-5 space-y-2">
-          {FEATURES.map((f) => (
+          {PRO_PRICING_FEATURES.map((f) => (
             <li key={f} className="flex items-start gap-2 font-body text-sm text-inksoft">
               <span className="mt-0.5 font-display text-ink">✓</span>
               {f}

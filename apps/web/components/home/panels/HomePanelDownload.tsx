@@ -2,23 +2,17 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PRODUCT_FEATURES } from "@/lib/site";
 import { HomeBackControl } from "../HomeBackControl";
 
 const INSTALLER_URL = process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL?.trim() ?? "";
-const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "0.1.0";
+const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "1.2.0";
 const INSTALLER_FILENAME = INSTALLER_URL
   ? decodeURIComponent(INSTALLER_URL.split("/").pop() ?? "")
   : "";
 const INSTALLER_EXT = INSTALLER_FILENAME.match(/\.(msi|exe)$/i)?.[1]?.toLowerCase() ?? "exe";
 
-const INCLUDED = [
-  "True 9×16 or 16×9 capture with cursor-driven framing",
-  "Alt + scroll zoom with rule-of-thirds guides",
-  "System & microphone audio with live level meters",
-  "Encrypted local recordings with built-in preview",
-  "Native Windows Graphics Capture — low CPU",
-  "FFmpeg bundled — nothing else to install",
-];
+const INCLUDED = PRODUCT_FEATURES.slice(0, 8);
 
 type HomePanelDownloadProps = {
   onBack: () => void;
@@ -89,7 +83,7 @@ export function HomePanelDownload({ onBack, onPricing }: HomePanelDownloadProps)
 
       <div className="home-panel__note">
         <p>
-          SmartScreen may warn — indie app, not code-signed yet. Click{" "}
+          SmartScreen may warn — the installer is not code-signed yet. Click{" "}
           <strong>More info</strong> → <strong>Run anyway</strong>.
         </p>
       </div>

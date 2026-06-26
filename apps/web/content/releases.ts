@@ -2,9 +2,24 @@ export type Release = {
   version: string;
   date: string;
   items: readonly string[];
+  /** Preview of a future desktop build — not available to download yet. */
+  upcoming?: boolean;
 };
 
 export const RELEASES: readonly Release[] = [
+  {
+    version: "1.2.0",
+    date: "June 2026",
+    items: [
+      "Game mode — locks full 9×16 or 16×9 with no zoom; portrait Crosshair (centered) or Cursor (horizontal pan); system cursor in output",
+      "4K landscape (3840×2160) @ 60 fps — Pro export",
+      "1440p landscape @ 60 fps — Pro export",
+      "Hardware-aware quality caps in Studio — recommends resolution and fps your PC can encode reliably",
+      "Adaptive H.264 pipeline — NVENC, AMD AMF, Intel QSV, or software fallback, probed at your recording size",
+      "Tier limits from RAM, CPU threads, and GPU VRAM — stronger rigs unlock higher ceilings automatically",
+      "Portrait capped at 1080p — landscape runs 720p through 4K",
+    ],
+  },
   {
     version: "1.1.0",
     date: "June 2026",
@@ -61,4 +76,4 @@ export const RELEASES: readonly Release[] = [
   },
 ] as const;
 
-export const LATEST_VERSION = RELEASES[0]?.version ?? "1.1.0";
+export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.0";

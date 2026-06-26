@@ -21,9 +21,6 @@ const FORMATS: { id: Orientation; label: string }[] = [
   { id: "landscape", label: "16×9" },
 ];
 
-const PROMO_RECORDING_ENABLED =
-  import.meta.env.VITE_ENABLE_PROMO_RECORDING === "true";
-
 const PROMO_DEMO_RECORDING = {
   orientation: "portrait" as Orientation,
   fps: 30,
@@ -33,6 +30,8 @@ const PROMO_DEMO_RECORDING = {
   mouseClickAudio: false,
   mouseClickVolume: 1,
   promoEnabled: false,
+  gameMode: false,
+  gamePanMode: "crosshair",
 };
 
 const PROMO_DEMO_AUDIO = {
@@ -253,6 +252,65 @@ export function Studio() {
               </AutoHeight>
             </section>
 
+            <section className="field-card">
+              <span className="field-label">Game mode</span>
+              <div className="toggle" role="group" aria-label="Game mode">
+                {(["off", "on"] as const).map((choice) => {
+                  const on = choice === "on";
+                  const active = on === activeRecordingSettings.gameMode;
+                  return (
+                    <button
+                      key={choice}
+                      type="button"
+                      className={`toggle-opt ${active ? "active" : ""}`}
+                      aria-pressed={active}
+                      onClick={() => patchRecordingSettings({ gameMode: on })}
+                    >
+                      {choice === "off" ? "Off" : "On"}
+                    </button>
+                  );
+                })}
+              </div>
+              {activeRecordingSettings.gameMode &&
+                activeRecordingSettings.orientation === "portrait" && (
+                  <>
+                    <span className="field-label" style={{ marginTop: 12, display: "block" }}>
+                      Portrait pan
+                    </span>
+                    <div className="toggle" role="group" aria-label="Portrait pan mode">
+                      {(
+                        [
+                          { id: "crosshair" as const, label: "Crosshair" },
+                          { id: "cursor" as const, label: "Cursor" },
+                        ] as const
+                      ).map(({ id, label }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          className={`toggle-opt ${activeRecordingSettings.gamePanMode === id ? "active" : ""}`}
+                          aria-pressed={activeRecordingSettings.gamePanMode === id}
+                          onClick={() => patchRecordingSettings({ gamePanMode: id })}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              {activeRecordingSettings.gameMode && (
+                <p className="card-sub muted" style={{ marginTop: 8 }}>
+                  Locks full{" "}
+                  {activeRecordingSettings.orientation === "landscape" ? "16×9" : "9×16"} with no
+                  zoom.
+                  {activeRecordingSettings.orientation === "portrait" &&
+                    (activeRecordingSettings.gamePanMode === "crosshair"
+                      ? " Crosshair keeps the frame centered."
+                      : " Cursor pans horizontally only.")}{" "}
+                  Recordings use the cinematic cursor when capture is enabled.
+                </p>
+              )}
+            </section>
+
             <div className="grid2">
               <section className="field-card">
                 <span className="field-label">Hide cursor in video</span>
@@ -301,32 +359,35 @@ export function Studio() {
               </section>
             </div>
 
-            <section className="field-card">
-              <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-                <span className="field-label">Follow speed</span>
-                <span className="muted">{followSpeedCaption(activeInputSettings.followSpeed)}</span>
-              </div>
-              <div className="range-notch">
+            {!activeRecordingSettings.gameMode && (
+              <section className="field-card">
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span className="field-label">Follow speed</span>
+                  <span className="muted">{followSpeedCaption(activeInputSettings.followSpeed)}</span>
+                </div>
+                <div className="range-notch">
+                  <input
+                    type="range"
+                    min={0.75}
+                    max={1.25}
+                    step={0.05}
+                    value={activeInputSettings.followSpeed}
+                    aria-label="Follow speed"
+                    onChange={(e) => patchInputSettings({ followSpeed: parseFloat(e.target.value) })}
+                  />
+                  <span className="range-notch-mark" aria-hidden title="Default" />
+                </div>
+              </section>
+            )}
+
+            {!activeRecordingSettings.gameMode && (
+              <section className="field-card">
+                <div className="row">
+                  <span className="field-label">Zoom sensitivity</span>
+                  <span className="muted">{activeInputSettings.zoomSensitivity.toFixed(2)}</span>
+                </div>
                 <input
                   type="range"
-                  min={0.75}
-                  max={1.25}
-                  step={0.05}
-                  value={activeInputSettings.followSpeed}
-                  aria-label="Follow speed"
-                  onChange={(e) => patchInputSettings({ followSpeed: parseFloat(e.target.value) })}
-                />
-                <span className="range-notch-mark" aria-hidden title="Default" />
-              </div>
-            </section>
-
-            <section className="field-card">
-              <div className="row">
-                <span className="field-label">Zoom sensitivity</span>
-                <span className="muted">{activeInputSettings.zoomSensitivity.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
                 min={0.2}
                 max={3}
                 step={0.05}
@@ -334,34 +395,7 @@ export function Studio() {
                 onChange={(e) => patchInputSettings({ zoomSensitivity: parseFloat(e.target.value) })}
               />
             </section>
-
-            {PROMO_RECORDING_ENABLED ? (
-              <section className="field-card">
-                <span className="field-label">Promo recording</span>
-                <p className="card-sub" style={{ marginTop: 6, marginBottom: 10 }}>
-                  Alt+P portrait · Alt+L landscape — records you using the app, then your take
-                  with a dark transition. 720p60. For marketing only.
-                </p>
-                <div className="toggle" role="group" aria-label="Promo recording">
-                  {(["off", "on"] as const).map((choice) => {
-                    const on = choice === "on";
-                    const active = on === Boolean(recordingSettings.promoEnabled);
-                    return (
-                      <button
-                        key={choice}
-                        type="button"
-                        className={`toggle-opt ${active ? "active" : ""}`}
-                        aria-pressed={active}
-                        disabled={promoMock}
-                        onClick={() => setRecordingSettings({ promoEnabled: on })}
-                      >
-                        {choice === "off" ? "Off" : "On"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ) : null}
+            )}
           </>
         )}
       </div>

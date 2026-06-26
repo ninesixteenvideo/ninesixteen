@@ -1,22 +1,32 @@
 "use client";
 
+import { HERO_HIGHLIGHTS } from "@/lib/site";
 import { HomeCTAs } from "./HomeCTAs";
 import type { HomeView } from "./homeViews";
 
 type HomeHeroStageProps = {
   onNavigate: (view: HomeView) => void;
   disabled?: boolean;
-  mirror?: boolean;
 };
 
 /** Tag line + control deck below the wordmark. */
-export function HomeHeroStage({ onNavigate, disabled, mirror }: HomeHeroStageProps) {
+export function HomeHeroStage({ onNavigate, disabled }: HomeHeroStageProps) {
   return (
     <>
       <p className="home-hero__tag">
-        Native 9×16 &amp; 16×9 capture that follows your cursor — not just another screen recorder.
+        Record your screen in true 9×16 or 16×9. Frame with your cursor — export without cropping
+        in post.
       </p>
-      <HomeCTAs onNavigate={onNavigate} disabled={disabled || mirror} />
+      <p className="home-hero__soon">{HERO_HIGHLIGHTS}</p>
+      <HomeCTAs onNavigate={onNavigate} disabled={disabled} />
+      <button
+        type="button"
+        className="home-hero__link"
+        disabled={disabled}
+        onClick={() => onNavigate("changelog")}
+      >
+        Release notes
+      </button>
     </>
   );
 }

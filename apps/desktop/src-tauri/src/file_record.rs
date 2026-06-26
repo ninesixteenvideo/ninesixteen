@@ -344,6 +344,27 @@ fn boost_recording_thread_priority() {}
 /// Latest recording frame written by the capture thread (fresh monitor ingest).
 static REC_CAPTURE_FRAME: OnceLock<parking_lot::Mutex<Option<Arc<RecFrame>>>> = OnceLock::new();
 
+/// Viewport baked into the last GPU render — avoids re-locking shared viewport on publish.
+static REC_FRAME_CONTEXT: OnceLock<parking_lot::Mutex<Option<(Viewport, u32, u32)>>> =
+    OnceLock::new();
+
+/// Called from the WGC thread after each GPU crop (while `gpu_bridge` is already locked).
+pub fn set_rec_frame_context(viewport: Viewport, src_w: u32, src_h: u32) {
+    *REC_FRAME_CONTEXT
+        .get_or_init(|| parking_lot::Mutex::new(None))
+        .lock() = Some((viewport, src_w, src_h));
+}
+
+fn rec_frame_context() -> (Viewport, u32, u32) {
+    if let Some(ctx) = REC_FRAME_CONTEXT
+        .get()
+        .and_then(|slot| slot.lock().clone())
+    {
+        return ctx;
+    }
+    crate::capture::recording_viewport_context()
+}
+
 pub fn publish_capture_frame(pixels: Vec<u8>) {
     publish_capture_frame_inner(Some(pixels), None, false);
 }
@@ -367,7 +388,7 @@ fn publish_capture_frame_inner(
     #[cfg(not(windows))] _surface: Option<()>,
     cursor_pre_stamped: bool,
 ) {
-    let (viewport, src_w, src_h) = crate::capture::recording_viewport_context();
+    let (viewport, src_w, src_h) = rec_frame_context();
     let frame = Arc::new(RecFrame {
         pixels: pixels.map(Arc::new),
         #[cfg(windows)]
@@ -383,10 +404,10 @@ fn publish_capture_frame_inner(
     *slot.lock() = Some(frame);
 }
 
-fn take_capture_frame() -> Option<Arc<RecFrame>> {
+fn peek_capture_frame() -> Option<Arc<RecFrame>> {
     REC_CAPTURE_FRAME
         .get()
-        .and_then(|slot| slot.lock().take())
+        .and_then(|slot| slot.lock().clone())
 }
 
 /// Drop any frame left in the shared slot from a previous recording.
@@ -400,9 +421,44 @@ fn clear_capture_frame() {
     if let Some(slot) = REC_CAPTURE_FRAME.get() {
         *slot.lock() = None;
     }
+    if let Some(ctx) = REC_FRAME_CONTEXT.get() {
+        *ctx.lock() = None;
+    }
     REC_CAPTURE_ID.store(0, Ordering::Relaxed);
     clear_recording_session_clock();
     STRAY_FRAME_LOGS.store(0, Ordering::Relaxed);
+}
+
+fn log_rec_live_stats(
+    elapsed: f64,
+    written: u64,
+    hold_frames: u64,
+    hold_pct: f64,
+    gpu_fps: f64,
+    target_fps: u32,
+    wgc_5s: u64,
+    cap_renders_5s: u64,
+    glide_5s: u64,
+    avg_render_us: u64,
+    avg_read_us: u64,
+    avg_handler_us: u64,
+    enc_backlog: u64,
+    encoder_label: &str,
+) {
+    capture_log(&format!(
+        "Rec live @ {elapsed:.0}s: {written} {encoder_label}, {hold_frames} holds ({hold_pct:.0}%), \
+         {gpu_fps:.1} unique GPU/s (target {target_fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s, \
+         glide {glide_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
+        avg_render_us as f64 / 1000.0,
+        avg_read_us as f64 / 1000.0,
+        avg_handler_us as f64 / 1000.0,
+    ));
+    if elapsed <= 8.0 && gpu_fps < target_fps as f64 * 0.75 && hold_pct >= 40.0 {
+        capture_log(&format!(
+            "WARN: capture warming up — {:.0}% hold frames, {:.1}/{target_fps} unique GPU/s (overlay/cursor may feel sluggish)",
+            hold_pct, gpu_fps
+        ));
+    }
 }
 
 /// Per-recording counter so we log (at most) a few stray-frame skips without spam.
@@ -515,9 +571,17 @@ impl GpuFeeder {
                 while !stop_t.load(Ordering::Relaxed) {
                     let tick = Instant::now();
 
-                    if let Some(captured) = take_capture_frame() {
-                        *latest_t.lock() = Some(captured);
-                        renders_t.fetch_add(1, Ordering::Relaxed);
+                    if let Some(captured) = peek_capture_frame() {
+                        let mut latest = latest_t.lock();
+                        let is_new = latest
+                            .as_ref()
+                            .map(|f: &Arc<RecFrame>| f.capture_id)
+                            .unwrap_or(0)
+                            != captured.capture_id;
+                        if is_new {
+                            *latest = Some(captured);
+                            renders_t.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                     // GPU render runs on the WGC capture thread only — never block ingest here.
 
@@ -702,7 +766,7 @@ fn run_hw_body(
 
     let cinematic = {
         let st = state.lock();
-        st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor
+        st.recording_settings.use_cinematic_cursor()
     };
     crate::cursor::reset_session();
     if cinematic {
@@ -813,14 +877,22 @@ fn run_hw_body(
                     let (wgc_5s, cap_renders_5s, glide_5s, avg_render_us, avg_read_us, avg_handler_us) =
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
-                    capture_log(&format!(
-                        "Rec live @ {elapsed:.0}s: {written} MF-encoded, {hold_frames} holds ({hold_pct:.0}%), \
-                         {gpu_fps:.1} unique GPU/s (target {fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s, \
-                         glide {glide_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
-                        avg_render_us as f64 / 1000.0,
-                        avg_read_us as f64 / 1000.0,
-                        avg_handler_us as f64 / 1000.0,
-                    ));
+                    log_rec_live_stats(
+                        elapsed,
+                        written,
+                        hold_frames,
+                        hold_pct,
+                        gpu_fps,
+                        fps,
+                        wgc_5s,
+                        cap_renders_5s,
+                        glide_5s,
+                        avg_render_us,
+                        avg_read_us,
+                        avg_handler_us,
+                        enc_backlog,
+                        "MF-encoded",
+                    );
                     last_stats = Instant::now();
                 }
             }
@@ -963,7 +1035,7 @@ fn run(
             prefer_hw_encode()
                 && !st.streaming
                 && st.promo_mode.is_none()
-                && !(st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor)
+                && !st.recording_settings.use_cinematic_cursor()
         };
         if try_hw {
             HW_ENCODE_ACTIVE.store(true, Ordering::Release);
@@ -1083,7 +1155,7 @@ fn run(
 
     let cinematic = {
         let st = state.lock();
-        st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor
+        st.recording_settings.use_cinematic_cursor()
     };
     crate::cursor::reset_session();
     if cinematic {
@@ -1205,14 +1277,22 @@ fn run(
                     let (wgc_5s, cap_renders_5s, glide_5s, avg_render_us, avg_read_us, avg_handler_us) =
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
-                    capture_log(&format!(
-                        "Rec live @ {elapsed:.0}s: {written} encoded, {hold_frames} holds ({hold_pct:.0}%), \
-                         {gpu_fps:.1} unique GPU/s (target {fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s, \
-                         glide {glide_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
-                        avg_render_us as f64 / 1000.0,
-                        avg_read_us as f64 / 1000.0,
-                        avg_handler_us as f64 / 1000.0,
-                    ));
+                    log_rec_live_stats(
+                        elapsed,
+                        written,
+                        hold_frames,
+                        hold_pct,
+                        gpu_fps,
+                        fps,
+                        wgc_5s,
+                        cap_renders_5s,
+                        glide_5s,
+                        avg_render_us,
+                        avg_read_us,
+                        avg_handler_us,
+                        enc_backlog,
+                        "encoded",
+                    );
                     last_stats = Instant::now();
                 }
             }

@@ -11,6 +11,8 @@ export function ReleaseNotesList({
   showLatestBadge = true,
   compact = false,
 }: ReleaseNotesListProps) {
+  const latestShippedIndex = releases.findIndex((r) => !r.upcoming);
+
   return (
     <div className="divide-y divide-line">
       {releases.map((release, index) => (
@@ -20,7 +22,10 @@ export function ReleaseNotesList({
         >
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h3 className="font-display text-xl">v{release.version}</h3>
-            {showLatestBadge && index === 0 ? (
+            {release.upcoming ? (
+              <span className="ns-chip ns-chip--soon">Coming soon</span>
+            ) : null}
+            {showLatestBadge && !release.upcoming && index === latestShippedIndex ? (
               <span className="rounded-full border border-linehi bg-surfacehi px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-ink">
                 Latest
               </span>
@@ -33,7 +38,9 @@ export function ReleaseNotesList({
                 key={item}
                 className="flex items-start gap-2.5 font-body text-sm leading-relaxed text-inksoft"
               >
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-inkfaint" />
+                <span
+                  className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${release.upcoming ? "bg-[var(--color-coral)]" : "bg-inkfaint"}`}
+                />
                 {item}
               </li>
             ))}

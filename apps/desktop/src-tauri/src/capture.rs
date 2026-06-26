@@ -42,7 +42,8 @@ mod imp {
     use crate::state::Orientation;
     use crate::camera::{self, camera_connected, camera_sink};
     use crate::file_record::{
-        recording_fps, FileRecorder, publish_capture_surface, recording_uses_hw_encode,
+        recording_fps, set_rec_frame_context, FileRecorder, publish_capture_surface,
+        recording_uses_hw_encode,
     };
     use crate::recordings::new_recording_path;
     use crate::state::Viewport;
@@ -145,7 +146,7 @@ mod imp {
     /// System cursor baked into WGC must read back on the same frame (no pipelining).
     fn wgc_needs_sync_cursor(state: &SharedState) -> bool {
         let st = state.lock();
-        st.recording_settings.capture_cursor && !st.recording_settings.cinematic_cursor
+        st.recording_settings.use_wgc_system_cursor()
     }
 
     /// Re-crop the cached monitor texture when pan/zoom moves between WGC frames.
@@ -358,8 +359,7 @@ mod imp {
                     .as_ref()
                     .map(|m| (m.width, m.height))
                     .unwrap_or((1920, 1080));
-                let stamp = st.recording_settings.capture_cursor
-                    && st.recording_settings.cinematic_cursor;
+                let stamp = st.recording_settings.use_cinematic_cursor();
                 let (iw, ih) = st
                     .promo_mode
                     .map(crate::promo::promo_output_dims)
@@ -396,9 +396,7 @@ mod imp {
 
     fn recording_gpu_cursor(state: &SharedState) -> bool {
         let st = state.lock();
-        st.recording_settings.capture_cursor
-            && st.recording_settings.cinematic_cursor
-            && st.promo_mode.is_none()
+        st.recording_settings.use_cinematic_cursor() && st.promo_mode.is_none()
     }
 
     /// Publish one recording frame — MF GPU surface (zero-copy) or FFmpeg BGRA pipe.
@@ -501,10 +499,12 @@ mod imp {
         if !st.recording_settings.capture_cursor {
             return CursorCaptureSettings::WithoutCursor;
         }
-        if st.recording_settings.cinematic_cursor {
+        if st.recording_settings.use_cinematic_cursor() {
             CursorCaptureSettings::WithoutCursor
-        } else {
+        } else if st.recording_settings.capture_cursor {
             CursorCaptureSettings::WithCursor
+        } else {
+            CursorCaptureSettings::WithoutCursor
         }
     }
 
@@ -727,6 +727,7 @@ mod imp {
         bridge.last_vp_x = vp.x;
         bridge.last_vp_y = vp.y;
         bridge.last_vp_zoom = vp.zoom;
+        set_rec_frame_context(*vp, bridge.src_w, bridge.src_h);
     }
 
     fn viewport_changed_on_bridge(bridge: &GpuBridge, vp: &Viewport) -> bool {
@@ -775,9 +776,6 @@ mod imp {
         let st = state.lock();
         if st.recording || st.streaming {
             return true;
-        }
-        if st.recording_armed {
-            return false;
         }
         st.camera_enabled && crate::camera::camera_connected()
     }
@@ -1164,14 +1162,13 @@ mod imp {
         }
 
         let cursor = wgc_cursor_settings(&state);
-        if record_path.is_some() && settings_snapshot.capture_cursor && settings_snapshot.cinematic_cursor {
+        if record_path.is_some() && settings_snapshot.use_cinematic_cursor() {
             capture_log("Cinematic cursor armed (WGC without system pointer; stamped per CFR slot)");
         }
         let monitor = Monitor::primary().map_err(|e| CaptureError::Other(format!("no primary monitor: {e:?}")))?;
 
         let min_interval = std::time::Duration::from_nanos(1_000_000_000 / wgc_fps as u64);
-        let recording_with_cursor = settings_snapshot.capture_cursor
-            && settings_snapshot.cinematic_cursor
+        let recording_with_cursor = settings_snapshot.use_cinematic_cursor()
             && (record_path.is_some() || has_stream || recording_active);
         let dirty = if recording_with_cursor {
             DirtyRegionSettings::ReportAndRender
@@ -1266,7 +1263,7 @@ mod imp {
 
     /// Start/stop WGC based on demand — recording, streaming, or a connected virtual camera client.
     pub fn ensure_capture_session(state: SharedState) {
-        let (recording, streaming, armed, camera_on, connected) = {
+        let (recording, streaming, camera_on, connected) = {
             let mut st = state.lock();
             if st.camera_enabled {
                 st.camera_connected = crate::camera::camera_connected();
@@ -1274,7 +1271,6 @@ mod imp {
             (
                 st.recording,
                 st.streaming,
-                st.recording_armed,
                 st.camera_enabled,
                 st.camera_connected,
             )
@@ -1283,9 +1279,6 @@ mod imp {
         let need = if recording || streaming {
             CAM_CONNECTED_STREAK.store(0, Ordering::Relaxed);
             true
-        } else if armed {
-            CAM_CONNECTED_STREAK.store(0, Ordering::Relaxed);
-            false
         } else if camera_on && connected {
             // Debounce: ignore brief is_connected blips when softcam first registers
             // (e.g. OBS auto-reconnecting while the WebView is still starting).
@@ -1912,7 +1905,8 @@ pub use imp::{
     ensure_capture_session, is_capture_running, poll_camera_connected, recording_encoder_queue_depth,
     recording_encoder_queue_note_consumed, recording_encoder_queue_note_sent,
     recording_encoder_queue_reset, recording_pipeline_window_stats, register_virtual_camera,
-    render_output_frame, start_both, start_camera, start_promo_recording, start_recording,
+    render_output_frame, start_both, start_camera, start_promo_recording,
+    start_recording,
     start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
     viewport_changed_since_last_render,
 };

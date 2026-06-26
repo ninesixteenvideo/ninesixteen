@@ -53,7 +53,7 @@ export default function OpenGraphImage() {
               lineHeight: 1.4,
             }}
           >
-            No crop in post · cursor framing · $49 one-time
+            No crop in post · Game mode · cursor framing · $49 one-time
           </div>
         </div>
         <div

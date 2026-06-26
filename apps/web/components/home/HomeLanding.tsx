@@ -12,6 +12,7 @@ import { HomePanelDownload } from "./panels/HomePanelDownload";
 import { HomePanelPricing } from "./panels/HomePanelPricing";
 import { HomePanelAuth } from "./panels/HomePanelAuth";
 import { HomePanelCheckout } from "./panels/HomePanelCheckout";
+import { HomePanelChangelog } from "./panels/HomePanelChangelog";
 import { HOME_VIEW_PARAM, parseHomeView, type HomeView } from "./homeViews";
 import { useGlitchTransition } from "./useGlitchTransition";
 import { useMobileViewport } from "@/lib/useMobileViewport";
@@ -89,7 +90,7 @@ function HomeLandingInner({ initialView = "hero" }: HomeLandingProps) {
     <div className={`home${isMobile ? " home--mobile" : ""}`}>
       <HomeInfoTicker />
       <HomeBackground />
-      <HomeViewportFeed active={demoActive} onNavigate={navigate} />
+      <HomeViewportFeed active={demoActive} />
       <HomeViewportOverlay active={demoActive} />
       {glitching ? <div className="home-glitch-overlay" aria-hidden /> : null}
 
@@ -114,6 +115,13 @@ function HomeLandingInner({ initialView = "hero" }: HomeLandingProps) {
                 setPendingCheckout(true);
                 navigate("sign-up");
               }}
+            />
+          ) : null}
+
+          {view === "changelog" ? (
+            <HomePanelChangelog
+              onBack={() => navigate("hero")}
+              onDownload={() => navigate("download")}
             />
           ) : null}
 

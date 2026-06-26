@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { FeaturesGrid } from "@/components/LandingCardSections";
 import { JsonLd } from "@/components/JsonLd";
-import { PRODUCT_FEATURES } from "@/lib/site";
+import { PRODUCT_FEATURES, RECORDING_QUALITY_SUMMARY } from "@/lib/site";
 import { breadcrumbJsonLd, softwareApplicationJsonLd, webPageJsonLd } from "@/lib/seo/jsonLd";
 import { buildPageMetadata } from "@/lib/seo/metadata";
 
 export const metadata = buildPageMetadata({
   title: "Features — native 9×16 & 16×9 Windows screen recorder",
   description:
-    "Cursor-driven framing, Alt + scroll zoom, system + mic audio, optional click sounds, encrypted local recordings, virtual camera, and one-time $49 Pro export.",
+    "Cursor-driven framing, Game mode, Alt + scroll zoom, up to 4K landscape @ 60 fps, hardware-aware encoding, encrypted local recordings, and one-time $49 Pro export.",
   path: "/features",
   keywords: [
     "screen recorder features",
+    "game mode screen recorder",
     "cursor framing recorder",
     "vertical recorder features windows",
   ],
@@ -45,14 +46,15 @@ export default function FeaturesPage() {
 
       <span className="ns-chip mt-6 inline-block">Product</span>
       <h1 className="mt-5 font-display text-4xl tracking-tight sm:text-5xl">
-        Built for native aspect screen recording
+        Native aspect screen recording for Windows
       </h1>
       <p className="mt-5 max-w-2xl font-body text-lg leading-relaxed text-inksoft">
-        Everything in ninesixteen.video is designed around one idea: what you frame is what you
-        export — in 9×16 or 16×9, with no crop pass in post.
+        ninesixteen.video captures true 9×16 or 16×9 from frame one. What you frame in the overlay
+        is what exports — with cursor follow, Game mode for fixed captures, and quality settings
+        matched to your hardware. {RECORDING_QUALITY_SUMMARY}.
       </p>
 
-      <ul className="mt-8 grid gap-3 sm:grid-cols-2">
+      <ul className="mt-10 grid gap-3 sm:grid-cols-2">
         {PRODUCT_FEATURES.map((feature) => (
           <li
             key={feature}

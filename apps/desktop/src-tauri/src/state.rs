@@ -77,6 +77,19 @@ impl Default for InputSettings {
     }
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GamePanMode {
+    Crosshair,
+    Cursor,
+}
+
+impl Default for GamePanMode {
+    fn default() -> Self {
+        Self::Crosshair
+    }
+}
+
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSettings {
@@ -96,6 +109,23 @@ pub struct RecordingSettings {
     /// Owner-only promo capture — enables Alt+P / Alt+L marketing sessions.
     #[serde(default, alias = "promoRecording")]
     pub promo_enabled: bool,
+    /// Locks full 16×9 / 9×16 framing — no zoom.
+    #[serde(default)]
+    pub game_mode: bool,
+    /// Portrait game mode only — fixed center vs horizontal cursor follow.
+    #[serde(default)]
+    pub game_pan_mode: GamePanMode,
+}
+
+impl RecordingSettings {
+    pub fn use_cinematic_cursor(&self) -> bool {
+        self.capture_cursor && self.cinematic_cursor
+    }
+
+    /// OS pointer baked into WGC (vs stamped cinematic cursor).
+    pub fn use_wgc_system_cursor(&self) -> bool {
+        self.capture_cursor && !self.use_cinematic_cursor()
+    }
 }
 
 fn default_mouse_click_volume() -> f64 {
@@ -144,6 +174,8 @@ impl Default for RecordingSettings {
             mouse_click_audio: false,
             mouse_click_volume: default_mouse_click_volume(),
             promo_enabled: false,
+            game_mode: false,
+            game_pan_mode: GamePanMode::default(),
         }
     }
 }
@@ -237,6 +269,9 @@ pub struct CaptureState {
     pub capture_cursor: bool,
     /// Custom cursor stamped per frame (vs system cursor baked into capture).
     pub cinematic_cursor: bool,
+    /// Game mode — full-frame lock, no zoom.
+    pub game_mode: bool,
+    pub game_pan_mode: GamePanMode,
     /// True while Alt+F has paused cursor follow (crop stays fixed).
     pub frame_frozen: bool,
     /// Promo marketing session active (Alt+P / Alt+L).

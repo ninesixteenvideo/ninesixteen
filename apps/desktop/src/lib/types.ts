@@ -1,5 +1,7 @@
 export type Orientation = "landscape" | "portrait";
 
+export type GamePanMode = "crosshair" | "cursor";
+
 export interface MonitorInfo {
   id: number;
   name: string;
@@ -57,6 +59,8 @@ export interface CaptureState {
   overlayFrame?: OverlayFrame | null;
   captureCursor: boolean;
   cinematicCursor: boolean;
+  gameMode: boolean;
+  gamePanMode: GamePanMode;
   frameFrozen: boolean;
   promoMode?: "portrait" | "landscape" | null;
   promoInnerActive?: boolean;
@@ -101,6 +105,10 @@ export interface RecordingSettings {
   mouseClickVolume: number;
   /** Owner-only — enables Alt+P / Alt+L promo sessions. */
   promoEnabled?: boolean;
+  /** Locks full 16×9 / 9×16 — no zoom. */
+  gameMode: boolean;
+  /** Portrait game mode — fixed center vs horizontal cursor follow. */
+  gamePanMode: GamePanMode;
 }
 
 export type AudioSourceMode = "none" | "system" | "microphone" | "system_and_microphone";

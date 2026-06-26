@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Wordmark } from "@ninesixteen/brand/Wordmark";
 
 const INSTALLER_URL = process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL?.trim() ?? "";
-const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "0.1.0";
+const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "1.2.0";
 const INSTALLER_FILENAME = INSTALLER_URL
   ? decodeURIComponent(INSTALLER_URL.split("/").pop() ?? "")
   : "";
@@ -24,17 +24,20 @@ const REQUIREMENTS = [
 const AFTER_INSTALL = [
   "Open the app and hit Record — free, no account needed",
   "Pick 9×16 portrait or 16×9 landscape in Studio",
-  "Frame, capture, and preview your clip in seconds",
-  "Sign in and purchase Pro ($49) whenever you want to export",
+  "Enable Game mode for locked full-frame gameplay when you need it",
+  "Frame, capture, and preview in the built-in library",
+  "Purchase Pro ($49) when you want to export MP4",
 ];
 
 const INCLUDED = [
   "True 9×16 or 16×9 capture with cursor-driven framing",
+  "Game mode — locked full frame for gameplay and walkthroughs",
   "Alt + scroll zoom with rule-of-thirds guides",
   "System & microphone audio with live level meters",
+  "Up to 4K landscape @ 60 fps · 1080p portrait — Pro export",
+  "Hardware-aware quality settings and adaptive H.264 encoding",
   "Encrypted local recordings with built-in preview",
-  "Native Windows Graphics Capture — low CPU, no Electron",
-  "FFmpeg bundled — nothing else to install",
+  "Native Windows Graphics Capture — FFmpeg bundled",
 ];
 
 export function DownloadPageClient() {
@@ -128,20 +131,13 @@ export function DownloadPageClient() {
       </div>
 
       <div className="ns-card ns-card--flat mt-6 border-l border-linehi p-5 sm:p-6">
-        <p className="font-display text-lg">A little note from the solo dev</p>
+        <p className="font-display text-lg">Windows SmartScreen</p>
         <p className="mt-2 font-body text-sm leading-relaxed text-inksoft">
-          Hi — I&apos;m building ninesixteen.video on my own. The Windows installer
-          isn&apos;t code-signed yet (working on it!), so SmartScreen might pop up and
-          say the app is from an unknown publisher. Totally normal for tiny indie
-          software — you&apos;re still getting the real thing from this site.
-        </p>
-        <p className="mt-3 font-body text-sm leading-relaxed text-inksoft">
-          If Windows says{" "}
-          <span className="font-semibold text-ink">&ldquo;Windows protected your PC&rdquo;</span>
-          , click{" "}
+          The installer is not code-signed yet. SmartScreen may show an unknown publisher
+          warning when you download or run the setup file — click{" "}
           <span className="font-semibold text-ink">More info</span>, then{" "}
-          <span className="font-semibold text-ink">Run anyway</span>. Same steps if the
-          installer asks again during setup.
+          <span className="font-semibold text-ink">Run anyway</span>. You are downloading
+          directly from ninesixteen.video.
         </p>
       </div>
 

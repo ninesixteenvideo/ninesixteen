@@ -14,9 +14,9 @@ export const SITE = {
   name: SERVICE_NAME,
   tagline: "Native 9×16 & 16×9 screen recorder for Windows",
   shortDescription:
-    "Record your screen in true 9×16 or 16×9 — no cropping in post. Cursor-driven framing, Alt + scroll zoom, local encrypted recordings.",
+    "Record your screen in true 9×16 or 16×9 with cursor-driven framing, Alt + scroll zoom, and Game mode for fixed-frame capture. Export up to 4K landscape @ 60 fps with a one-time $49 Pro license.",
   description:
-    "Record your screen in true 9×16 or 16×9 — no cropping in post. Frame with your cursor, zoom with Alt + scroll, and capture footage ready for Shorts, Reels, TikTok, or widescreen edits. Free to try, $49 one-time purchase.",
+    "ninesixteen.video is a native Windows screen recorder for true 9×16 portrait and 16×9 landscape capture. Frame with your cursor, zoom with Alt + scroll, lock the full frame in Game mode for gameplay, and export MP4s without cropping in post. Hardware-aware Studio settings, adaptive H.264 encoding, system and mic audio, virtual camera, and encrypted local recordings. Free to record and preview — $49 one-time for Pro export.",
   contactEmail: LEGAL_CONTACT_EMAIL,
   operatorName: OPERATOR_NAME,
   operatorLocation: OPERATOR_LOCATION,
@@ -33,6 +33,7 @@ export const SEO_KEYWORDS = [
   "landscape screen recorder",
   "9x16 screen recorder",
   "16x9 screen recorder",
+  "game mode screen recorder",
   "tiktok screen recorder",
   "reels screen recorder",
   "youtube shorts recorder",
@@ -40,48 +41,58 @@ export const SEO_KEYWORDS = [
   "landscape video",
   "short form content",
   "saas demo recorder",
-  "build in public",
   "windows screen recorder",
   "native aspect ratio recorder",
   "cursor framing screen recorder",
   "OBS alternative vertical",
 ] as const;
 
+export const RECORDING_QUALITY_SUMMARY =
+  "720p–4K landscape · 1080p portrait · 30 or 60 fps — Studio recommends settings for your hardware";
+
 export const PRODUCT_FEATURES = [
-  "True 9×16 or 16×9 capture with cursor-driven framing",
-  "Alt + scroll zoom with rule-of-thirds guides",
+  "True 9×16 portrait and 16×9 landscape — what you frame is what you export",
+  "Cursor-driven framing with Alt + scroll zoom and rule-of-thirds guides",
+  "Game mode — locked full frame, no zoom; Crosshair or horizontal pan in portrait",
   "System and microphone audio with live level meters",
   "Optional mouse click audio in recordings",
-  "Encrypted local recordings with built-in preview",
-  "Native Windows Graphics Capture — low CPU, not Electron",
-  "FFmpeg bundled — nothing else to install",
-  "Virtual camera for OBS, Zoom, and Meet",
-  "Up to 1080p at 30 or 60 fps",
+  "Cinematic cursor for demos — system cursor in Game mode",
+  "Encrypted local recordings with built-in library and film player",
+  "Native Windows Graphics Capture — lightweight Tauri app, FFmpeg bundled",
+  "Virtual camera for OBS, Zoom, and Google Meet",
+  RECORDING_QUALITY_SUMMARY,
+  "Adaptive H.264 — NVENC, AMD AMF, Intel QSV, or software fallback",
   "One-time $49 Pro export — no subscription",
 ] as const;
+
+export const PRO_PRICING_FEATURES = [
+  "Unlimited MP4 export to disk or Google Drive",
+  "Up to 4K landscape and 1440p @ 60 fps",
+  "1080p portrait at 30 or 60 fps",
+  "Hardware-aware quality recommendations in Studio",
+  "All current and future Pro features included",
+  "Account links your license to the desktop app",
+  "Free updates — no renewals",
+] as const;
+
+/** Secondary hero line — key differentiators below the main tagline. */
+export const HERO_HIGHLIGHTS =
+  "Game mode · cursor framing · up to 4K landscape · $49 one-time Pro";
 
 /** Continuous broadcast ticker on the landing page hero. */
 export const HOME_TICKER_ITEMS = [
   "True 9×16 & 16×9 capture",
-  "Cursor-driven framing",
-  "What you frame is what you export",
-  "No crop in post",
-  "Alt + scroll to zoom",
-  "Rule-of-thirds guides",
-  "Portrait or landscape in Studio",
+  "Cursor framing · no crop in post",
+  "Game mode for gameplay",
+  "Alt + scroll zoom",
+  "4K landscape Pro export",
+  "1440p @ 60 fps",
+  "Hardware-aware encoding",
   "System + mic audio",
-  "Optional mouse click sounds",
+  "Virtual camera for OBS & Zoom",
   "Encrypted local recordings",
-  "Built-in library preview",
-  "Native Windows capture — not Electron",
-  "FFmpeg bundled · nothing else to install",
-  "Virtual camera for OBS, Zoom & Meet",
-  "1080p · 30 or 60 fps",
-  "Smoother cinematic cursor",
-  "Free to try on Windows",
   "$49 once · no subscription",
-  "Private & local-first",
-  "Short-form & widescreen ready",
+  "Free to try on Windows",
 ] as const;
 
 import {

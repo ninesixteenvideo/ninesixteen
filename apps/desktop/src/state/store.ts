@@ -130,6 +130,8 @@ export const useStore = create<Store>((set, get) => ({
     mouseClickAudio: false,
     mouseClickVolume: 1,
     promoEnabled: false,
+    gameMode: false,
+    gamePanMode: "crosshair",
   },
   promoMode: null,
   promoInnerActive: false,

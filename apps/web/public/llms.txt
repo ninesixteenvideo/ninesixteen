@@ -1,6 +1,6 @@
 # ninesixteen.video
 
-> Native 9×16 and 16×9 screen recorder for Windows. Record locally, frame with your cursor, export MP4 with Pro ($49 one-time). No subscription. No crop in post.
+> Native 9×16 and 16×9 screen recorder for Windows. Frame with your cursor, lock Game mode for gameplay, export MP4 with Pro ($49 one-time). No subscription. No crop in post.
 
 ## Product
 
@@ -29,12 +29,15 @@ Featured:
 - **Platform:** Windows 10/11 (64-bit)
 - **Formats:** True 9×16 portrait and 16×9 landscape — native aspect, no post crop
 - **Framing:** Cursor-driven viewport, Alt + scroll zoom, rule-of-thirds guides
+- **Game mode:** Locked full frame, no zoom; portrait Crosshair or horizontal Cursor pan; system cursor in output
+- **Quality:** 720p–4K landscape · 1080p portrait · 30 or 60 fps; hardware-aware Studio settings
+- **Encoding:** Adaptive H.264 — NVENC, AMD AMF, Intel QSV, or software fallback
 - **Audio:** System + microphone; optional mouse click sounds in recordings
 - **Pricing:** Free to record and preview; $49 USD one-time for Pro MP4 export
 - **Privacy:** Local-first, encrypted recordings on your machine
-- **Tech:** Tauri + Windows Graphics Capture (not Electron); FFmpeg bundled
+- **Tech:** Tauri + Windows Graphics Capture; FFmpeg bundled
 - **Virtual camera:** Appears as "ninesixteen.video" in OBS, Zoom, Meet
-- **Latest version:** 1.1.0 (June 2026)
+- **Latest version:** 1.2.0 (June 2026)
 
 ## Contact
 

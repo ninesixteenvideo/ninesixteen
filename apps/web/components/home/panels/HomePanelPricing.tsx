@@ -2,15 +2,8 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { PRO_PRICING_FEATURES } from "@/lib/site";
 import { HomeBackControl } from "../HomeBackControl";
-
-const FEATURES = [
-  "All features, present and future",
-  "Save locally or to Google Drive",
-  "Up to 1080p · 60fps encoding",
-  "Account links to desktop app",
-  "Free updates, forever",
-];
 
 type HomePanelPricingProps = {
   onBack: () => void;
@@ -55,7 +48,7 @@ export function HomePanelPricing({
           <span className="home-panel__price-meta">USD · one-time</span>
         </div>
         <ul className="home-panel__list home-panel__list--checks">
-          {FEATURES.map((f) => (
+          {PRO_PRICING_FEATURES.map((f) => (
             <li key={f}>{f}</li>
           ))}
         </ul>

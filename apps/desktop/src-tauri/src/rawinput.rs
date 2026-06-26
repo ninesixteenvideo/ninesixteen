@@ -6,13 +6,13 @@ mod imp {
     use crate::geometry::{
         advance_pan_follow, apply_edge_soft_pan, clamp, clamp_zoom, converge_center_to_bounds,
         ease_in_out_cubic, edge_soft_zone_px, frame_layout, magnet_zoom_target, output_dims,
-        pan_follow_profile, pan_max_speed_for_zoom, viewport_center_bounds,
+        pan_follow_profile, pan_follow_profile_game, pan_max_speed_for_zoom, viewport_center_bounds,
         zoom_canonical_step_scale, zoom_from_gesture_ticks,
         zoom_gesture_duration_secs, zoom_min_for, crosses_canonical_zoom, OneEuro2d,
         CANONICAL_ZOOM_EASE_SECS, smooth_toward,
         ZOOM_TICKS_PER_NOTCH,
     };
-    use crate::state::{Orientation, PromoMode, Viewport, ViewportState};
+    use crate::state::{GamePanMode, Orientation, PromoMode, Viewport, ViewportState};
     use crate::log::capture_log;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::OnceLock;
@@ -417,10 +417,26 @@ mod imp {
         st.promo_mode.is_some() && !st.promo_inner_active && !st.recording_armed
     }
 
+    fn game_blocks_zoom() -> bool {
+        let Some(ctx) = CTX.get() else {
+            return false;
+        };
+        let st = ctx.state.lock();
+        st.recording_settings.game_mode && st.promo_mode.is_none()
+    }
+
+    fn mode_blocks_zoom() -> bool {
+        promo_blocks_zoom() || game_blocks_zoom()
+    }
+
     /// Queue a zoom step (shared by the low-level hook and global shortcuts).
     fn queue_zoom_step(dir: f64) -> bool {
-        if promo_blocks_zoom() {
-            alt_log_throttled("zoom blocked during promo usage phase", 400);
+        if mode_blocks_zoom() {
+            if game_blocks_zoom() {
+                alt_log_throttled("zoom blocked — game mode", 400);
+            } else {
+                alt_log_throttled("zoom blocked during promo usage phase", 400);
+            }
             return true;
         }
         if dir < 0.0 && ZOOM_AT_MIN.load(Ordering::Acquire) {
@@ -597,6 +613,10 @@ mod imp {
         if notches.abs() < f64::EPSILON {
             return WheelApply::Ignored;
         }
+        if game_blocks_zoom() {
+            alt_log_throttled("wheel ignored — game mode", 600);
+            return WheelApply::Ignored;
+        }
 
         let mut vp = ctx.viewport.lock();
         let orientation = vp.viewport.orientation;
@@ -765,11 +785,24 @@ mod imp {
     fn advance_viewport(viewport: &SharedViewport, state: &SharedState, dt_secs: f64) -> (bool, Option<(f64, f64)>) {
         let hold = zoom_hold_active();
         let pending = PENDING_FULL_LOCK.load(Ordering::Acquire);
-        let (input, _promo_inner_active) = {
+        let (input, game_viewport_active, game_pan_mode) = {
             let st = state.lock();
-            (st.input_settings, st.promo_inner_active)
+            (
+                st.input_settings,
+                st.recording_settings.game_mode && st.promo_mode.is_none(),
+                st.recording_settings.game_pan_mode,
+            )
         };
-        let follow = pan_follow_profile(input.follow_speed);
+        let follow = if game_viewport_active
+            && {
+                let vp = viewport.lock();
+                vp.viewport.orientation == Orientation::Portrait && game_pan_mode == GamePanMode::Cursor
+            }
+        {
+            pan_follow_profile_game()
+        } else {
+            pan_follow_profile(input.follow_speed)
+        };
 
         let mut sample_pos = None;
         let mut vp = viewport.lock();
@@ -778,8 +811,18 @@ mod imp {
         let oy = vp.viewport.y;
         let oz = vp.viewport.zoom;
 
+        let pin_center = game_viewport_active
+            && (vp.viewport.orientation == Orientation::Landscape
+                || game_pan_mode == GamePanMode::Crosshair);
+
         if let Some(m) = vp.monitor.clone() {
-            if !vp.frame_frozen {
+            let cx = m.width as f64 / 2.0;
+            let cy = m.height as f64 / 2.0;
+
+            if pin_center {
+                vp.viewport.x = cx;
+                vp.viewport.y = cy;
+            } else if !vp.frame_frozen {
                 crate::cursor::set_capture_space(m.origin_x, m.origin_y, m.width, m.height);
                 if let Some((tx, ty)) = cursor_pos_for_monitor(
                     m.origin_x,
@@ -834,11 +877,20 @@ mod imp {
                     ) * speed_mult
                         * follow.max_speed_mult;
 
+                    let follow_ty = if game_viewport_active
+                        && vp.viewport.orientation == Orientation::Portrait
+                        && game_pan_mode == GamePanMode::Cursor
+                    {
+                        cy
+                    } else {
+                        ty
+                    };
+
                     let (nx, ny) = advance_pan_follow(
                         vp.viewport.x,
                         vp.viewport.y,
                         tx,
-                        ty,
+                        follow_ty,
                         pan_hz,
                         dt_secs,
                         follow.soft_inner_px,
@@ -874,6 +926,12 @@ mod imp {
                             follow.bounds_converge_hz,
                             dt_secs,
                         );
+                    }
+                    if game_viewport_active
+                        && vp.viewport.orientation == Orientation::Portrait
+                        && game_pan_mode == GamePanMode::Cursor
+                    {
+                        ny = cy;
                     }
                     vp.viewport.x = nx;
                     vp.viewport.y = ny;
@@ -927,6 +985,13 @@ mod imp {
         }
 
         sync_zoom_at_min(vp.zoom_target, vp.viewport.orientation);
+
+        if game_viewport_active {
+            vp.zoom_target = 1.0;
+            vp.viewport.zoom = 1.0;
+            *ZOOM_EASE_START.lock() = None;
+            sync_zoom_at_min(1.0, vp.viewport.orientation);
+        }
 
         if hold {
             vp.zoom_target = 1.0;
@@ -1121,12 +1186,34 @@ mod imp {
         mark_viewport_dirty();
         alt_log("new recording — frame reset to full 9×16, input latches cleared");
     }
+
+    /// Snap viewport to game-mode framing (full frame, centered).
+    pub fn apply_game_mode_viewport(viewport: &SharedViewport) {
+        clear_gesture_zoom_state();
+        set_pending_full_lock(false);
+        *ZOOM_LOCK_UNTIL.lock() = None;
+        reset_pan_cursor_filter();
+        let mut vp = viewport.lock();
+        vp.zoom_target = 1.0;
+        vp.viewport.zoom = 1.0;
+        let center = vp
+            .monitor
+            .as_ref()
+            .map(|m| (m.width as f64 / 2.0, m.height as f64 / 2.0));
+        if let Some((cx, cy)) = center {
+            vp.viewport.x = cx;
+            vp.viewport.y = cy;
+        }
+        sync_zoom_at_min(1.0, vp.viewport.orientation);
+        mark_viewport_dirty();
+    }
 }
 
 #[cfg(windows)]
 pub use imp::{
-    ensure_promo_usage_viewport, queue_keyboard_zoom, reset_for_new_recording, reset_frame_follow,
-    reset_pan_follow_tuning, start, start_cursor_follow, toggle_frame_frozen,
+    apply_game_mode_viewport, ensure_promo_usage_viewport, queue_keyboard_zoom,
+    reset_for_new_recording, reset_frame_follow, reset_pan_follow_tuning, start,
+    start_cursor_follow, toggle_frame_frozen,
 };
 
 #[cfg(not(windows))]
@@ -1165,3 +1252,6 @@ pub fn start_cursor_follow(
     _viewport: SharedViewport,
     _state: SharedState,
 ) {}
+
+#[cfg(not(windows))]
+pub fn apply_game_mode_viewport(_viewport: &SharedViewport) {}

@@ -414,12 +414,6 @@ export function HomeViewportOverlay({ active }: HomeViewportOverlayProps) {
       ctx.fillStyle = "rgba(255, 107, 88, 0.95)";
       ctx.textBaseline = "middle";
       ctx.fillText(demoText, demoChipX + demoPadX, demoChipY + demoChipH / 2);
-
-      const hint = "Scroll · zoom frame";
-      ctx.font = `${11 * dpr}px "IBM Plex Mono", ui-monospace, monospace`;
-      const hw = ctx.measureText(hint).width;
-      ctx.fillStyle = "rgba(244,243,240,0.38)";
-      ctx.fillText(hint, (canvas.width - hw) / 2, canvas.height - 28 * dpr);
     };
 
     let raf = 0;

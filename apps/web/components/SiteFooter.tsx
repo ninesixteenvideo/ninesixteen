@@ -33,7 +33,8 @@ export function SiteFooter() {
         <div>
           <Wordmark size={26} showSuffix />
           <p className="mt-4 max-w-xs font-body text-sm leading-relaxed text-inksoft">
-            Native 9×16 and 16×9 screen recorder for Windows.
+            Native 9×16 and 16×9 screen recorder for Windows — cursor framing, Game mode, and Pro
+            export up to 4K landscape.
           </p>
         </div>
         <div>

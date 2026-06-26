@@ -28,6 +28,9 @@ export function Overlay() {
   const countdownChangedAt = useRef(0);
   const promoMode = useRef<"portrait" | "landscape" | null>(null);
   const promoInnerActive = useRef(false);
+  const gameMode = useRef(false);
+  const gamePanMode = useRef<"crosshair" | "cursor">("crosshair");
+  const gamePulse = useRef<{ phase: "start" | "end"; startedAt: number } | null>(null);
 
   useEffect(() => {
     let unsubs: Array<() => void> = [];
@@ -43,6 +46,8 @@ export function Overlay() {
         countdown.current = st.countdownSeconds ?? 0;
         captureCursor.current = st.captureCursor ?? true;
         cinematicCursor.current = st.cinematicCursor ?? true;
+        gameMode.current = st.gameMode ?? false;
+        gamePanMode.current = st.gamePanMode ?? "crosshair";
         frameFrozen.current = st.frameFrozen ?? false;
         promoMode.current = st.promoMode ?? null;
         promoInnerActive.current = st.promoInnerActive ?? false;
@@ -68,13 +73,27 @@ export function Overlay() {
         })
         .catch(() => {});
       unsubs.push(
-        await listen("overlay:cursor-capture", (p: { captureCursor?: boolean; cinematicCursor?: boolean } | boolean) => {
+        await listen("overlay:cursor-capture", (p: {
+          captureCursor?: boolean;
+          cinematicCursor?: boolean;
+          gameMode?: boolean;
+          gamePanMode?: "crosshair" | "cursor";
+        } | boolean) => {
           if (typeof p === "boolean") {
             captureCursor.current = p;
             return;
           }
           if (p.captureCursor !== undefined) captureCursor.current = p.captureCursor;
           if (p.cinematicCursor !== undefined) cinematicCursor.current = p.cinematicCursor;
+          if (p.gameMode !== undefined) gameMode.current = p.gameMode;
+          if (p.gamePanMode !== undefined) gamePanMode.current = p.gamePanMode;
+        }),
+      );
+      unsubs.push(
+        await listen("recording:game-pulse", (p: { phase: "start" | "end" }) => {
+          if (p.phase === "start" || p.phase === "end") {
+            gamePulse.current = { phase: p.phase, startedAt: performance.now() };
+          }
         }),
       );
       unsubs.push(
@@ -171,6 +190,33 @@ export function Overlay() {
       const rw = f.w * scale;
       const rh = f.h * scale;
 
+      if (gameMode.current) {
+        drawGameModeOverlay(ctx, rx, ry, rw, rh, dpr, recording.current);
+
+        const pulse = gamePulse.current;
+        if (pulse) {
+          const elapsed = (performance.now() - pulse.startedAt) / 1000;
+          if (elapsed >= 1) {
+            gamePulse.current = null;
+          } else {
+            drawGamePulse(ctx, pulse.phase, rx + rw / 2, ry + rh / 2, dpr, elapsed);
+          }
+        }
+
+        drawCinematicCursor(
+          ctx,
+          f,
+          scale,
+          dpr,
+          monitor.current,
+          captureCursor.current,
+          cinematicCursor.current,
+          cursorImg.current,
+          cursorMeta.current,
+        );
+        return;
+      }
+
       ctx.fillStyle = "rgba(10,10,16,0.34)";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.clearRect(rx, ry, rw, rh);
@@ -263,17 +309,17 @@ export function Overlay() {
         typeof f.cursorX === "number" &&
         typeof f.cursorY === "number"
       ) {
-        const img = cursorImg.current;
-        const meta = cursorMeta.current;
-        const short = Math.min(monitor.current.w, monitor.current.h);
-        const cursorH = Math.max(40 * dpr, Math.min(124 * dpr, short * 0.062 * dpr));
-        const cursorScale = cursorH / meta.height;
-        const cursorW = (meta.width / meta.height) * cursorH;
-        const hx = meta.hotspotX * cursorScale;
-        const hy = meta.hotspotY * cursorScale;
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, f.cursorX * scale - hx, f.cursorY * scale - hy, cursorW, cursorH);
+        drawCinematicCursor(
+          ctx,
+          f,
+          scale,
+          dpr,
+          monitor.current,
+          captureCursor.current,
+          cinematicCursor.current,
+          cursorImg.current,
+          cursorMeta.current,
+        );
       }
 
       if (frameFrozen.current && (recording.current || arming.current)) {
@@ -320,6 +366,122 @@ export function Overlay() {
  * depletes over each second, with a soft dark scrim for legibility. No colour,
  * no heavy outline — it matches the new desktop design language.
  */
+function drawCinematicCursor(
+  ctx: CanvasRenderingContext2D,
+  frame: OverlayFrame,
+  scale: number,
+  dpr: number,
+  monitor: { w: number; h: number },
+  captureCursor: boolean,
+  cinematicCursor: boolean,
+  cursorImg: HTMLImageElement | null,
+  cursorMeta: { width: number; height: number; hotspotX: number; hotspotY: number },
+) {
+  if (
+    !captureCursor ||
+    !cinematicCursor ||
+    !cursorImg ||
+    typeof frame.cursorX !== "number" ||
+    typeof frame.cursorY !== "number"
+  ) {
+    return;
+  }
+
+  const short = Math.min(monitor.w, monitor.h);
+  const cursorH = Math.max(40 * dpr, Math.min(124 * dpr, short * 0.062 * dpr));
+  const cursorScale = cursorH / cursorMeta.height;
+  const cursorW = (cursorMeta.width / cursorMeta.height) * cursorH;
+  const hx = cursorMeta.hotspotX * cursorScale;
+  const hy = cursorMeta.hotspotY * cursorScale;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(
+    cursorImg,
+    frame.cursorX * scale - hx,
+    frame.cursorY * scale - hy,
+    cursorW,
+    cursorH,
+  );
+}
+
+function drawGamePulse(
+  ctx: CanvasRenderingContext2D,
+  phase: "start" | "end",
+  cx: number,
+  cy: number,
+  dpr: number,
+  elapsed: number,
+) {
+  const t = Math.min(Math.max(elapsed, 0), 1);
+  const alpha =
+    t < 0.5 ? easeOutCubic(t / 0.5) : easeOutCubic((1 - t) / 0.5);
+  if (alpha <= 0.01) return;
+
+  const label = phase === "start" ? "start" : "end";
+  const fontSize = Math.max(16 * dpr, 18 * dpr);
+  const dotR = 5 * dpr;
+  const gap = 9 * dpr;
+
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.88;
+  ctx.font = `500 ${fontSize}px "IBM Plex Mono", monospace`;
+  ctx.textBaseline = "middle";
+  const textW = ctx.measureText(label).width;
+  const totalW = dotR * 2 + gap + textW;
+  const x0 = cx - totalW / 2;
+
+  ctx.fillStyle = "#ff6b58";
+  ctx.beginPath();
+  ctx.arc(x0 + dotR, cy, dotR, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(label, x0 + dotR * 2 + gap, cy);
+  ctx.restore();
+}
+
+function drawGameModeOverlay(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  dpr: number,
+  recording: boolean,
+) {
+  drawCornerBrackets(ctx, x, y, w, h, dpr);
+
+  if (!recording) return;
+
+  const dotX = x + 14 * dpr;
+  const dotY = y + 14 * dpr;
+  ctx.fillStyle = "#ff6b58";
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 5 * dpr, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawCornerBrackets(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  dpr: number,
+) {
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2 * dpr;
+  ctx.lineCap = "square";
+  ctx.shadowBlur = 0;
+  const L = 26 * dpr;
+  tick(ctx, x, y, L, 1, 1);
+  tick(ctx, x + w, y, L, -1, 1);
+  tick(ctx, x, y + h, L, 1, -1);
+  tick(ctx, x + w, y + h, L, -1, -1);
+  ctx.restore();
+}
+
 function drawPromoBadge(
   ctx: CanvasRenderingContext2D,
   width: number,

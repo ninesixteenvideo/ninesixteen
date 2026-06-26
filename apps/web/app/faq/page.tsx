@@ -8,7 +8,7 @@ import { buildPageMetadata } from "@/lib/seo/metadata";
 export const metadata = buildPageMetadata({
   title: "FAQ — vertical & landscape screen recording on Windows",
   description:
-    "Answers about ninesixteen.video: 9×16 and 16×9 capture, pricing, OBS comparison, system requirements, SmartScreen warnings, and Pro export.",
+    "Answers about ninesixteen.video: 9×16 and 16×9 capture, Game mode, pricing, quality settings, OBS comparison, and Pro export.",
   path: "/faq",
   keywords: [
     "ninesixteen faq",

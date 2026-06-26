@@ -133,6 +133,8 @@ const mock = (() => {
       countdownSeconds,
       captureCursor: true,
       cinematicCursor: true,
+      gameMode: false,
+      gamePanMode: "crosshair",
       frameFrozen: false,
     };
   }

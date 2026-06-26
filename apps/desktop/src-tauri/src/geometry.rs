@@ -590,6 +590,21 @@ pub fn pan_follow_profile_default() -> PanFollowProfile {
     }
 }
 
+/// Portrait game mode cursor pan — slightly slower than the first game-mode tuning.
+pub fn pan_follow_profile_game() -> PanFollowProfile {
+    PanFollowProfile {
+        smooth_hz: 11.0,
+        smooth_hz_alt: 12.5,
+        soft_inner_px: 24.0,
+        soft_outer_px: 120.0,
+        soft_inner_scale: 0.62,
+        max_speed_mult: 2.35,
+        euro_min_cutoff: 3.0,
+        euro_beta: 0.11,
+        bounds_converge_hz: 28.0,
+    }
+}
+
 /// Map Studio follow-speed slider to live pan-follow tuning.
 pub fn pan_follow_profile(follow_speed: f64) -> PanFollowProfile {
     let base = pan_follow_profile_default();

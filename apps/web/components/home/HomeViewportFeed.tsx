@@ -1,21 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Wordmark } from "@ninesixteen/brand";
 import { viewportDemoStore } from "@/lib/viewport/viewportDemoStore";
-import { HomeHeroStage } from "./HomeHeroStage";
-import type { HomeView } from "./homeViews";
-
-type HomeViewportFeedProps = {
-  active: boolean;
-  onNavigate: (view: HomeView) => void;
-};
 
 /**
- * Live background layer — mirrors the hero layout and pans with the demo crop
- * so the wallpaper matches what the viewport frame is capturing.
+ * Panned atmospheric layer behind the hero — glow + vignette only (no duplicate wordmark).
  */
-export function HomeViewportFeed({ active, onNavigate }: HomeViewportFeedProps) {
+export function HomeViewportFeed({ active }: { active: boolean }) {
   const feedRef = useRef<HTMLDivElement>(null);
   const panRef = useRef<HTMLDivElement>(null);
   const lastTransformRef = useRef("");
@@ -23,8 +14,7 @@ export function HomeViewportFeed({ active, onNavigate }: HomeViewportFeedProps) 
   useEffect(() => {
     if (!active) return;
     const pan = panRef.current;
-    const feed = feedRef.current;
-    if (!pan || !feed) return;
+    if (!pan) return;
 
     let raf = 0;
     const tick = () => {
@@ -58,13 +48,10 @@ export function HomeViewportFeed({ active, onNavigate }: HomeViewportFeedProps) 
   return (
     <div ref={feedRef} className="home-viewport-feed" aria-hidden>
       <div ref={panRef} className="home-viewport-feed__pan">
-        <div className="home-shell home-shell--feed-mirror">
-          <h1 className="home-hero__title home-hero__title--hero" aria-hidden>
-            <Wordmark size={160} showSuffix className="home-hero__wordmark" />
-          </h1>
-          <div className="home-stage">
-            <HomeHeroStage onNavigate={onNavigate} mirror />
-          </div>
+        <div className="home-viewport-feed__atmosphere">
+          <div className="home-bg__glow home-bg__glow--mint" />
+          <div className="home-bg__glow home-bg__glow--coral" />
+          <div className="home-bg__vignette" />
         </div>
       </div>
     </div>

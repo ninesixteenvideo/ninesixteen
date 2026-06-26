@@ -146,3 +146,9 @@
   background: var(--ns-surface);
   color: var(--ns-ink-soft);
 }
+
+.ns-chip--soon {
+  border-color: rgba(255, 107, 88, 0.35);
+  background: rgba(255, 107, 88, 0.08);
+  color: var(--ns-coral);
+}

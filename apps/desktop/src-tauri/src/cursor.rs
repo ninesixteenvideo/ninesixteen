@@ -517,7 +517,7 @@ mod imp {
 
     pub fn cinematic_enabled(state: &SharedState) -> bool {
         let st = state.lock();
-        st.recording_settings.capture_cursor && st.recording_settings.cinematic_cursor
+        st.recording_settings.use_cinematic_cursor()
     }
 
     pub fn reset_session() {
@@ -570,8 +570,7 @@ mod imp {
 
     /// Call whenever recording/arming/cinematic settings change (never from follow thread).
     pub fn sync_follow_gate_from_state(st: &AppState) {
-        let on = st.recording_settings.capture_cursor
-            && st.recording_settings.cinematic_cursor
+        let on = st.recording_settings.use_cinematic_cursor()
             && (st.recording || st.recording_armed);
         FOLLOW_CAPTURE.store(on, Ordering::Release);
         let session = if st.recording {
