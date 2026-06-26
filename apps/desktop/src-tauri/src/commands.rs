@@ -23,6 +23,10 @@ fn normalize_recording_settings(settings: &mut RecordingSettings) {
         settings.quality = crate::geometry::QUALITY_1080;
     }
     settings.fps = crate::file_record::normalize_recording_fps(settings.fps);
+    if settings.game_mode {
+        settings.capture_cursor = false;
+        settings.mouse_click_audio = false;
+    }
 }
 use tauri::{AppHandle, Emitter, Manager, State};
 

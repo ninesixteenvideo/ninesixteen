@@ -264,7 +264,14 @@ export function Studio() {
                       type="button"
                       className={`toggle-opt ${active ? "active" : ""}`}
                       aria-pressed={active}
-                      onClick={() => patchRecordingSettings({ gameMode: on })}
+                      onClick={() =>
+                        patchRecordingSettings({
+                          gameMode: on,
+                          ...(on
+                            ? { captureCursor: false, mouseClickAudio: false }
+                            : {}),
+                        })
+                      }
                     >
                       {choice === "off" ? "Off" : "On"}
                     </button>
@@ -306,11 +313,12 @@ export function Studio() {
                     (activeRecordingSettings.gamePanMode === "crosshair"
                       ? " Crosshair keeps the frame centered."
                       : " Cursor pans horizontally only.")}{" "}
-                  Recordings use the cinematic cursor when capture is enabled.
+                  Cursor is hidden in the recording.
                 </p>
               )}
             </section>
 
+            {!activeRecordingSettings.gameMode && (
             <div className="grid2">
               <section className="field-card">
                 <span className="field-label">Hide cursor in video</span>
@@ -358,6 +366,7 @@ export function Studio() {
                 />
               </section>
             </div>
+            )}
 
             {!activeRecordingSettings.gameMode && (
               <section className="field-card">

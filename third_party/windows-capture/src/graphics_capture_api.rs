@@ -176,9 +176,9 @@ impl GraphicsCaptureApi {
         let pixel_format = DirectXPixelFormat(color_format as i32);
 
         // Create frame pool
-        // Use 3 buffers so the handler can finish while WGC queues the next frame.
+        // Use 5 buffers so WGC can queue frames while the handler holds gpu_bridge.
         // A pool of 1 stalls delivery during GPU crop/encode work (long recordings drop fps).
-        let frame_pool = Direct3D11CaptureFramePool::Create(&direct3d_device, pixel_format, 3, item.Size()?)?;
+        let frame_pool = Direct3D11CaptureFramePool::Create(&direct3d_device, pixel_format, 5, item.Size()?)?;
         let frame_pool = Arc::new(frame_pool);
 
         // Create capture session
@@ -261,7 +261,7 @@ impl GraphicsCaptureApi {
                     || frame_content_size.Height != last_size.1.load(atomic::Ordering::Relaxed)
                 {
                     let direct3d_device_recreate = &direct3d_device_recreate;
-                    frame_pool_recreate.Recreate(&direct3d_device_recreate.0, pixel_format, 3, frame_content_size)?;
+                    frame_pool_recreate.Recreate(&direct3d_device_recreate.0, pixel_format, 5, frame_content_size)?;
 
                     last_size.0.store(frame_content_size.Width, atomic::Ordering::Relaxed);
                     last_size.1.store(frame_content_size.Height, atomic::Ordering::Relaxed);

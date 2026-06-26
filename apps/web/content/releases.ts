@@ -8,6 +8,15 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.2.2",
+    date: "June 2026",
+    items: [
+      "Fixed gameplay stutter after ~90s — viewport-glide pulse disabled so WGC keeps full 60fps delivery under pan",
+      "Faster capture health recovery — WGC session restarts within 15s when frame delivery or hold rate degrades",
+      "Larger WGC frame pool — more headroom for sustained GPU encode at 1080p and 4K @ 60fps",
+    ],
+  },
+  {
     version: "1.2.1",
     date: "June 2026",
     items: [
@@ -87,4 +96,4 @@ export const RELEASES: readonly Release[] = [
   },
 ] as const;
 
-export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.1";
+export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.2";

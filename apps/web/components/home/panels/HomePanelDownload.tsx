@@ -6,7 +6,7 @@ import { PRODUCT_FEATURES } from "@/lib/site";
 import { HomeBackControl } from "../HomeBackControl";
 
 const INSTALLER_URL = process.env.NEXT_PUBLIC_DESKTOP_INSTALLER_URL?.trim() ?? "";
-const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "1.2.1";
+const VERSION = process.env.NEXT_PUBLIC_DESKTOP_VERSION?.trim() || "1.2.2";
 const INSTALLER_FILENAME = INSTALLER_URL
   ? decodeURIComponent(INSTALLER_URL.split("/").pop() ?? "")
   : "";

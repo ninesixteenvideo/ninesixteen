@@ -98,16 +98,21 @@ mod imp {
     static LAST_WGC_HANDLER_END_MS: AtomicU64 = AtomicU64::new(0);
     /// Skip glide re-crop when WGC just finished — avoids gpu_bridge lock ping-pong.
     const GLIDE_AFTER_WGC_GUARD_MS: u64 = 10;
+    /// Viewport-glide pulse competes with WGC for `gpu_bridge` + D3D11. At 60fps recording
+    /// it can double GPU work during pan and starve WGC delivery (hold-frame stutter).
+    const ENABLE_RECORDING_GLIDE: bool = false;
     static RECORDING_DEGRADED: AtomicBool = AtomicBool::new(false);
     static CAPTURE_BAD_WINDOWS: AtomicU64 = AtomicU64::new(0);
     static LAST_WGC_RESTART_MS: AtomicU64 = AtomicU64::new(0);
+    static DEGRADED_LOGGED: AtomicBool = AtomicBool::new(false);
     static COMPLETED_SEGMENTS: AtomicU64 = AtomicU64::new(0);
     /// Auto-start a fresh file every 30 minutes during long sessions.
     const MAX_SEGMENT_SECS: f64 = 30.0 * 60.0;
-    const CAPTURE_HEALTH_MIN_WGC_PER_5S: u64 = 225; // ~45/s
-    const CAPTURE_HEALTH_MAX_HOLD_PCT: f64 = 8.0;
-    const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 6; // 6 × 5s = 30s sustained
-    const WGC_RESTART_COOLDOWN_MS: u64 = 120_000;
+    const CAPTURE_HEALTH_MIN_WGC_PER_5S: u64 = 270; // ~54/s — WGC should be ~300/5s at 60fps
+    const CAPTURE_HEALTH_MAX_HOLD_PCT: f64 = 5.0;
+    const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 3; // 3 × 5s = 15s sustained before restart
+    const CAPTURE_HEALTH_GRACE_SECS: f64 = 20.0;
+    const WGC_RESTART_COOLDOWN_MS: u64 = 60_000;
     static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
     static FIRST_REC_FRAME_LOGGED: AtomicBool = AtomicBool::new(false);
 
@@ -209,6 +214,12 @@ mod imp {
     }
 
     fn start_recording_glide_pulse(state: SharedState, fps: u32) {
+        if !ENABLE_RECORDING_GLIDE {
+            capture_log(
+                "Recording viewport updates on WGC frames only (glide pulse disabled to protect capture rate)",
+            );
+            return;
+        }
         stop_recording_glide_pulse();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = stop.clone();
@@ -1617,6 +1628,7 @@ mod imp {
     fn reset_recording_health_state() {
         RECORDING_DEGRADED.store(false, Ordering::Relaxed);
         CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+        DEGRADED_LOGGED.store(false, Ordering::Relaxed);
         COMPLETED_SEGMENTS.store(0, Ordering::Relaxed);
     }
 
@@ -1695,7 +1707,9 @@ mod imp {
             return Ok(());
         }
         let now = now_ms();
-        if now.saturating_sub(LAST_WGC_RESTART_MS.load(Ordering::Relaxed)) < WGC_RESTART_COOLDOWN_MS {
+        if now.saturating_sub(LAST_WGC_RESTART_MS.load(Ordering::Relaxed)) < WGC_RESTART_COOLDOWN_MS
+        {
+            capture_log("Capture health: WGC restart skipped (cooldown)");
             return Ok(());
         }
 
@@ -1778,21 +1792,31 @@ mod imp {
         hold_pct: f64,
         target_fps: u32,
     ) {
-        if elapsed_secs < 30.0 {
+        if elapsed_secs < CAPTURE_HEALTH_GRACE_SECS {
             RECORDING_DEGRADED.store(false, Ordering::Relaxed);
             CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+            DEGRADED_LOGGED.store(false, Ordering::Relaxed);
             return;
         }
 
         let wgc_low = wgc_5s < CAPTURE_HEALTH_MIN_WGC_PER_5S;
         let holds_high = hold_pct >= CAPTURE_HEALTH_MAX_HOLD_PCT;
         let degraded = wgc_low || holds_high;
-        RECORDING_DEGRADED.store(degraded, Ordering::Relaxed);
+        let was_degraded = RECORDING_DEGRADED.swap(degraded, Ordering::Relaxed);
+
+        if degraded && !was_degraded && !DEGRADED_LOGGED.swap(true, Ordering::Relaxed) {
+            capture_log(&format!(
+                "Capture health degraded — WGC {wgc_5s}/5s, {hold_pct:.0}% holds (target {target_fps}fps); will restart WGC if sustained"
+            ));
+        } else if !degraded {
+            DEGRADED_LOGGED.store(false, Ordering::Relaxed);
+        }
 
         if degraded {
             let bad = CAPTURE_BAD_WINDOWS.fetch_add(1, Ordering::Relaxed) + 1;
             if bad >= CAPTURE_HEALTH_BAD_WINDOWS {
                 CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+                capture_log("Capture health: restarting WGC session…");
                 if let Err(e) = restart_wgc_session(state.clone()) {
                     capture_log(&format!("WARN: WGC health restart failed: {e}"));
                 }
