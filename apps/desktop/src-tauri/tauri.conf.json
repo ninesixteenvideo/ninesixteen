@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ninesixteen.video",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "identifier": "video.ninesixteen.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -45,7 +45,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost; media-src 'self' nsmedia: blob: asset: http://asset.localhost https://asset.localhost http://nsmedia.localhost https://nsmedia.localhost; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.stripe.com https://ninesixteen.video http://localhost:3000 http://nsmedia.localhost https://nsmedia.localhost ws://localhost:1421 ws://127.0.0.1:1421 https://github.com https://objects.githubusercontent.com https://releases.github.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost http://nsthumb.localhost https://nsthumb.localhost; media-src 'self' nsmedia: blob: asset: http://asset.localhost https://asset.localhost http://nsmedia.localhost https://nsmedia.localhost; connect-src 'self' https://*.googleapis.com https://*.google.com https://*.firebaseio.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.stripe.com https://ninesixteen.video http://localhost:3000 http://nsmedia.localhost https://nsmedia.localhost http://nsthumb.localhost https://nsthumb.localhost ws://localhost:1421 ws://127.0.0.1:1421 https://github.com https://objects.githubusercontent.com https://releases.github.com; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'"
     }
   },
   "bundle": {
