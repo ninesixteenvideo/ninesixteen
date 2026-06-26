@@ -37,7 +37,7 @@ Featured:
 - **Privacy:** Local-first, encrypted recordings on your machine
 - **Tech:** Tauri + Windows Graphics Capture; FFmpeg bundled
 - **Virtual camera:** Appears as "ninesixteen.video" in OBS, Zoom, Meet
-- **Latest version:** 1.2.0 (June 2026)
+- **Latest version:** 1.2.1 (June 2026)
 
 ## Contact
 

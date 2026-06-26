@@ -29,6 +29,7 @@ async function ensureReal() {
 }
 
 const mediaSrcCache = new Map<string, string>();
+const thumbSrcCache = new Map<string, string>();
 let tauriCore: typeof import("@tauri-apps/api/core") | null = null;
 
 async function ensureTauriCore() {
@@ -55,6 +56,24 @@ export async function mediaSrc(id: string): Promise<string> {
 /** Warm the media URL cache before the user opens a take in the film player. */
 export function prefetchMediaSrc(id: string): void {
   void mediaSrc(id).catch(() => {});
+}
+
+/**
+ * JPEG thumbnail URL via `nsthumb://` (served from disk — no base64 IPC).
+ */
+export async function thumbSrc(id: string): Promise<string | null> {
+  const cached = thumbSrcCache.get(id);
+  if (cached) return cached;
+  if (!inTauri) return null;
+  const core = await ensureTauriCore();
+  const url = core.convertFileSrc(id, "nsthumb");
+  thumbSrcCache.set(id, url);
+  return url;
+}
+
+/** Prefetch only the selected take's playback URL (cheap — URL resolution only). */
+export function prefetchSelectedMediaSrc(id: string | null): void {
+  if (id) prefetchMediaSrc(id);
 }
 
 const mock = (() => {

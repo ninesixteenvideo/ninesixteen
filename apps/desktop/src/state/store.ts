@@ -203,6 +203,9 @@ export const useStore = create<Store>((set, get) => ({
         };
       })
     );
+    listen("recording:segment-saved", () => {
+      void get().refreshRecordings();
+    });
     listen("camera:tick", (p: { connected: boolean }) =>
       set({ cameraConnected: p.connected })
     );

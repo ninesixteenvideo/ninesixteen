@@ -42,6 +42,55 @@ mod watchdog;
 
 use state::new_app_handles;
 use tauri::{Emitter, Manager, Theme};
+use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::OnceLock;
+
+/// Cached decrypted MP4 headers (moov/ftyp) for faster player open + seek.
+const MEDIA_INIT_CACHE_BYTES: usize = 8 * 1024 * 1024;
+const MEDIA_INIT_CACHE_MAX: usize = 4;
+
+static MEDIA_INIT_CACHE: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+pub fn app_handle() -> Option<tauri::AppHandle> {
+    APP_HANDLE.get().cloned()
+}
+
+fn media_init_cache() -> &'static Mutex<HashMap<String, Vec<u8>>> {
+    MEDIA_INIT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn decrypt_range_cached(
+    ns: &Path,
+    id: &str,
+    start: u64,
+    len: usize,
+) -> Result<Vec<u8>, std::io::Error> {
+    if start == 0 && len > 0 {
+        let want = len.min(MEDIA_INIT_CACHE_BYTES);
+        if let Some(hit) = media_init_cache().lock().get(id) {
+            if hit.len() >= want {
+                return Ok(hit[..want].to_vec());
+            }
+        }
+        let data = crypto::decrypt_range(ns, start, want)?;
+        let mut cache = media_init_cache().lock();
+        if cache.len() >= MEDIA_INIT_CACHE_MAX && !cache.contains_key(id) {
+            if let Some(k) = cache.keys().next().cloned() {
+                cache.remove(&k);
+            }
+        }
+        cache.insert(id.to_string(), data.clone());
+        return Ok(data);
+    }
+    crypto::decrypt_range(ns, start, len)
+}
 
 /// Parse a `Range: bytes=…` header value into an inclusive `(start, end)` range.
 fn parse_range(header: Option<&str>, total: u64) -> Option<(u64, u64)> {
@@ -146,15 +195,21 @@ fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Resp
         (end - start + 1) as usize
     };
 
-    let data = match crypto::decrypt_range(&ns, start, len) {
+    let data = match decrypt_range_cached(&ns, &id, start, len) {
         Ok(d) => d,
         Err(_) => return fail(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let cache_control = if start == 0 && len <= MEDIA_INIT_CACHE_BYTES {
+        "private, max-age=3600"
+    } else {
+        "no-store"
     };
 
     let mut builder = Response::builder()
         .header(header::CONTENT_TYPE, "video/mp4")
         .header(header::ACCEPT_RANGES, "bytes")
-        .header(header::CACHE_CONTROL, "no-store")
+        .header(header::CACHE_CONTROL, cache_control)
         .header(header::CONTENT_LENGTH, data.len());
     builder = if has_range {
         builder
@@ -167,6 +222,40 @@ fn nsmedia_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Resp
         builder.status(StatusCode::OK)
     };
     builder.body(data).unwrap_or_else(|_| fail(StatusCode::INTERNAL_SERVER_ERROR))
+}
+
+/// `nsthumb://localhost/<id>` — serves on-disk JPEG thumbnails (no base64 IPC).
+fn nsthumb_response(request: tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::{header, Response, StatusCode};
+
+    let fail = |code: StatusCode| {
+        Response::builder()
+            .status(code)
+            .body(Vec::new())
+            .unwrap_or_default()
+    };
+
+    let id = request.uri().path().trim_start_matches('/').to_string();
+    if id.is_empty() || id.contains("..") || id.contains('/') || id.contains('\\') {
+        return fail(StatusCode::BAD_REQUEST);
+    }
+
+    let path = match recordings::ensure_thumbnail(&id) {
+        Ok(p) => p,
+        Err(_) => return fail(StatusCode::NOT_FOUND),
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) if b.len() > 64 => b,
+        _ => return fail(StatusCode::NOT_FOUND),
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "image/jpeg")
+        .header(header::CACHE_CONTROL, "private, max-age=86400")
+        .header(header::CONTENT_LENGTH, bytes.len())
+        .body(bytes)
+        .unwrap_or_else(|_| fail(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
 /// Size the main window: 9×16 height band, twice the portrait content width.
@@ -328,8 +417,10 @@ pub fn run() {
                 .build(),
         )
         .register_uri_scheme_protocol("nsmedia", |_app, request| nsmedia_response(request))
+        .register_uri_scheme_protocol("nsthumb", |_app, request| nsthumb_response(request))
         .manage(handles)
         .setup(move |app| {
+            set_app_handle(app.handle().clone());
             crate::entitlement::hydrate_from_disk();
 
             // Never block the WebView on filesystem migration — can encrypt many files.

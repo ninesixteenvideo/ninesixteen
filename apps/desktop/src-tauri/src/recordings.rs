@@ -126,6 +126,8 @@ pub fn delete_recording(id: &str) {
 }
 
 const THUMB_MAX_W: u32 = 168;
+/// First N plaintext bytes to decrypt for thumbnail extraction (moov-at-front after faststart).
+const THUMB_DECRYPT_BYTES: u64 = 64 * 1024 * 1024;
 
 pub fn thumb_path(id: &str) -> PathBuf {
     recordings_dir().join(format!("{id}.thumb.jpg"))
@@ -182,6 +184,30 @@ pub fn write_thumbnail_from_mp4(_mp4: &std::path::Path, _id: &str) -> Result<(),
 }
 
 #[cfg(windows)]
+fn write_thumbnail_from_encrypted(ns: &std::path::Path, id: &str) -> Result<(), String> {
+    let temp = std::env::temp_dir().join(format!("ns-thumb-{id}.mp4"));
+    let written = crate::crypto::decrypt_prefix_to_file(ns, &temp, THUMB_DECRYPT_BYTES)
+        .map_err(|e| format!("decrypt prefix for thumb: {e}"))?;
+    if written < 4096 {
+        let _ = std::fs::remove_file(&temp);
+        return Err("encrypted recording too small for thumbnail".into());
+    }
+    let result = write_thumbnail_from_mp4(&temp, id);
+    let _ = std::fs::remove_file(&temp);
+    if result.is_err() {
+        // Older files may have moov at the tail — fall back to full decrypt once.
+        let full = std::env::temp_dir().join(format!("ns-thumb-full-{id}.mp4"));
+        crate::crypto::decrypt_to_file(ns, &full).map_err(|e| format!("decrypt for thumb: {e}"))?;
+        let retry = write_thumbnail_from_mp4(&full, id);
+        let _ = std::fs::remove_file(&full);
+        retry?;
+    } else {
+        result?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
 pub fn ensure_thumbnail(id: &str) -> Result<PathBuf, String> {
     let out = thumb_path(id);
     if out.exists() && out.metadata().map(|m| m.len()).unwrap_or(0) > 64 {
@@ -191,11 +217,7 @@ pub fn ensure_thumbnail(id: &str) -> Result<PathBuf, String> {
     if !ns.exists() {
         return Err("recording not found".into());
     }
-    let temp = std::env::temp_dir().join(format!("ns-thumb-{id}.mp4"));
-    crate::crypto::decrypt_to_file(&ns, &temp).map_err(|e| format!("decrypt for thumb: {e}"))?;
-    let result = write_thumbnail_from_mp4(&temp, id);
-    let _ = std::fs::remove_file(&temp);
-    result?;
+    write_thumbnail_from_encrypted(&ns, id)?;
     Ok(out)
 }
 
@@ -204,7 +226,7 @@ pub fn ensure_thumbnail(_id: &str) -> Result<PathBuf, String> {
     Err("thumbnails unsupported".into())
 }
 
-/// JPEG data URL for the library list (empty string on failure).
+/// Legacy IPC thumbnail (base64). Prefer `nsthumb://` URLs from the webview.
 pub fn thumbnail_data_url(id: &str) -> String {
     use base64::Engine;
     let Ok(path) = ensure_thumbnail(id) else {

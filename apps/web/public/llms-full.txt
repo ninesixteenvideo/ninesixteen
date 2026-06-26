@@ -50,7 +50,14 @@ No subscription. No renewals.
 
 OBS records full desktop or manual regions — you reframe for vertical social. ninesixteen records native 9×16 or 16×9 from frame one with cursor follow and Game mode. OBS is better for live streaming and complex multi-source setups. ninesixteen is faster for native-aspect clips and one-time Pro export.
 
-## Latest release — v1.2.0 (June 2026)
+## Latest release — v1.2.1 (June 2026)
+
+- Long-session recording stability — WGC health monitor and auto-recovery
+- Faststart remux on every save — faster library open and seeking
+- 30-minute auto-segment rotation for marathon captures
+- Faster library and playback — lazy thumbnails, init-range cache
+
+## Previous release — v1.2.0 (June 2026)
 
 - Game mode — locked full frame, portrait Crosshair or Cursor pan, system cursor
 - 4K landscape @ 60 fps and 1440p landscape @ 60 fps — Pro export

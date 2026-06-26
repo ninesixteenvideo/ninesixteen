@@ -23,6 +23,50 @@ use parking_lot::Mutex;
 
 static CACHED_ENCODER: OnceLock<String> = OnceLock::new();
 
+/// Move the MP4 index (`moov`) to the front for fast library load / seeking.
+#[cfg(windows)]
+pub fn apply_faststart(path: &Path) -> Result<(), String> {
+    use std::process::Stdio;
+
+    if !path.exists() {
+        return Err("recording file missing".into());
+    }
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if meta.len() < 512 {
+        return Ok(());
+    }
+    let ffmpeg = find_ffmpeg()?;
+    let temp = path.with_extension("faststart.tmp.mp4");
+    let output = ffmpeg_command(&ffmpeg)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+        ])
+        .arg(path)
+        .args(["-c", "copy", "-movflags", "+faststart"])
+        .arg(&temp)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("faststart ffmpeg: {e}"))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!("faststart remux failed: {err}"));
+    }
+    std::fs::rename(&temp, path).map_err(|e| format!("replace after faststart: {e}"))?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn apply_faststart(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
 /// CFR slot rate fed to FFmpeg — honors the user's 30 or 60fps choice for every
 /// resolution and orientation. When the GPU cannot keep pace, the wall-clock slot
 /// scheduler holds the last unique frame (duplicate CFR slots) so A/V stays aligned.
@@ -87,6 +131,12 @@ pub struct RecFrame {
 }
 
 static REC_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
+static REC_GPU_PUBLISHES: AtomicU64 = AtomicU64::new(0);
+
+/// Unique GPU frames published since the last recording (reset in `clear_capture_frame`).
+pub fn recording_gpu_publish_count() -> u64 {
+    REC_GPU_PUBLISHES.load(Ordering::Relaxed)
+}
 
 fn rec_frame_is_hold(prev: &RecFrame, next: &RecFrame) -> bool {
     prev.capture_id != 0 && prev.capture_id == next.capture_id
@@ -402,6 +452,7 @@ fn publish_capture_frame_inner(
     });
     let slot = REC_CAPTURE_FRAME.get_or_init(|| parking_lot::Mutex::new(None));
     *slot.lock() = Some(frame);
+    REC_GPU_PUBLISHES.fetch_add(1, Ordering::Relaxed);
 }
 
 fn peek_capture_frame() -> Option<Arc<RecFrame>> {
@@ -425,11 +476,13 @@ fn clear_capture_frame() {
         *ctx.lock() = None;
     }
     REC_CAPTURE_ID.store(0, Ordering::Relaxed);
+    REC_GPU_PUBLISHES.store(0, Ordering::Relaxed);
     clear_recording_session_clock();
     STRAY_FRAME_LOGS.store(0, Ordering::Relaxed);
 }
 
 fn log_rec_live_stats(
+    state: SharedState,
     elapsed: f64,
     written: u64,
     hold_frames: u64,
@@ -458,7 +511,19 @@ fn log_rec_live_stats(
             "WARN: capture warming up — {:.0}% hold frames, {:.1}/{target_fps} unique GPU/s (overlay/cursor may feel sluggish)",
             hold_pct, gpu_fps
         ));
+    } else if elapsed >= 60.0 && hold_pct >= 8.0 && gpu_fps < target_fps as f64 * 0.92 {
+        capture_log(&format!(
+            "WARN: capture falling behind — {:.0}% hold frames, {:.1}/{target_fps} unique GPU/s (WGC may be throttling; playback may stutter)",
+            hold_pct, gpu_fps
+        ));
     }
+    crate::capture::recording_pipeline_health_check(
+        state,
+        elapsed,
+        wgc_5s,
+        hold_pct,
+        target_fps,
+    );
 }
 
 /// Per-recording counter so we log (at most) a few stray-frame skips without spam.
@@ -549,70 +614,10 @@ fn write_recording_frame(
     write_arc_frame(stdin, pixels, width, height)
 }
 
-struct GpuFeeder {
-    latest: Arc<Mutex<Option<Arc<RecFrame>>>>,
-    renders: Arc<AtomicU64>,
-    stop: Arc<AtomicBool>,
-    thread: JoinHandle<()>,
-}
-
-impl GpuFeeder {
-    fn start(_state: SharedState, fps: u32) -> Self {
-        let latest = Arc::new(Mutex::new(None));
-        let renders = Arc::new(AtomicU64::new(0));
-        let stop = Arc::new(AtomicBool::new(false));
-        let latest_t = latest.clone();
-        let renders_t = renders.clone();
-        let stop_t = stop.clone();
-        let period = Duration::from_nanos(1_000_000_000 / fps.max(1) as u64);
-        let thread = std::thread::Builder::new()
-            .name("rec-gpu-feed".into())
-            .spawn(move || {
-                while !stop_t.load(Ordering::Relaxed) {
-                    let tick = Instant::now();
-
-                    if let Some(captured) = peek_capture_frame() {
-                        let mut latest = latest_t.lock();
-                        let is_new = latest
-                            .as_ref()
-                            .map(|f: &Arc<RecFrame>| f.capture_id)
-                            .unwrap_or(0)
-                            != captured.capture_id;
-                        if is_new {
-                            *latest = Some(captured);
-                            renders_t.fetch_add(1, Ordering::Relaxed);
-                        }
-                    }
-                    // GPU render runs on the WGC capture thread only — never block ingest here.
-
-                    let wait = period.saturating_sub(tick.elapsed());
-                    if wait > Duration::ZERO {
-                        std::thread::sleep(wait);
-                    } else {
-                        std::thread::yield_now();
-                    }
-                }
-            })
-            .expect("spawn rec-gpu-feed");
-        Self {
-            latest,
-            renders,
-            stop,
-            thread,
-        }
-    }
-
-    fn stop(self) {
-        self.stop.store(true, Ordering::Relaxed);
-        let _ = self.thread.join();
-    }
-}
-
 fn slot_scheduler_loop(
     sender: Arc<parking_lot::Mutex<Option<SyncSender<Arc<RecFrame>>>>>,
     session_start: Instant,
     fps_f: f64,
-    latest: Arc<Mutex<Option<Arc<RecFrame>>>>,
     recording_done: Arc<AtomicBool>,
     slot_done: Arc<AtomicBool>,
 ) {
@@ -620,7 +625,7 @@ fn slot_scheduler_loop(
     let mut last: Option<Arc<RecFrame>> = None;
 
     let mut push_one = |pushed: &mut u64| -> bool {
-        let frame = latest.lock().clone().or_else(|| last.clone());
+        let frame = peek_capture_frame().or_else(|| last.clone());
         let Some(arc) = frame else {
             return false;
         };
@@ -720,16 +725,12 @@ fn run_hw_body(
     let mut stop_session_secs: Option<f64> = None;
 
     clear_capture_frame();
-    let gpu_feed = GpuFeeder::start(state.clone(), fps);
-    let gpu_renders = gpu_feed.renders.clone();
-    let latest = gpu_feed.latest.clone();
 
     let first_frame_deadline = Instant::now() + Duration::from_secs(12);
     let mut waited_for_first = false;
-    while latest.lock().is_none() {
+    while peek_capture_frame().is_none() {
         if stop_rx.try_recv().is_ok() {
             let _ = std::fs::remove_file(&path);
-            gpu_feed.stop();
             HW_ENCODE_ACTIVE.store(false, Ordering::Release);
             return Ok((0, 0.0));
         }
@@ -797,7 +798,6 @@ fn run_hw_body(
                     frame_sender,
                     session_start,
                     fps_f,
-                    latest,
                     recording_done_slot,
                     slot_done_t,
                 );
@@ -867,7 +867,7 @@ fn run_hw_body(
 
                 if last_stats.elapsed() >= Duration::from_secs(5) {
                     let elapsed = session_start.elapsed().as_secs_f64();
-                    let gpu_total = gpu_renders.load(Ordering::Relaxed);
+                    let gpu_total = recording_gpu_publish_count();
                     let gpu_fps = gpu_total as f64 / elapsed.max(0.1);
                     let hold_pct = if written > 0 {
                         hold_frames as f64 / written as f64 * 100.0
@@ -878,6 +878,7 @@ fn run_hw_body(
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
                     log_rec_live_stats(
+                        state.clone(),
                         elapsed,
                         written,
                         hold_frames,
@@ -953,8 +954,7 @@ fn run_hw_body(
     }
 
     save_progress::report(20, "finalizing");
-    gpu_feed.stop();
-    let gpu_samples = gpu_renders.load(Ordering::Relaxed);
+    let gpu_samples = recording_gpu_publish_count();
 
     if let Some(secs) = stop_session_secs {
         let target_frames = (secs * fps_f).floor() as u64;
@@ -1099,11 +1099,6 @@ fn run(
     // frame (after a resolution switch) can never prime this recording.
     clear_capture_frame();
 
-    // Start the GPU feeder first so it begins pulling published capture frames.
-    let gpu_feed = GpuFeeder::start(state.clone(), fps);
-    let gpu_renders = gpu_feed.renders.clone();
-    let latest = gpu_feed.latest.clone();
-
     // Anchor t=0 to the FIRST real captured frame, not to thread start. On
     // slower machines the GPU scaler init + first WGC frame can take several
     // seconds; if we started the clock (and released audio) here, video would
@@ -1111,14 +1106,13 @@ fn run(
     // the "audio 5–10s ahead of video" desync. Waiting here keeps A/V aligned.
     let first_frame_deadline = Instant::now() + Duration::from_secs(12);
     let mut waited_for_first = false;
-    while latest.lock().is_none() {
+    while peek_capture_frame().is_none() {
         if stop_rx.try_recv().is_ok() {
             // Stopped before any frame arrived — nothing was recorded.
             drop(stdin);
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&path);
-            gpu_feed.stop();
             return Ok((0, 0.0));
         }
         if Instant::now() >= first_frame_deadline {
@@ -1186,7 +1180,6 @@ fn run(
                     frame_sender,
                     session_start,
                     fps_f,
-                    latest,
                     recording_done_slot,
                     slot_done_t,
                 );
@@ -1267,7 +1260,7 @@ fn run(
 
                 if last_stats.elapsed() >= Duration::from_secs(5) {
                     let elapsed = session_start.elapsed().as_secs_f64();
-                    let gpu_total = gpu_renders.load(Ordering::Relaxed);
+                    let gpu_total = recording_gpu_publish_count();
                     let gpu_fps = gpu_total as f64 / elapsed.max(0.1);
                     let hold_pct = if written > 0 {
                         hold_frames as f64 / written as f64 * 100.0
@@ -1278,6 +1271,7 @@ fn run(
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
                     log_rec_live_stats(
+                        state.clone(),
                         elapsed,
                         written,
                         hold_frames,
@@ -1373,8 +1367,7 @@ fn run(
 
     save_progress::report(20, "finalizing");
 
-    gpu_feed.stop();
-    let gpu_samples = gpu_renders.load(Ordering::Relaxed);
+    let gpu_samples = recording_gpu_publish_count();
 
     if let Some(secs) = stop_session_secs {
         let target_frames = (secs * fps_f).floor() as u64;

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
-import { invoke, isDesktop, prefetchMediaSrc } from "../lib/bridge";
+import { invoke, isDesktop, prefetchSelectedMediaSrc } from "../lib/bridge";
 import { prefetchRecordingThumbs } from "../lib/recordingThumb";
 import { ensureDriveToken } from "../lib/driveAuth";
 import { isOnline } from "../lib/entitlementCache";
@@ -53,14 +53,13 @@ export function Preview() {
   }, [recordings, selectedId]);
 
   useEffect(() => {
-    if (selectedId) prefetchMediaSrc(selectedId);
+    prefetchSelectedMediaSrc(selectedId);
   }, [selectedId]);
 
   useEffect(() => {
-    if (recordings.length === 0) return;
-    for (const rec of recordings) prefetchMediaSrc(rec.id);
-    prefetchRecordingThumbs(recordings.map((r) => r.id));
-  }, [recordings]);
+    if (!selectedId) return;
+    prefetchRecordingThumbs([selectedId]);
+  }, [selectedId]);
 
   useEffect(() => {
     setCardMode("default");
@@ -244,8 +243,6 @@ export function Preview() {
                 type="button"
                 className="rec-item"
                 onClick={() => setLibrarySelected(rec.id)}
-                onMouseEnter={() => prefetchMediaSrc(rec.id)}
-                onFocus={() => prefetchMediaSrc(rec.id)}
                 title={rec.filename}
               >
                 <RecThumb id={rec.id} orientation={rec.orientation} />

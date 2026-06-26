@@ -117,6 +117,34 @@ pub fn decrypt_to_file(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Decrypt the first `max_plaintext_bytes` of an `.ns` file into `dst` (streaming CTR).
+pub fn decrypt_prefix_to_file(src: &Path, dst: &Path, max_plaintext_bytes: u64) -> io::Result<u64> {
+    let total = plaintext_len(src)?;
+    let cap = max_plaintext_bytes.min(total);
+    if cap == 0 {
+        let _ = File::create(dst)?;
+        return Ok(0);
+    }
+    let mut f = File::open(src)?;
+    let iv = read_iv(&mut f)?;
+    let mut cipher = cipher_with(&iv);
+    let mut out = File::create(dst)?;
+    let mut buf = vec![0u8; CHUNK];
+    let mut done = 0u64;
+    while done < cap {
+        let to_read = ((cap - done) as usize).min(buf.len());
+        let n = f.read(&mut buf[..to_read])?;
+        if n == 0 {
+            break;
+        }
+        let mut chunk = buf[..n].to_vec();
+        cipher.apply_keystream(&mut chunk);
+        out.write_all(&chunk)?;
+        done += n as u64;
+    }
+    Ok(done)
+}
+
 /// Decrypt a plaintext byte range `[start, start+len)` — for range-served playback.
 /// CTR mode lets us seek the keystream so we only touch the requested bytes.
 pub fn decrypt_range(src: &Path, start: u64, len: usize) -> io::Result<Vec<u8>> {

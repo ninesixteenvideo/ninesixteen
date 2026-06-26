@@ -30,7 +30,7 @@ use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11SurfaceFromDXGISu
 const HLSL: &str = include_str!("../shaders/crop_scale.hlsl");
 const CURSOR_HLSL: &str = include_str!("../shaders/cursor_overlay.hlsl");
 const PIXEL_FORMAT: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
-const ENCODE_POOL: usize = 8;
+const ENCODE_POOL: usize = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -430,10 +430,16 @@ impl GpuScaler {
         let slot = &self.encode_pool[idx];
         unsafe {
             ctx.CopyResource(&slot.tex, &self.out_tex);
-            ctx.Flush();
         }
         self.encode_pool_idx = (idx + 1) % self.encode_pool.len();
         Ok(SendDirectX::new(slot.surface.0.clone()))
+    }
+
+    /// Drain the GPU queue before recording teardown (not on every frame — Flush stalls the pipe).
+    pub fn flush_encode_pipeline(&self, ctx: &ID3D11DeviceContext) {
+        unsafe {
+            ctx.Flush();
+        }
     }
 
     /// Read the latest scaled frame synchronously (preview / streaming).

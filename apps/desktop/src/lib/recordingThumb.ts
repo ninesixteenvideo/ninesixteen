@@ -1,9 +1,9 @@
-import { invoke, isDesktop } from "./bridge";
+import { thumbSrc, isDesktop } from "./bridge";
 
 const cache = new Map<string, string>();
 const inflight = new Map<string, Promise<string | null>>();
 
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 3;
 let active = 0;
 const queue: Array<() => void> = [];
 
@@ -24,7 +24,7 @@ function schedule<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
-/** Cached JPEG data URL from disk/ffmpeg (no in-webview video decode). */
+/** Cached thumbnail URL (`nsthumb://`) for library rows. */
 export async function recordingThumb(id: string): Promise<string | null> {
   const hit = cache.get(id);
   if (hit) return hit;
@@ -34,9 +34,9 @@ export async function recordingThumb(id: string): Promise<string | null> {
 
   const work = schedule(async () => {
     if (!isDesktop) return null;
-    const data = await invoke<string>("get_recording_thumbnail", { id });
-    if (data) cache.set(id, data);
-    return data || null;
+    const url = await thumbSrc(id);
+    if (url) cache.set(id, url);
+    return url;
   });
 
   inflight.set(id, work);
@@ -52,9 +52,9 @@ export function dropRecordingThumb(id: string) {
   inflight.delete(id);
 }
 
-/** Warm thumbnails for visible/nearby library rows without blocking UI. */
+/** Warm thumbnails for a small set of visible ids (IntersectionObserver in RecThumb). */
 export function prefetchRecordingThumbs(ids: string[]): void {
-  for (const id of ids) {
+  for (const id of ids.slice(0, 6)) {
     void recordingThumb(id).catch(() => {});
   }
 }

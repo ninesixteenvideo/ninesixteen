@@ -93,7 +93,21 @@ mod imp {
     static PROF_RENDER_US: AtomicU64 = AtomicU64::new(0);
     static PROF_READ_US: AtomicU64 = AtomicU64::new(0);
     static PROF_HANDLER_US: AtomicU64 = AtomicU64::new(0);
+    static PROF_ENCODE_US: AtomicU64 = AtomicU64::new(0);
     static ENC_QUEUE_DEPTH: AtomicU64 = AtomicU64::new(0);
+    static LAST_WGC_HANDLER_END_MS: AtomicU64 = AtomicU64::new(0);
+    /// Skip glide re-crop when WGC just finished — avoids gpu_bridge lock ping-pong.
+    const GLIDE_AFTER_WGC_GUARD_MS: u64 = 10;
+    static RECORDING_DEGRADED: AtomicBool = AtomicBool::new(false);
+    static CAPTURE_BAD_WINDOWS: AtomicU64 = AtomicU64::new(0);
+    static LAST_WGC_RESTART_MS: AtomicU64 = AtomicU64::new(0);
+    static COMPLETED_SEGMENTS: AtomicU64 = AtomicU64::new(0);
+    /// Auto-start a fresh file every 30 minutes during long sessions.
+    const MAX_SEGMENT_SECS: f64 = 30.0 * 60.0;
+    const CAPTURE_HEALTH_MIN_WGC_PER_5S: u64 = 225; // ~45/s
+    const CAPTURE_HEALTH_MAX_HOLD_PCT: f64 = 8.0;
+    const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 6; // 6 × 5s = 30s sustained
+    const WGC_RESTART_COOLDOWN_MS: u64 = 120_000;
     static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
     static FIRST_REC_FRAME_LOGGED: AtomicBool = AtomicBool::new(false);
 
@@ -131,17 +145,23 @@ mod imp {
     fn boost_glide_thread_priority() {}
 
     #[cfg(windows)]
-    fn boost_capture_thread_priority() {
+    fn boost_capture_thread_priority(recording: bool) {
         use windows::Win32::System::Threading::{
-            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
+            THREAD_PRIORITY_ABOVE_NORMAL,
         };
         unsafe {
-            let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+            let priority = if recording {
+                THREAD_PRIORITY_HIGHEST
+            } else {
+                THREAD_PRIORITY_ABOVE_NORMAL
+            };
+            let _ = SetThreadPriority(GetCurrentThread(), priority);
         }
     }
 
     #[cfg(not(windows))]
-    fn boost_capture_thread_priority() {}
+    fn boost_capture_thread_priority(_recording: bool) {}
 
     /// System cursor baked into WGC must read back on the same frame (no pipelining).
     fn wgc_needs_sync_cursor(state: &SharedState) -> bool {
@@ -161,12 +181,19 @@ mod imp {
                 continue;
             }
 
-            if viewport_changed_since_last_render() {
-                if let Some(mut bridge) = gpu_bridge().try_lock() {
-                    if bridge.ready {
-                        if capture_recording_output(&mut bridge, &state, None, true) {
-                            REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
-                            REC_GLIDE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+            if viewport_changed_since_last_render()
+                && !RECORDING_DEGRADED.load(Ordering::Relaxed)
+            {
+                let since_wgc = now_ms().saturating_sub(
+                    LAST_WGC_HANDLER_END_MS.load(Ordering::Relaxed),
+                );
+                if since_wgc >= GLIDE_AFTER_WGC_GUARD_MS {
+                    if let Some(mut bridge) = gpu_bridge().try_lock() {
+                        if bridge.ready {
+                            if capture_recording_output(&mut bridge, &state, None, true) {
+                                REC_CAPTURE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                                REC_GLIDE_RENDERS_WINDOW.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
                     }
                 }
@@ -451,6 +478,7 @@ mod imp {
         };
         let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
 
+        let t_render = Instant::now();
         let draw = if let Some(tex) = live_tex {
             scaler.render(&ctx, &device, tex, src_w, src_h, &layout)
         } else {
@@ -463,6 +491,7 @@ mod imp {
             Ok(s) => s,
             Err(_) => return false,
         };
+        PROF_ENCODE_US.fetch_add(t_render.elapsed().as_micros() as u64, Ordering::Relaxed);
         remember_vp(bridge, &vp);
         publish_capture_surface(surface, false);
         let _ = pipelined;
@@ -480,6 +509,7 @@ mod imp {
                 crate::file_record::publish_capture_frame(bgra);
             }
             scaler.reset_readback_pipeline();
+            scaler.flush_encode_pipeline(&ctx);
         }
     }
 
@@ -923,7 +953,7 @@ mod imp {
         type Error = HandlerError;
 
         fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-            boost_capture_thread_priority();
+            boost_capture_thread_priority(false);
             let f = ctx.flags;
             Ok(Self {
                 state: f.state,
@@ -963,6 +993,8 @@ mod imp {
             if !recording && !streaming && !feed_cam {
                 return Ok(());
             }
+
+            boost_capture_thread_priority(recording);
 
             if !recording && (streaming || feed_cam) {
                 let interval = preview_render_interval_ms(streaming, feed_cam, fps);
@@ -1014,6 +1046,7 @@ mod imp {
 
             PROF_HANDLER_US.fetch_add(t_handler.elapsed().as_micros() as u64, Ordering::Relaxed);
             PROF_WGC_HANDLERS.fetch_add(1, Ordering::Relaxed);
+            LAST_WGC_HANDLER_END_MS.store(now_ms(), Ordering::Relaxed);
 
             Ok(())
         }
@@ -1168,43 +1201,27 @@ mod imp {
         let monitor = Monitor::primary().map_err(|e| CaptureError::Other(format!("no primary monitor: {e:?}")))?;
 
         let min_interval = std::time::Duration::from_nanos(1_000_000_000 / wgc_fps as u64);
-        let recording_with_cursor = settings_snapshot.use_cinematic_cursor()
-            && (record_path.is_some() || has_stream || recording_active);
-        let dirty = if recording_with_cursor {
-            DirtyRegionSettings::ReportAndRender
-        } else {
-            DirtyRegionSettings::Default
-        };
+        // Always use full-frame WGC during recording. Dirty-region mode can skip frame
+        // delivery when Windows under-reports changes (common in fullscreen games), which
+        // forces CFR hold frames and visible playback stutter on long sessions.
+        let dirty = DirtyRegionSettings::Default;
 
-        let build_settings = |dirty: DirtyRegionSettings| {
-            Settings::new(
-                monitor,
-                cursor,
-                DrawBorderSettings::WithoutBorder,
-                SecondaryWindowSettings::Default,
-                MinimumUpdateIntervalSettings::Custom(min_interval),
-                dirty,
-                ColorFormat::Bgra8,
-                Flags {
-                    state: state.clone(),
-                    out_w,
-                    out_h,
-                },
-            )
-        };
+        let settings = Settings::new(
+            monitor,
+            cursor,
+            DrawBorderSettings::WithoutBorder,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Custom(min_interval),
+            dirty,
+            ColorFormat::Bgra8,
+            Flags {
+                state: state.clone(),
+                out_w,
+                out_h,
+            },
+        );
 
-        let start_result = Handler::start_free_threaded(build_settings(dirty)).or_else(|e| {
-            if dirty == DirtyRegionSettings::Default {
-                Err(e)
-            } else {
-                capture_log(
-                    "WGC dirty-region mode unavailable on this system; using default capture",
-                );
-                Handler::start_free_threaded(build_settings(DirtyRegionSettings::Default))
-            }
-        });
-
-        match start_result {
+        match Handler::start_free_threaded(settings) {
             Ok(control) => {
                 *control_slot().lock() = Some(control);
                 start_paced_output(state.clone());
@@ -1419,6 +1436,7 @@ mod imp {
             return Err(e);
         }
 
+        reset_recording_health_state();
         Ok(())
     }
 
@@ -1596,6 +1614,205 @@ mod imp {
         Ok(())
     }
 
+    fn reset_recording_health_state() {
+        RECORDING_DEGRADED.store(false, Ordering::Relaxed);
+        CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+        COMPLETED_SEGMENTS.store(0, Ordering::Relaxed);
+    }
+
+    /// Post-process plaintext MP4 (faststart + thumb + encrypt + sidecar).
+    fn finalize_recording_file(
+        path: std::path::PathBuf,
+        dims: (u32, u32),
+        orientation: Orientation,
+        frames: u64,
+        mut size_bytes: u64,
+        duration: f64,
+    ) -> Result<crate::state::RecordingInfo, CaptureError> {
+        if frames == 0 || size_bytes < 512 {
+            let _ = std::fs::remove_file(&path);
+            return Err(CaptureError::Other("segment empty".into()));
+        }
+
+        if let Err(e) = crate::file_record::apply_faststart(&path) {
+            capture_log(&format!("WARN: faststart remux failed ({e}); continuing"));
+        }
+
+        let stem = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let filename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+
+        let _ = crate::recordings::write_thumbnail_from_mp4(&path, &stem);
+        let ns_path = path.with_extension("ns");
+        let stored = match crate::crypto::encrypt_file_with_progress(&path, &ns_path, |pct| {
+            let overall = 65u8.saturating_add((pct as u16 * 34 / 100) as u8);
+            if pct >= 100 || pct == 0 || pct % 8 == 0 {
+                crate::save_progress::report(overall.min(99), "encrypting");
+            }
+        }) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(&path);
+                ns_path
+            }
+            Err(e) => {
+                capture_log(&format!("Failed to encrypt recording: {e}"));
+                path.clone()
+            }
+        };
+
+        if stored.extension().and_then(|s| s.to_str()) == Some("ns") {
+            size_bytes = std::fs::metadata(&stored).map(|m| m.len()).unwrap_or(size_bytes);
+        }
+
+        let info = crate::state::RecordingInfo {
+            id: stem.clone(),
+            filename,
+            path: stored.to_string_lossy().into_owned(),
+            created_at: chrono::Local::now().timestamp_millis(),
+            duration,
+            size_bytes,
+            width: dims.0,
+            height: dims.1,
+            orientation,
+        };
+        crate::recordings::save_metadata(&info);
+        Ok(info)
+    }
+
+    fn restart_wgc_session(state: SharedState) -> Result<(), CaptureError> {
+        let (recording, streaming) = {
+            let st = state.lock();
+            (st.recording, st.streaming)
+        };
+        if !recording && !streaming {
+            return Ok(());
+        }
+        let now = now_ms();
+        if now.saturating_sub(LAST_WGC_RESTART_MS.load(Ordering::Relaxed)) < WGC_RESTART_COOLDOWN_MS {
+            return Ok(());
+        }
+
+        let stream = stream_sink().lock().take();
+        stop_recording_glide_pulse();
+        stop_paced_output();
+        if let Some(control) = control_slot().lock().take() {
+            let _ = control.stop();
+        }
+        clear_gpu_bridge();
+
+        begin_capture(state.clone(), None, stream)?;
+        LAST_WGC_RESTART_MS.store(now, Ordering::Relaxed);
+        capture_log("WGC session restarted (capture health recovery)");
+        Ok(())
+    }
+
+    fn rotate_recording_segment(state: SharedState) -> Result<(), CaptureError> {
+        let promo = state.lock().promo_mode.is_some();
+        if promo {
+            return Ok(());
+        }
+        let (path, dims, orientation, record_fps, bitrate_kbps) = {
+            let st = state.lock();
+            if !st.recording {
+                return Ok(());
+            }
+            let path = st
+                .current_path
+                .clone()
+                .ok_or_else(|| CaptureError::Other("no active recording path".into()))?;
+            let (out_w, out_h, fps, bitrate) = recording_dims(&state);
+            (path, (out_w, out_h), viewport_orientation(), fps, bitrate)
+        };
+
+        let (frames, size_bytes, duration) = close_recorder()?;
+        if frames == 0 {
+            capture_log("WARN: segment rotate skipped — no frames in segment");
+        } else if let Ok(info) =
+            finalize_recording_file(path.clone(), dims, orientation, frames, size_bytes, duration)
+        {
+            capture_log(&format!(
+                "Recording segment saved ({:.0}s, {} bytes) → {}",
+                info.duration,
+                info.size_bytes,
+                info.filename
+            ));
+            if let Some(app) = crate::app_handle() {
+                let _ = app.emit("recording:segment-saved", &info);
+            }
+        }
+
+        let new_path = new_recording_path(orientation);
+        open_recorder(
+            &new_path,
+            dims.0,
+            dims.1,
+            record_fps,
+            bitrate_kbps,
+            state.clone(),
+        )?;
+        capture_log(&format!(
+            "Recording continued in new segment ({}/{})",
+            new_path.display(),
+            record_fps
+        ));
+        {
+            let mut st = state.lock();
+            st.current_path = Some(new_path);
+        }
+        start_recording_glide_pulse(state, record_fps);
+        Ok(())
+    }
+
+    /// Called from live stats (~5s). Restarts WGC after sustained lag; rotates file every 30 min.
+    pub fn recording_pipeline_health_check(
+        state: SharedState,
+        elapsed_secs: f64,
+        wgc_5s: u64,
+        hold_pct: f64,
+        target_fps: u32,
+    ) {
+        if elapsed_secs < 30.0 {
+            RECORDING_DEGRADED.store(false, Ordering::Relaxed);
+            CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+            return;
+        }
+
+        let wgc_low = wgc_5s < CAPTURE_HEALTH_MIN_WGC_PER_5S;
+        let holds_high = hold_pct >= CAPTURE_HEALTH_MAX_HOLD_PCT;
+        let degraded = wgc_low || holds_high;
+        RECORDING_DEGRADED.store(degraded, Ordering::Relaxed);
+
+        if degraded {
+            let bad = CAPTURE_BAD_WINDOWS.fetch_add(1, Ordering::Relaxed) + 1;
+            if bad >= CAPTURE_HEALTH_BAD_WINDOWS {
+                CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+                if let Err(e) = restart_wgc_session(state.clone()) {
+                    capture_log(&format!("WARN: WGC health restart failed: {e}"));
+                }
+            }
+        } else {
+            CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+        }
+
+        let segment_idx = (elapsed_secs / MAX_SEGMENT_SECS).floor() as u64;
+        let completed = COMPLETED_SEGMENTS.load(Ordering::Relaxed);
+        if segment_idx > completed && segment_idx > 0 {
+            COMPLETED_SEGMENTS.store(segment_idx, Ordering::Relaxed);
+            if let Err(e) = rotate_recording_segment(state) {
+                capture_log(&format!("WARN: segment rotate failed: {e}"));
+            }
+        }
+
+        let _ = target_fps;
+    }
+
     pub fn stop_recording(
         state: SharedState,
         app: Option<tauri::AppHandle>,
@@ -1756,53 +1973,17 @@ mod imp {
             )));
         }
 
-        let stem = path
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        let filename = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-
-        // Encrypt the finished MP4 at rest and drop the plaintext so nothing
-        // playable is ever left in the recordings folder (export decrypts it).
-        let ns_path = path.with_extension("ns");
+        reset_recording_health_state();
         crate::save_progress::report(65, "encrypting");
-        let _ = crate::recordings::write_thumbnail_from_mp4(&path, &stem);
-        let stored = match crate::crypto::encrypt_file_with_progress(&path, &ns_path, |pct| {
-            let overall = 65u8.saturating_add((pct as u16 * 34 / 100) as u8);
-            let mapped = overall.min(99);
-            // Throttle encrypt ticks to whole percent steps the UI can follow.
-            if pct >= 100 || pct == 0 || pct % 4 == 0 {
-                crate::save_progress::report(mapped, "encrypting");
-            }
-        }) {
-            Ok(()) => {
-                let _ = std::fs::remove_file(&path);
-                ns_path
-            }
-            Err(e) => {
-                crate::log::capture_log(&format!("Failed to encrypt recording: {e}"));
-                path.clone()
-            }
-        };
-        crate::save_progress::report(100, "encrypting");
-
-        let info = crate::state::RecordingInfo {
-            id: stem,
-            filename,
-            path: stored.to_string_lossy().into_owned(),
-            created_at: chrono::Local::now().timestamp_millis(),
-            duration,
-            size_bytes,
-            width: dims.0,
-            height: dims.1,
+        let info = finalize_recording_file(
+            path,
+            dims,
             orientation,
-        };
-        crate::recordings::save_metadata(&info);
+            frames,
+            size_bytes,
+            duration,
+        )?;
+        crate::save_progress::report(100, "encrypting");
         ensure_capture_session(state.clone());
         Ok(Some(info))
     }
@@ -1838,13 +2019,14 @@ mod imp {
         let handlers = PROF_WGC_HANDLERS.swap(0, Ordering::Relaxed);
         let render_us = PROF_RENDER_US.swap(0, Ordering::Relaxed);
         let read_us = PROF_READ_US.swap(0, Ordering::Relaxed);
+        let encode_us = PROF_ENCODE_US.swap(0, Ordering::Relaxed);
         let handler_us = PROF_HANDLER_US.swap(0, Ordering::Relaxed);
         let div = handlers.max(1);
         (
             wgc,
             cap,
             glide,
-            render_us / div,
+            (render_us + encode_us) / div,
             read_us / div,
             handler_us / div,
         )
@@ -1904,7 +2086,8 @@ pub use imp::{
     dispatch_recording_outputs,
     ensure_capture_session, is_capture_running, poll_camera_connected, recording_encoder_queue_depth,
     recording_encoder_queue_note_consumed, recording_encoder_queue_note_sent,
-    recording_encoder_queue_reset, recording_pipeline_window_stats, register_virtual_camera,
+    recording_encoder_queue_reset, recording_pipeline_health_check,
+    recording_pipeline_window_stats, register_virtual_camera,
     render_output_frame, start_both, start_camera, start_promo_recording,
     start_recording,
     start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
@@ -1924,6 +2107,16 @@ pub fn render_recording_frame(state: &SharedState) -> Option<Vec<u8>> {
 #[cfg(not(windows))]
 pub fn viewport_changed_since_last_render() -> bool {
     true
+}
+
+#[cfg(not(windows))]
+pub fn recording_pipeline_health_check(
+    _state: SharedState,
+    _elapsed_secs: f64,
+    _wgc_5s: u64,
+    _hold_pct: f64,
+    _target_fps: u32,
+) {
 }
 
 #[cfg(not(windows))]

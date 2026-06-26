@@ -8,6 +8,17 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.2.1",
+    date: "June 2026",
+    items: [
+      "Long-session recording stability — capture health monitor auto-recovers when WGC slows; degraded mode under GPU pressure",
+      "Faststart remux on every save — moov atom at file head for faster library open and timeline seeking",
+      "30-minute auto-segment rotation — marathon sessions split into separate takes without stopping capture",
+      "Faster library — lazy thumbnails served from disk; partial decrypt for thumb generation on large files",
+      "Faster playback — cached init range for decrypted media headers; no bulk prefetch when opening the library",
+    ],
+  },
+  {
     version: "1.2.0",
     date: "June 2026",
     items: [
@@ -76,4 +87,4 @@ export const RELEASES: readonly Release[] = [
   },
 ] as const;
 
-export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.0";
+export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.1";
