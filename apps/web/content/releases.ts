@@ -11,11 +11,11 @@ export const RELEASES: readonly Release[] = [
     version: "1.2.1",
     date: "June 2026",
     items: [
-      "Long-session recording stability — capture health monitor auto-recovers when WGC slows; degraded mode under GPU pressure",
-      "Faststart remux on every save — moov atom at file head for faster library open and timeline seeking",
-      "30-minute auto-segment rotation — marathon sessions split into separate takes without stopping capture",
-      "Faster library — lazy thumbnails served from disk; partial decrypt for thumb generation on large files",
-      "Faster playback — cached init range for decrypted media headers; no bulk prefetch when opening the library",
+      "Long gameplay sessions stay smooth — capture health monitor watches the pipeline and auto-recovers if frame delivery slows during marathon recordings",
+      "30-minute auto-segments — sessions longer than half an hour split into separate takes in your library while recording keeps going",
+      "Faster library browsing — thumbnails load as you scroll instead of upfront; browse large collections without the UI freezing",
+      "Snappier film player — recordings open and scrub faster with optimized file layout and smart header caching",
+      "Mid-session library updates — new segments appear in your filmstrip while you're still recording",
     ],
   },
   {

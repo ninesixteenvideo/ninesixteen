@@ -60,14 +60,14 @@ jobs:
           releaseBody: |
             **ninesixteen.video** — native 9×16 & 16×9 screen recorder for Windows.
 
-            Record your screen in true portrait or landscape aspect — no cropping in post. Cursor-driven framing, Alt + scroll zoom, system + mic audio, encrypted local recordings. Free to try; **$49 one-time** Pro export.
+            Record your screen in true portrait or landscape aspect — no cropping in post. Cursor-driven framing, Alt + scroll zoom, Game mode, system + mic audio, encrypted local recordings. Free to try; **$49 one-time** Pro export.
 
-            ### Highlights
-            - True **9×16** and **16×9** capture from frame one
-            - Cursor-driven viewport + live zoom
-            - Lightweight **Tauri** app (not Electron) with Windows Graphics Capture
-            - Virtual camera appears as **ninesixteen.video** in OBS, Zoom, Meet
-            - Up to 1080p @ 30/60 fps · FFmpeg bundled
+            ### v1.2.1 highlights
+            - Long gameplay sessions stay smooth — capture health monitor auto-recovers if frame delivery slows
+            - 30-minute auto-segments — marathon sessions split into separate library takes without stopping
+            - Faster library browsing — thumbnails load on scroll; large collections no longer freeze the UI
+            - Snappier film player — optimized file layout and header caching for faster open and scrubbing
+            - Mid-session library updates — new segments appear in your filmstrip while recording continues
 
             ### Install
             - **New installs:** download the NSIS `.exe` or `.msi` installer below.

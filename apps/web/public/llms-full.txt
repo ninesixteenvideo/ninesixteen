@@ -52,10 +52,11 @@ OBS records full desktop or manual regions — you reframe for vertical social. 
 
 ## Latest release — v1.2.1 (June 2026)
 
-- Long-session recording stability — WGC health monitor and auto-recovery
-- Faststart remux on every save — faster library open and seeking
-- 30-minute auto-segment rotation for marathon captures
-- Faster library and playback — lazy thumbnails, init-range cache
+- Long gameplay sessions stay smooth — capture health monitor auto-recovers if frame delivery slows
+- 30-minute auto-segments — marathon sessions split into separate library takes without stopping
+- Faster library browsing — thumbnails load on scroll; large collections no longer freeze the UI
+- Snappier film player — optimized file layout and header caching for faster open and scrubbing
+- Mid-session library updates — new segments appear in your filmstrip while recording continues
 
 ## Previous release — v1.2.0 (June 2026)
 
