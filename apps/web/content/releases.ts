@@ -8,6 +8,17 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.2.3",
+    date: "June 2026",
+    items: [
+      "Recording stutter fix — viewport-glide disabled during capture so WGC keeps full 60fps delivery",
+      "Game mode Studio cleanup — hide cursor and mouse-click options while game mode is on; cursor hidden and click audio off automatically",
+      "Game mode uses MF GPU encode — lighter capture path when the cinematic cursor is off",
+      "Capture health recovery — WGC session restart with GPU flush, 25s grace, and publish-miss diagnostics in the log",
+      "Larger WGC frame pool (5 buffers) for sustained 1080p and 4K @ 60fps recording",
+    ],
+  },
+  {
     version: "1.2.2",
     date: "June 2026",
     items: [
@@ -96,4 +107,4 @@ export const RELEASES: readonly Release[] = [
   },
 ] as const;
 
-export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.2";
+export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.3";

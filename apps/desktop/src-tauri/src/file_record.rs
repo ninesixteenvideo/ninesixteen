@@ -492,6 +492,7 @@ fn log_rec_live_stats(
     wgc_5s: u64,
     cap_renders_5s: u64,
     glide_5s: u64,
+    wgc_misses_5s: u64,
     avg_render_us: u64,
     avg_read_us: u64,
     avg_handler_us: u64,
@@ -501,7 +502,7 @@ fn log_rec_live_stats(
     capture_log(&format!(
         "Rec live @ {elapsed:.0}s: {written} {encoder_label}, {hold_frames} holds ({hold_pct:.0}%), \
          {gpu_fps:.1} unique GPU/s (target {target_fps}fps), WGC {wgc_5s}/5s, capture renders {cap_renders_5s}/5s, \
-         glide {glide_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
+         glide {glide_5s}/5s, WGC publish miss {wgc_misses_5s}/5s, GPU render {:.1}ms read {:.1}ms handler {:.1}ms, enc backlog {enc_backlog}",
         avg_render_us as f64 / 1000.0,
         avg_read_us as f64 / 1000.0,
         avg_handler_us as f64 / 1000.0,
@@ -874,7 +875,7 @@ fn run_hw_body(
                     } else {
                         0.0
                     };
-                    let (wgc_5s, cap_renders_5s, glide_5s, avg_render_us, avg_read_us, avg_handler_us) =
+                    let (wgc_5s, cap_renders_5s, glide_5s, wgc_misses_5s, avg_render_us, avg_read_us, avg_handler_us) =
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
                     log_rec_live_stats(
@@ -888,6 +889,7 @@ fn run_hw_body(
                         wgc_5s,
                         cap_renders_5s,
                         glide_5s,
+                        wgc_misses_5s,
                         avg_render_us,
                         avg_read_us,
                         avg_handler_us,
@@ -1035,7 +1037,7 @@ fn run(
             prefer_hw_encode()
                 && !st.streaming
                 && st.promo_mode.is_none()
-                && !st.recording_settings.use_cinematic_cursor()
+                && (!st.recording_settings.use_cinematic_cursor() || st.recording_settings.game_mode)
         };
         if try_hw {
             HW_ENCODE_ACTIVE.store(true, Ordering::Release);
@@ -1267,7 +1269,7 @@ fn run(
                     } else {
                         0.0
                     };
-                    let (wgc_5s, cap_renders_5s, glide_5s, avg_render_us, avg_read_us, avg_handler_us) =
+                    let (wgc_5s, cap_renders_5s, glide_5s, wgc_misses_5s, avg_render_us, avg_read_us, avg_handler_us) =
                         crate::capture::recording_pipeline_window_stats();
                     let enc_backlog = crate::capture::recording_encoder_queue_depth();
                     log_rec_live_stats(
@@ -1281,6 +1283,7 @@ fn run(
                         wgc_5s,
                         cap_renders_5s,
                         glide_5s,
+                        wgc_misses_5s,
                         avg_render_us,
                         avg_read_us,
                         avg_handler_us,

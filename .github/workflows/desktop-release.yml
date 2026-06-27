@@ -62,10 +62,11 @@ jobs:
 
             Record your screen in true portrait or landscape aspect — no cropping in post. Cursor-driven framing, Alt + scroll zoom, Game mode, system + mic audio, encrypted local recordings. Free to try; **$49 one-time** Pro export.
 
-            ### v1.2.2 highlights
-            - Fixed gameplay stutter after ~90s — WGC-only viewport updates protect 60fps capture under pan
-            - Faster capture health recovery — WGC restarts within 15s when delivery degrades
-            - Larger WGC frame pool for sustained GPU encode at 60fps
+            ### v1.2.3 highlights
+            - Recording stutter fix — viewport-glide disabled; WGC-only viewport updates at 60fps
+            - Game mode — hide cursor and click-audio options in Studio; MF GPU encode path
+            - Capture health recovery with GPU flush, grace period, and publish-miss diagnostics
+            - Larger WGC frame pool (5 buffers)
 
             ### Install
             - **New installs:** download the NSIS `.exe` or `.msi` installer below.

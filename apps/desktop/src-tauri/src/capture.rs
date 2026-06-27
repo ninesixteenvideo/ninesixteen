@@ -87,6 +87,7 @@ mod imp {
     static LAST_CAPTURE_FRAME_MS: AtomicU64 = AtomicU64::new(0);
     static GPU_SCALE_LOG_MS: AtomicU64 = AtomicU64::new(0);
     static WGC_FRAMES_WINDOW: AtomicU64 = AtomicU64::new(0);
+    static WGC_PUBLISH_MISSES_WINDOW: AtomicU64 = AtomicU64::new(0);
     static REC_CAPTURE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
     static REC_GLIDE_RENDERS_WINDOW: AtomicU64 = AtomicU64::new(0);
     static PROF_WGC_HANDLERS: AtomicU64 = AtomicU64::new(0);
@@ -112,7 +113,9 @@ mod imp {
     const CAPTURE_HEALTH_MAX_HOLD_PCT: f64 = 5.0;
     const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 3; // 3 × 5s = 15s sustained before restart
     const CAPTURE_HEALTH_GRACE_SECS: f64 = 20.0;
-    const WGC_RESTART_COOLDOWN_MS: u64 = 60_000;
+    const CAPTURE_RECOVERY_GRACE_MS: u64 = 25_000;
+    const WGC_RESTART_COOLDOWN_MS: u64 = 90_000;
+    static LAST_CAPTURE_RECOVERY_MS: AtomicU64 = AtomicU64::new(0);
     static LAST_PREVIEW_RENDER_MS: AtomicU64 = AtomicU64::new(0);
     static FIRST_REC_FRAME_LOGGED: AtomicBool = AtomicBool::new(false);
 
@@ -1047,6 +1050,8 @@ mod imp {
                     if !FIRST_REC_FRAME_LOGGED.swap(true, Ordering::Relaxed) {
                         capture_log("First recording frame published to encoder");
                     }
+                } else {
+                    WGC_PUBLISH_MISSES_WINDOW.fetch_add(1, Ordering::Relaxed);
                 }
             } else if streaming || feed_cam {
                 let vp = shared_viewport().lock().viewport;
@@ -1719,11 +1724,16 @@ mod imp {
         if let Some(control) = control_slot().lock().take() {
             let _ = control.stop();
         }
+        flush_gpu_readback_pipeline();
         clear_gpu_bridge();
+        FIRST_REC_FRAME_LOGGED.store(false, Ordering::Relaxed);
 
         begin_capture(state.clone(), None, stream)?;
         LAST_WGC_RESTART_MS.store(now, Ordering::Relaxed);
-        capture_log("WGC session restarted (capture health recovery)");
+        LAST_CAPTURE_RECOVERY_MS.store(now, Ordering::Relaxed);
+        CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
+        DEGRADED_LOGGED.store(false, Ordering::Relaxed);
+        capture_log("WGC session restarted (capture health recovery — 25s grace before next check)");
         Ok(())
     }
 
@@ -1796,6 +1806,12 @@ mod imp {
             RECORDING_DEGRADED.store(false, Ordering::Relaxed);
             CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
             DEGRADED_LOGGED.store(false, Ordering::Relaxed);
+            return;
+        }
+        let now = now_ms();
+        if now.saturating_sub(LAST_CAPTURE_RECOVERY_MS.load(Ordering::Relaxed))
+            < CAPTURE_RECOVERY_GRACE_MS
+        {
             return;
         }
 
@@ -2035,11 +2051,12 @@ mod imp {
         capture_already_running()
     }
 
-    /// WGC frames, recording renders, glide re-crops, and handler timing since last call (then reset).
-    pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64) {
+    /// WGC frames, recording renders, glide re-crops, publish misses, and handler timing since last call.
+    pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64, u64) {
         let wgc = WGC_FRAMES_WINDOW.swap(0, Ordering::Relaxed);
         let cap = REC_CAPTURE_RENDERS_WINDOW.swap(0, Ordering::Relaxed);
         let glide = REC_GLIDE_RENDERS_WINDOW.swap(0, Ordering::Relaxed);
+        let misses = WGC_PUBLISH_MISSES_WINDOW.swap(0, Ordering::Relaxed);
         let handlers = PROF_WGC_HANDLERS.swap(0, Ordering::Relaxed);
         let render_us = PROF_RENDER_US.swap(0, Ordering::Relaxed);
         let read_us = PROF_READ_US.swap(0, Ordering::Relaxed);
@@ -2050,6 +2067,7 @@ mod imp {
             wgc,
             cap,
             glide,
+            misses,
             (render_us + encode_us) / div,
             read_us / div,
             handler_us / div,
@@ -2144,8 +2162,8 @@ pub fn recording_pipeline_health_check(
 }
 
 #[cfg(not(windows))]
-pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64) {
-    (0, 0, 0, 0, 0, 0)
+pub fn recording_pipeline_window_stats() -> (u64, u64, u64, u64, u64, u64, u64) {
+    (0, 0, 0, 0, 0, 0, 0)
 }
 
 #[cfg(not(windows))]
