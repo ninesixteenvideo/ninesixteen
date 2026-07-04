@@ -1037,8 +1037,15 @@ fn run(
             prefer_hw_encode()
                 && !st.streaming
                 && st.promo_mode.is_none()
+                && !st.recording_settings.game_webcam_active()
                 && (!st.recording_settings.use_cinematic_cursor() || st.recording_settings.game_mode)
         };
+        {
+            let st = state.lock();
+            if st.recording_settings.game_webcam_active() {
+                capture_log("Game webcam split — CPU composite via FFmpeg pipe");
+            }
+        }
         if try_hw {
             HW_ENCODE_ACTIVE.store(true, Ordering::Release);
             match HwEncoder::start(&path, width, height, fps, bitrate_kbps) {

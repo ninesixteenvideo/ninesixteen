@@ -68,7 +68,7 @@ interface Store {
   promoMode: "portrait" | "landscape" | null;
   promoInnerActive: boolean;
   overlayVisible: boolean;
-  tab: "studio" | "preview" | "hotkeys" | "account" | "info";
+  tab: "record" | "preview" | "hotkeys" | "account" | "info";
   librarySelectedId: string | null;
   paywallOpen: boolean;
   audioSettings: AudioSettings;
@@ -132,11 +132,16 @@ export const useStore = create<Store>((set, get) => ({
     promoEnabled: false,
     gameMode: false,
     gamePanMode: "crosshair",
+    gameWebcamEnabled: false,
+    gameWebcamDeviceId: null,
+    gameWebcamPortraitSize: "medium",
+    gameWebcamPipCorner: "topright",
+    gameWebcamPipSize: "medium",
   },
   promoMode: null,
   promoInnerActive: false,
   overlayVisible: false,
-  tab: "studio",
+  tab: "record",
   librarySelectedId: null,
   paywallOpen: false,
   audioSettings: DEFAULT_AUDIO,
@@ -373,7 +378,7 @@ export const useStore = create<Store>((set, get) => ({
       elapsed: 0,
       sizeBytes: 0,
       arming: true,
-      countdownSeconds: 5,
+      countdownSeconds: 0,
       overlayVisible: true,
     });
     try {

@@ -39,6 +39,7 @@ mod state;
 #[cfg(desktop)]
 mod tray;
 mod watchdog;
+mod webcam;
 
 use state::new_app_handles;
 use tauri::{Emitter, Manager, Theme};
@@ -614,6 +615,7 @@ pub fn run() {
             commands::get_hardware_profile,
             commands::set_recording_settings,
             commands::list_audio_devices,
+            commands::list_webcam_devices,
             commands::get_audio_settings,
             commands::set_audio_settings,
             commands::start_audio_monitor,

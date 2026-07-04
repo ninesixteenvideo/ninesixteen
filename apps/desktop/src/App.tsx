@@ -10,6 +10,7 @@ import { Account } from "./components/Account";
 import { Info } from "./components/Info";
 import { Hotkeys } from "./components/Hotkeys";
 import { HardwareRecHint } from "./components/HardwareRecHint";
+import { Reveal } from "./components/Reveal";
 import { Paywall } from "./components/Paywall";
 import { UpdateModal } from "./components/UpdateModal";
 import { isDesktop } from "./lib/bridge";
@@ -28,7 +29,7 @@ import {
   UserIcon,
 } from "./components/icons";
 
-type TabId = "studio" | "preview" | "hotkeys" | "account" | "info";
+type TabId = "record" | "preview" | "hotkeys" | "account" | "info";
 
 export function App() {
   const {
@@ -184,8 +185,9 @@ export function App() {
     hardwareProfile?.[
       recordingSettings.orientation === "landscape" ? "landscape" : "portrait"
     ] ?? null;
+
   const headings: Record<TabId, { title: string; sub: string }> = {
-    studio: { title: "Studio", sub: "" },
+    record: { title: "Record", sub: "" },
     preview: {
       title: previewLabel,
       sub: isPro ? "Review, export, and manage your takes." : "Preview takes — upgrade to export.",
@@ -211,10 +213,10 @@ export function App() {
           </div>
 
           <div className="rail-tabs" role="tablist">
-            <RailTab id="studio" label="Studio" active={tab === "studio"} onClick={openTab}>
+            <RailTab id="record" label="Record" active={tab === "record"} onClick={openTab} accent="coral">
               <StudioIcon size={25} />
             </RailTab>
-            <RailTab id="preview" label={previewLabel} active={tab === "preview"} onClick={openTab}>
+            <RailTab id="preview" label={previewLabel} active={tab === "preview"} onClick={openTab} accent="mint">
               <LibraryIcon size={25} />
             </RailTab>
             <RailTab id="hotkeys" label="Shortcuts" active={tab === "hotkeys"} onClick={openTab}>
@@ -238,23 +240,40 @@ export function App() {
         <section className="panel" aria-hidden={!expanded}>
           <header className="panel-head">
             <div className="panel-head-text">
-              <h1 className="panel-title">{finalizing ? "Processing" : headings[tab as TabId].title}</h1>
+              {finalizing ? (
+                <h1 className="panel-title">Processing</h1>
+              ) : (
+                <h1 className="panel-title">{headings[tab].title}</h1>
+              )}
               {finalizing ? (
                 <p className="panel-sub">Saving your recording — hang tight.</p>
-              ) : tab === "studio" ? (
+              ) : tab === "record" && !recordingSettings.gameMode ? (
                 <HardwareRecHint
                   orientation={recordingSettings.orientation}
                   quality={recordingSettings.quality}
                   fps={recordingSettings.fps}
                   recommendation={studioRec}
                 />
+              ) : tab === "record" && recordingSettings.gameMode ? (
+                <p className="panel-sub">
+                  {recordingSettings.orientation === "landscape"
+                    ? "Full-frame gameplay with optional webcam overlay."
+                    : "Gameplay and facecam for vertical clips."}
+                </p>
               ) : (
-                <p className="panel-sub">{headings[tab as TabId].sub}</p>
+                <p className="panel-sub">{headings[tab].sub}</p>
               )}
             </div>
-            {tab === "studio" && !finalizing && <RecordControl />}
+            {tab === "record" && !finalizing && <RecordControl />}
           </header>
-          {finalizing ? <Processing /> : <TabbedBody tab={tab as TabId} />}
+          <div className="panel-body">
+            <Reveal show={finalizing} fadeOnly>
+              <Processing />
+            </Reveal>
+            <Reveal show={!finalizing} fadeOnly>
+              <TabbedBody tab={tab} />
+            </Reveal>
+          </div>
         </section>
 
         <button
@@ -322,19 +341,23 @@ function RailTab({
   active,
   onClick,
   children,
+  accent,
 }: {
   id: TabId;
   label: string;
   active: boolean;
   onClick: (id: TabId) => void;
   children: React.ReactNode;
+  accent?: "coral" | "mint";
 }) {
+  const accentClass =
+    accent === "coral" ? "rail-tab--coral" : accent === "mint" ? "rail-tab--mint" : "";
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
-      className={`rail-tab ${active ? "active" : ""}`}
+      className={`rail-tab ${accentClass} ${active ? "active" : ""}`}
       title={label}
       aria-label={label}
       onClick={() => onClick(id)}
@@ -379,8 +402,8 @@ function RecordControl() {
       <button
         type="button"
         className="rec-btn"
-        title="Cancel countdown"
-        aria-label="Cancel countdown"
+        title="Cancel recording"
+        aria-label="Cancel recording"
         onClick={() => cancelRecordingCountdown()}
       >
         <CloseIcon size={22} />
@@ -482,15 +505,16 @@ function TabbedBody({ tab }: { tab: TabId }) {
   }, [tab, shown]);
 
   return (
-    <div className="panel-body">
-      <div className={`pb-anim ${phase}`}>
+    <div className={`pb-anim ${phase}`}>
         {libraryMounted ? (
           <div className="tab-pane" hidden={shown !== "preview"}>
             <Preview />
           </div>
         ) : null}
-        {shown === "studio" ? (
-          <Studio />
+        {shown === "record" ? (
+          <div className="tab-pane">
+            <Studio />
+          </div>
         ) : shown === "preview" ? null : shown === "hotkeys" ? (
           <Hotkeys />
         ) : shown === "account" ? (
@@ -499,6 +523,5 @@ function TabbedBody({ tab }: { tab: TabId }) {
           <Info />
         )}
       </div>
-    </div>
   );
 }

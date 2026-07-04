@@ -5,7 +5,7 @@ use crate::geometry::{
 use crate::state::{
     AppHandles, AppState, AudioDeviceInfo, AudioLevels, AudioSettings, CaptureState,
     InputSettings, MonitorInfo, Orientation, OverlayFrame, PromoMode, RecordingInfo,
-    RecordingSettings, SharedState, StreamSettings, Viewport, ViewportState,
+    RecordingSettings, SharedState, StreamSettings, Viewport, ViewportState, WebcamDeviceInfo,
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
@@ -24,7 +24,6 @@ fn normalize_recording_settings(settings: &mut RecordingSettings) {
     }
     settings.fps = crate::file_record::normalize_recording_fps(settings.fps);
     if settings.game_mode {
-        settings.capture_cursor = false;
         settings.mouse_click_audio = false;
     }
 }
@@ -499,10 +498,6 @@ fn defer_countdown(app: &AppHandle, seconds: u8) {
 const RECORD_COUNTDOWN_SECS: u8 = 5;
 const GAME_PULSE_MS: u64 = 1000;
 
-fn game_mode_active(st: &AppState) -> bool {
-    st.recording_settings.game_mode && st.promo_mode.is_none()
-}
-
 fn emit_game_pulse(app: &AppHandle, phase: &str) {
     crate::log::capture_log(&format!("Game pulse: {phase}"));
     let payload = serde_json::json!({ "phase": phase });
@@ -547,10 +542,9 @@ fn abort_armed_countdown(app: &AppHandle, state: &SharedState) {
 }
 
 fn run_recording_countdown(app: AppHandle, state: SharedState, handles: Option<AppHandles>, promo_countdown: bool) {
-    let use_game_pulse = {
-        let st = state.lock();
-        !promo_countdown && game_mode_active(&st)
-    };
+    capture::prewarm_game_webcam_for_recording(&state);
+
+    let use_game_pulse = !promo_countdown;
 
     if use_game_pulse {
         if !state.lock().recording_armed {
@@ -711,10 +705,10 @@ fn arm_recording_countdown(
     {
         let mut st = handles.state.lock();
         st.recording_armed = true;
-        st.countdown_seconds = if !promo_inner && game_mode_active(&st) {
-            0
-        } else {
+        st.countdown_seconds = if promo_inner {
             RECORD_COUNTDOWN_SECS
+        } else {
+            0
         };
         crate::cursor::sync_follow_gate_from_state(&st);
         crate::click_audio::sync_click_gate_from_state(&st);
@@ -727,10 +721,8 @@ fn arm_recording_countdown(
 
     crate::log::capture_log(if promo_inner {
         "Promo inner countdown armed (5s)"
-    } else if game_mode_active(&handles.state.lock()) {
-        "Record game pulse armed (1s)"
     } else {
-        "Record countdown armed (5s)"
+        "Record pulse armed (1s)"
     });
     emit_recording_state(
         app,
@@ -1011,19 +1003,19 @@ pub fn stop_recording(
     app: AppHandle,
     handles: State<AppHandles>,
 ) -> Result<(), String> {
-    let game_pulse_end = {
+    let pulse_end = {
         let mut st = handles.state.lock();
         if !st.recording {
             return Ok(());
         }
-        let game_pulse_end = game_mode_active(&st);
+        let pulse_end = st.promo_mode.is_none();
         st.finalizing = true;
-        st.overlay_visible = game_pulse_end;
-        game_pulse_end
+        st.overlay_visible = pulse_end;
+        pulse_end
     };
     crate::rawinput::reset_frame_follow(&handles.viewport);
     let _ = app.emit("frame:freeze", serde_json::json!({ "frozen": false }));
-    if game_pulse_end {
+    if pulse_end {
         defer_game_pulse(&app, "end");
     }
     // Update UI immediately — finalize (FFmpeg join) can take a moment on long clips.
@@ -1034,7 +1026,7 @@ pub fn stop_recording(
     let shared: SharedState = handles.inner().state.clone();
     let app_ui = app.clone();
     let state_ui = shared.clone();
-    let show_window_now = !game_pulse_end;
+    let show_window_now = !pulse_end;
     let _ = app.run_on_main_thread(move || {
         apply_overlay_visibility(&app_ui, &state_ui.lock());
         if show_window_now {
@@ -1045,7 +1037,7 @@ pub fn stop_recording(
     std::thread::Builder::new()
         .name("stop-recording".into())
         .spawn(move || {
-            if game_pulse_end {
+            if pulse_end {
                 std::thread::sleep(Duration::from_millis(GAME_PULSE_MS));
                 {
                     let mut st = shared.lock();
@@ -1055,7 +1047,6 @@ pub fn stop_recording(
                 let state_ui = shared.clone();
                 let _ = app_bg.run_on_main_thread(move || {
                     apply_overlay_visibility(&app_ui, &state_ui.lock());
-                    crate::tray::show_main_window(&app_ui);
                 });
             }
             let result = capture::stop_recording(shared.clone(), Some(app_bg.clone()))
@@ -1420,6 +1411,11 @@ fn emit_cursor_capture(
 #[tauri::command]
 pub fn list_audio_devices() -> Vec<AudioDeviceInfo> {
     audio::list_devices()
+}
+
+#[tauri::command]
+pub fn list_webcam_devices() -> Vec<WebcamDeviceInfo> {
+    crate::webcam::list_devices()
 }
 
 #[tauri::command]

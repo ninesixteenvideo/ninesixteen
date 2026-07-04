@@ -2,6 +2,20 @@ export type Orientation = "landscape" | "portrait";
 
 export type GamePanMode = "crosshair" | "cursor";
 
+export type GameWebcamPortraitSize = "small" | "medium" | "large";
+
+export type GameWebcamCorner = "topleft" | "topright" | "bottomleft" | "bottomright";
+
+export type GameWebcamPipSize = "small" | "medium" | "large";
+
+export interface WebcamDeviceInfo {
+  id: string;
+  name: string;
+  /** Populated after MSMF capability probe (may be absent on first list). */
+  maxWidth?: number;
+  maxHeight?: number;
+}
+
 export interface MonitorInfo {
   id: number;
   name: string;
@@ -109,6 +123,12 @@ export interface RecordingSettings {
   gameMode: boolean;
   /** Portrait game mode — fixed center vs horizontal cursor follow. */
   gamePanMode: GamePanMode;
+  /** Split-screen webcam in game mode. */
+  gameWebcamEnabled: boolean;
+  gameWebcamDeviceId: string | null;
+  gameWebcamPortraitSize: GameWebcamPortraitSize;
+  gameWebcamPipCorner: GameWebcamCorner;
+  gameWebcamPipSize: GameWebcamPipSize;
 }
 
 export type AudioSourceMode = "none" | "system" | "microphone" | "system_and_microphone";

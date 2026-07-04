@@ -8,19 +8,6 @@ type HotkeyEntry = {
 const HOTKEYS: HotkeyEntry[] = [
   {
     group: "global",
-    keys: ["Alt", "P"],
-    title: "Promo recording (portrait)",
-    detail:
-      "Starts a 720p60 marketing session — records you in the app, then your nested take after you hit Record.",
-  },
-  {
-    group: "global",
-    keys: ["Alt", "L"],
-    title: "Promo recording (landscape)",
-    detail: "Same as Alt+P, but landscape 720p60 full-screen.",
-  },
-  {
-    group: "global",
     keys: ["Alt", "R"],
     title: "Start / stop recording",
     detail: "Works while the app is minimized. Cancels the countdown if one is running.",

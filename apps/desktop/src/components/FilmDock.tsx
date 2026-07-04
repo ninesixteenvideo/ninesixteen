@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import { mediaSrc } from "../lib/bridge";
 import { FILM_FADE_MS } from "../lib/windowDock";
 import { PlayIcon } from "./icons";
+import { Reveal } from "./Reveal";
 import type { Orientation } from "../lib/types";
 
 /** Free accounts can preview only the first slice of each recording. */
@@ -233,7 +234,7 @@ export const FilmDock = forwardRef<
               }
               style={{ aspectRatio: orientation === "portrait" ? "9 / 16" : "16 / 9" }}
             />
-            {showPlayOverlay && (
+            <Reveal show={showPlayOverlay} className="reveal--overlay">
               <button
                 type="button"
                 className="film-play-overlay"
@@ -244,10 +245,10 @@ export const FilmDock = forwardRef<
                   <PlayIcon size={28} />
                 </span>
               </button>
-            )}
+            </Reveal>
           </div>
 
-          {!isPro && capReached && (
+          <Reveal show={!isPro && capReached} className="reveal--overlay">
             <div className="cap-overlay">
               <span className="cap-badge">Free preview</span>
               <p className="cap-title">That&apos;s the first {FREE_PREVIEW_SECONDS} seconds</p>
@@ -263,9 +264,11 @@ export const FilmDock = forwardRef<
                 </button>
               </div>
             </div>
-          )}
+          </Reveal>
 
-          {err && <p className="film-err">{err}</p>}
+          <Reveal show={Boolean(err)} className="reveal--below">
+            <p className="film-err">{err}</p>
+          </Reveal>
         </div>
       )}
     </div>

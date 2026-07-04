@@ -1,6 +1,6 @@
 [package]
 name = "ninesixteen"
-version = "1.2.3"
+version = "1.2.4"
 description = "ninesixteen.video — native 9×16 & 16×9 Windows screen recorder with cursor-driven framing"
 authors = ["ninesixteen.video"]
 homepage = "https://ninesixteen.video"
@@ -44,6 +44,7 @@ reqwest = { version = "0.12", features = ["blocking", "json"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [target.'cfg(windows)'.dependencies]
+nokhwa = { version = "0.10", features = ["input-msmf"] }
 wasapi = "0.15"
 windows-capture = { path = "../../../third_party/windows-capture" }
 windows = { version = "0.62", features = [

@@ -90,7 +90,70 @@ impl Default for GamePanMode {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GameWebcamPortraitSize {
+    Small,
+    Medium,
+    Large,
+}
+
+impl Default for GameWebcamPortraitSize {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+impl GameWebcamPortraitSize {
+    pub fn height_frac(self) -> f64 {
+        match self {
+            Self::Small => 0.22,
+            Self::Medium => 0.28,
+            Self::Large => 0.34,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GameWebcamCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl Default for GameWebcamCorner {
+    fn default() -> Self {
+        Self::TopRight
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum GameWebcamPipSize {
+    Small,
+    Medium,
+    Large,
+}
+
+impl Default for GameWebcamPipSize {
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+impl GameWebcamPipSize {
+    pub fn width_frac(self) -> f64 {
+        match self {
+            Self::Small => 0.18,
+            Self::Medium => 0.26,
+            Self::Large => 0.34,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RecordingSettings {
     pub orientation: Orientation,
@@ -115,6 +178,17 @@ pub struct RecordingSettings {
     /// Portrait game mode only — fixed center vs horizontal cursor follow.
     #[serde(default)]
     pub game_pan_mode: GamePanMode,
+    /// Split-screen webcam in game mode.
+    #[serde(default)]
+    pub game_webcam_enabled: bool,
+    #[serde(default)]
+    pub game_webcam_device_id: Option<String>,
+    #[serde(default)]
+    pub game_webcam_portrait_size: GameWebcamPortraitSize,
+    #[serde(default)]
+    pub game_webcam_pip_corner: GameWebcamCorner,
+    #[serde(default)]
+    pub game_webcam_pip_size: GameWebcamPipSize,
 }
 
 impl RecordingSettings {
@@ -125,6 +199,10 @@ impl RecordingSettings {
     /// OS pointer baked into WGC (vs stamped cinematic cursor).
     pub fn use_wgc_system_cursor(&self) -> bool {
         self.capture_cursor && !self.use_cinematic_cursor()
+    }
+
+    pub fn game_webcam_active(&self) -> bool {
+        self.game_mode && self.game_webcam_enabled
     }
 }
 
@@ -176,6 +254,11 @@ impl Default for RecordingSettings {
             promo_enabled: false,
             game_mode: false,
             game_pan_mode: GamePanMode::default(),
+            game_webcam_enabled: false,
+            game_webcam_device_id: None,
+            game_webcam_portrait_size: GameWebcamPortraitSize::default(),
+            game_webcam_pip_corner: GameWebcamCorner::default(),
+            game_webcam_pip_size: GameWebcamPipSize::default(),
         }
     }
 }
@@ -229,6 +312,18 @@ pub struct AudioDeviceInfo {
     pub id: String,
     pub name: String,
     pub kind: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WebcamDeviceInfo {
+    pub id: String,
+    pub name: String,
+    /// MSMF-probed max width (populated after background capability scan).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_height: Option<u32>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Default)]

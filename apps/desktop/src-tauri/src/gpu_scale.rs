@@ -267,7 +267,23 @@ impl GpuScaler {
             self.ensure_src_copy(device, src_w, src_h)?;
             ctx.CopyResource(&self.src_copy, src_tex);
         }
-        self.draw_crop(ctx, src_w, src_h, layout)
+        self.draw_crop(ctx, src_w, src_h, layout, true)
+    }
+
+    pub fn render_no_clear(
+        &mut self,
+        ctx: &ID3D11DeviceContext,
+        device: &ID3D11Device,
+        src_tex: &ID3D11Texture2D,
+        src_w: u32,
+        src_h: u32,
+        layout: &FrameLayout,
+    ) -> Result<IDirect3DSurface, String> {
+        unsafe {
+            self.ensure_src_copy(device, src_w, src_h)?;
+            ctx.CopyResource(&self.src_copy, src_tex);
+        }
+        self.draw_crop(ctx, src_w, src_h, layout, false)
     }
 
     /// Re-crop the last copied monitor frame (used between WGC updates while the viewport glides).
@@ -281,7 +297,20 @@ impl GpuScaler {
         if self.src_w <= 1 || self.src_h <= 1 {
             return Err("no cached monitor frame".into());
         }
-        self.draw_crop(ctx, src_w, src_h, layout)
+        self.draw_crop(ctx, src_w, src_h, layout, true)
+    }
+
+    pub fn render_cached_no_clear(
+        &mut self,
+        ctx: &ID3D11DeviceContext,
+        src_w: u32,
+        src_h: u32,
+        layout: &FrameLayout,
+    ) -> Result<IDirect3DSurface, String> {
+        if self.src_w <= 1 || self.src_h <= 1 {
+            return Err("no cached monitor frame".into());
+        }
+        self.draw_crop(ctx, src_w, src_h, layout, false)
     }
 
     fn draw_crop(
@@ -290,6 +319,7 @@ impl GpuScaler {
         src_w: u32,
         src_h: u32,
         layout: &FrameLayout,
+        clear_full: bool,
     ) -> Result<IDirect3DSurface, String> {
         let crop = &layout.crop;
         let dest = &layout.dest;
@@ -325,7 +355,9 @@ impl GpuScaler {
             };
 
             ctx.OMSetRenderTargets(Some(&[Some(self.out_rtv.clone())]), None);
-            ctx.ClearRenderTargetView(&self.out_rtv, &[0.0, 0.0, 0.0, 1.0]);
+            if clear_full {
+                ctx.ClearRenderTargetView(&self.out_rtv, &[0.0, 0.0, 0.0, 1.0]);
+            }
             ctx.RSSetViewports(Some(&[vp]));
             ctx.RSSetState(&self.raster);
             ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -398,9 +430,10 @@ impl GpuScaler {
                 ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                 ctx.VSSetShader(Some(&cursor.vs), None);
                 ctx.PSSetShader(Some(&cursor.ps), None);
+                ctx.VSSetConstantBuffers(0, Some(&[Some(cursor.cbuffer.clone())]));
+                ctx.PSSetConstantBuffers(0, Some(&[Some(cursor.cbuffer.clone())]));
                 ctx.PSSetShaderResources(0, Some(&[Some(cursor.srv.clone())]));
                 ctx.PSSetSamplers(0, Some(&[Some(self.sampler.clone())]));
-                ctx.PSSetConstantBuffers(0, Some(&[Some(cursor.cbuffer.clone())]));
                 ctx.Draw(3, 0);
                 ctx.OMSetBlendState(None, None, 0xffffffff);
             }
@@ -418,10 +451,61 @@ impl GpuScaler {
         Ok(())
     }
 
+    fn draw_texture_rect(
+        &self,
+        ctx: &ID3D11DeviceContext,
+        _device: &ID3D11Device,
+        overlay: &CursorGpu,
+        rect: [f32; 4],
+        alpha: f32,
+    ) -> Result<(), String> {
+        let params = CursorParams {
+            rect,
+            out_size: [self.out_w as f32, self.out_h as f32],
+            alpha_mul: alpha,
+            _pad: 0.0,
+        };
+        unsafe {
+            let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+            ctx.Map(&overlay.cbuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, Some(&mut mapped))
+                .map_err(|e| format!("Map overlay cbuffer: {e}"))?;
+            std::ptr::copy_nonoverlapping(
+                &params as *const CursorParams as *const u8,
+                mapped.pData as *mut u8,
+                std::mem::size_of::<CursorParams>(),
+            );
+            ctx.Unmap(&overlay.cbuffer, 0);
+
+            let vp = D3D11_VIEWPORT {
+                TopLeftX: 0.0,
+                TopLeftY: 0.0,
+                Width: self.out_w as f32,
+                Height: self.out_h as f32,
+                MinDepth: 0.0,
+                MaxDepth: 1.0,
+            };
+            ctx.OMSetRenderTargets(Some(&[Some(self.out_rtv.clone())]), None);
+            ctx.RSSetViewports(Some(&[vp]));
+            ctx.RSSetState(&self.raster);
+            ctx.OMSetBlendState(Some(&overlay.blend), None, 0xffffffff);
+            ctx.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            ctx.VSSetShader(Some(&overlay.vs), None);
+            ctx.PSSetShader(Some(&overlay.ps), None);
+            ctx.VSSetConstantBuffers(0, Some(&[Some(overlay.cbuffer.clone())]));
+            ctx.PSSetConstantBuffers(0, Some(&[Some(overlay.cbuffer.clone())]));
+            ctx.PSSetShaderResources(0, Some(&[Some(overlay.srv.clone())]));
+            ctx.PSSetSamplers(0, Some(&[Some(self.sampler.clone())]));
+            ctx.Draw(3, 0);
+            ctx.OMSetBlendState(None, None, 0xffffffff);
+        }
+        Ok(())
+    }
+
     /// Copy the composited output into an encode-pool texture for zero-copy MF ingest.
     pub fn snap_encode_surface(
         &mut self,
         ctx: &ID3D11DeviceContext,
+        flush_before_copy: bool,
     ) -> Result<SendDirectX<IDirect3DSurface>, String> {
         if self.encode_pool.is_empty() {
             return Err("encode pool empty".into());
@@ -429,6 +513,9 @@ impl GpuScaler {
         let idx = self.encode_pool_idx;
         let slot = &self.encode_pool[idx];
         unsafe {
+            if flush_before_copy {
+                ctx.Flush();
+            }
             ctx.CopyResource(&slot.tex, &self.out_tex);
         }
         self.encode_pool_idx = (idx + 1) % self.encode_pool.len();

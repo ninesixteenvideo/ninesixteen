@@ -48,6 +48,18 @@ export function StudioIcon({ size = 24, ...rest }: IconProps) {
   );
 }
 
+/** Game mode — compact dual-grip gamepad (D-pad + face buttons). */
+export function GameControllerIcon({ size = 24, ...rest }: IconProps) {
+  return (
+    <svg {...base(size)} {...rest}>
+      <path d="M8 9a3 3 0 0 1 3-3h2a3 3 0 0 1 3 3v2.2c0 .9.4 1.7 1 2.2.8.7 1.5 1.3 1.5 2.3v.8a1.6 1.6 0 0 1-1.6 1.6h-.6c-.8 0-1.5-.5-1.8-1.2l-.4-.8a1 1 0 0 0-.9-.6h-1.6a1 1 0 0 0-.9.6l-.4.8c-.3.7-1 1.2-1.8 1.2H7.1A1.6 1.6 0 0 1 5.5 17.3v-.8c0-1 .7-1.6 1.5-2.3.6-.5 1-1.3 1-2.2V9z" />
+      <path d="M8.5 12h2M9.5 11v2" />
+      <circle cx="14.75" cy="11.25" r="0.85" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="12.75" r="0.85" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 /** Library — stacked clips with a play marker. */
 export function LibraryIcon({ size = 24, ...rest }: IconProps) {
   return (

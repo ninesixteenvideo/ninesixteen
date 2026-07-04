@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { CloseIcon } from "./icons";
+import { Reveal } from "./Reveal";
 
 type Props = {
   version: string;
@@ -42,7 +43,9 @@ export function UpdateModal({ version, installing, error, onClose, onUpdate }: P
             : "A newer version of ninesixteen.video is ready. Update now to get the latest fixes and improvements."}
         </p>
 
-        {error && <p className="auth-err" style={{ marginTop: 12 }}>{error}</p>}
+        <Reveal show={Boolean(error)}>
+          <p className="auth-err" style={{ marginTop: 12 }}>{error}</p>
+        </Reveal>
 
         <div className="dialog-actions">
           {!installing && (

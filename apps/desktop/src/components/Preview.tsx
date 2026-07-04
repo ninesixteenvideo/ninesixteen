@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../state/store";
 import { useAuth } from "../lib/auth";
 import { invoke, isDesktop, prefetchSelectedMediaSrc } from "../lib/bridge";
 import { prefetchRecordingThumbs } from "../lib/recordingThumb";
 import { ensureDriveToken } from "../lib/driveAuth";
 import { isOnline } from "../lib/entitlementCache";
+import { useLibraryMultiSelect } from "../lib/useLibraryMultiSelect";
 import type { RecordingInfo } from "../lib/types";
 import {
+  CheckIcon,
   CloudIcon,
   ExportIcon,
   FolderIcon,
@@ -41,11 +43,26 @@ export function Preview() {
   const [cardMode, setCardMode] = useState<CardMode>("default");
   const [renameDraft, setRenameDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
-  const driveExportRef = useRef<string | null>(null);
+  const driveExportRef = useRef<Set<string>>(new Set());
+
   const renameInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedId = librarySelectedId;
   const selected = recordings.find((r) => r.id === selectedId) ?? null;
+
+  const {
+    scrollRef,
+    selectedIds,
+    selectedCount,
+    isMulti,
+    isDragging,
+    onRowPointerDown,
+    onRowPointerMove,
+    onRowPointerUp,
+    onRowPointerCancel,
+    onRowClick,
+    clearMulti,
+  } = useLibraryMultiSelect(recordings, librarySelectedId, setLibrarySelected);
 
   useEffect(() => {
     const { ensureLibrarySelection } = useStore.getState();
@@ -67,14 +84,22 @@ export function Preview() {
   }, [selectedId]);
 
   useEffect(() => {
+    if (isMulti && cardMode === "rename") setCardMode("default");
+  }, [isMulti, cardMode]);
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Escape" || cardMode === "default") return;
-      setCardMode("default");
-      setRenameDraft("");
+      if (e.key !== "Escape") return;
+      if (cardMode !== "default") {
+        setCardMode("default");
+        setRenameDraft("");
+        return;
+      }
+      if (isMulti) clearMulti();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cardMode]);
+  }, [cardMode, isMulti, clearMulti]);
 
   useEffect(() => {
     if (cardMode !== "rename") return;
@@ -144,19 +169,52 @@ export function Preview() {
     }
   }
 
+  async function runMultiLocalExport(ids: string[]) {
+    setExporting("local");
+    try {
+      const idToken = await getIdToken();
+      if (!idToken) {
+        showToast("Sign in required to export");
+        return;
+      }
+      const folder = await open({
+        directory: true,
+        multiple: false,
+        title: "Export recordings to folder",
+      });
+      if (!folder || typeof folder !== "string") return;
+
+      let done = 0;
+      for (const id of ids) {
+        const rec = recordings.find((r) => r.id === id);
+        if (!rec) continue;
+        const name = rec.filename.replace(/\.ns$/i, ".mp4");
+        const dest = `${folder.replace(/[/\\]$/, "")}/${name}`;
+        await invoke("export_recording", { id, dest, idToken });
+        done += 1;
+      }
+      showToast(`Exported ${done} file${done === 1 ? "" : "s"}`);
+      setCardMode("default");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(null);
+    }
+  }
+
   function startDriveExport(rec: RecordingInfo) {
     if (!isOnline()) {
       showToast("Google Drive export requires an internet connection.");
       return;
     }
-    if (driveExportRef.current === rec.id) {
+    if (driveExportRef.current.has(rec.id)) {
       showToast("Google Drive export already in progress…");
       return;
     }
 
     setCardMode("default");
     showToast("Google Drive export started — finish sign-in in your browser if prompted.");
-    driveExportRef.current = rec.id;
+    driveExportRef.current.add(rec.id);
 
     void (async () => {
       try {
@@ -183,13 +241,70 @@ export function Preview() {
         const msg = e instanceof Error ? e.message : "Drive export failed";
         if (!msg.toLowerCase().includes("timed out")) showToast(msg);
       } finally {
-        if (driveExportRef.current === rec.id) driveExportRef.current = null;
+        driveExportRef.current.delete(rec.id);
+      }
+    })();
+  }
+
+  function startMultiDriveExport(ids: string[]) {
+    if (!isOnline()) {
+      showToast("Google Drive export requires an internet connection.");
+      return;
+    }
+
+    setCardMode("default");
+    const pending = ids.filter((id) => !driveExportRef.current.has(id));
+    if (pending.length === 0) {
+      showToast("Google Drive export already in progress…");
+      return;
+    }
+
+    showToast(
+      `Google Drive export started for ${pending.length} file${pending.length === 1 ? "" : "s"}…`,
+    );
+    for (const id of pending) driveExportRef.current.add(id);
+
+    void (async () => {
+      try {
+        const idToken = await getIdToken();
+        if (!idToken) {
+          showToast("Sign in required to export");
+          return;
+        }
+        const token = await ensureDriveToken();
+        let done = 0;
+        for (const id of pending) {
+          const rec = recordings.find((r) => r.id === id);
+          if (!rec) {
+            driveExportRef.current.delete(id);
+            continue;
+          }
+          showToast(`Uploading ${done + 1} of ${pending.length} to Google Drive…`);
+          await invoke<string>("export_recording_to_drive", {
+            id,
+            accessToken: token,
+            idToken,
+          });
+          done += 1;
+          driveExportRef.current.delete(id);
+        }
+        showToast(`Uploaded ${done} file${done === 1 ? "" : "s"} to Google Drive ✓`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Drive export failed";
+        if (!msg.toLowerCase().includes("timed out")) showToast(msg);
+      } finally {
+        for (const id of pending) driveExportRef.current.delete(id);
       }
     })();
   }
 
   async function confirmDelete(id: string) {
     await deleteRecording(id);
+    setCardMode("default");
+  }
+
+  async function confirmMultiDelete(ids: string[]) {
+    for (const id of ids) await deleteRecording(id);
     setCardMode("default");
   }
 
@@ -207,14 +322,32 @@ export function Preview() {
   }
 
   const busy = exporting !== null;
+  const multiIds = [...selectedIds];
+  const showSingleActions = !isMulti && selected && selectedId === selected.id;
 
   return (
     <>
-      <div className="scroll pad">
-        <div className="browser">
-          {recordings.map((rec) =>
-            rec.id === selectedId && selected ? (
-              <div key={rec.id} className="rec-item selected">
+      <div ref={scrollRef} className={`scroll pad${isDragging ? " lib-dragging" : ""}`}>
+        <div className={`browser${isDragging ? " lib-dragging" : ""}`}>
+          {isMulti && (
+            <MultiActions
+              count={selectedCount}
+              mode={cardMode}
+              busy={busy}
+              isPro={isPro}
+              exporting={exporting}
+              onDelete={() => setCardMode("delete")}
+              onExport={openExport}
+              onExportDrive={() => startMultiDriveExport(multiIds)}
+              onExportLocal={() => void runMultiLocalExport(multiIds)}
+              onCancel={() => setCardMode("default")}
+              onConfirmDelete={() => void confirmMultiDelete(multiIds)}
+            />
+          )}
+
+          {recordings.map((rec, index) =>
+            showSingleActions && rec.id === selectedId ? (
+              <div key={rec.id} className="rec-item selected" data-rec-index={index}>
                 <Actions
                   key={cardMode}
                   mode={cardMode}
@@ -241,10 +374,28 @@ export function Preview() {
               <button
                 key={rec.id}
                 type="button"
-                className="rec-item"
-                onClick={() => setLibrarySelected(rec.id)}
+                className={[
+                  "rec-item",
+                  selectedIds.has(rec.id) ? "multi-selected" : "",
+                  isDragging && selectedIds.has(rec.id) ? "in-drag-range" : "",
+                  rec.id === selectedId ? "multi-anchor" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                data-rec-index={index}
+                onPointerDown={(e) => onRowPointerDown(e, rec.id, index)}
+                onPointerMove={onRowPointerMove}
+                onPointerUp={onRowPointerUp}
+                onPointerCancel={onRowPointerCancel}
+                onClick={(e) => {
+                  onRowClick(e, rec.id, index);
+                  if (!isMulti) setCardMode("default");
+                }}
                 title={rec.filename}
               >
+                <span className="rec-check" aria-hidden={!selectedIds.has(rec.id)}>
+                  {selectedIds.has(rec.id) ? <CheckIcon size={11} /> : null}
+                </span>
                 <RecThumb id={rec.id} orientation={rec.orientation} />
                 <span className="rec-info">
                   <span className="rec-name">{rec.filename}</span>
@@ -257,13 +408,103 @@ export function Preview() {
                   <PlayIcon size={16} />
                 </span>
               </button>
-            )
+            ),
           )}
         </div>
       </div>
 
       {toast && <div className="toast">{toast}</div>}
     </>
+  );
+}
+
+type MultiActionsProps = {
+  count: number;
+  mode: CardMode;
+  busy: boolean;
+  isPro: boolean;
+  exporting: ExportKind | null;
+  onDelete: () => void;
+  onExport: () => void;
+  onExportDrive: () => void;
+  onExportLocal: () => void;
+  onCancel: () => void;
+  onConfirmDelete: () => void;
+};
+
+function MultiActions({
+  count,
+  mode,
+  busy,
+  isPro,
+  exporting,
+  onDelete,
+  onExport,
+  onExportDrive,
+  onExportLocal,
+  onCancel,
+  onConfirmDelete,
+}: MultiActionsProps) {
+  if (mode === "export") {
+    return (
+      <div className="lib-multi-bar">
+        <span className="lib-multi-count">{count} selected</span>
+        <div className="acts acts-multi">
+          <button className="act" onClick={onExportDrive} disabled={busy}>
+            <CloudIcon size={17} /> Drive
+          </button>
+          <button className="act" onClick={onExportLocal} disabled={busy}>
+            {exporting === "local" ? (
+              "Saving…"
+            ) : (
+              <>
+                <FolderIcon size={17} /> Disk
+              </>
+            )}
+          </button>
+          <button className="act" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === "delete") {
+    return (
+      <div className="lib-multi-bar lib-multi-bar-confirm">
+        <div className="acts acts-multi">
+          <span className="act-q">
+            Delete {count} file{count === 1 ? "" : "s"}?
+          </span>
+          <button className="act" onClick={onCancel} disabled={busy}>
+            Keep
+          </button>
+          <button className="act primary" onClick={onConfirmDelete} disabled={busy}>
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lib-multi-bar">
+      <span className="lib-multi-count">{count} selected</span>
+      <div className="acts acts-multi">
+        <button className="act" onClick={onDelete} disabled={busy} title="Delete selected recordings">
+          <TrashIcon size={16} /> Delete
+        </button>
+        <button
+          className="act primary"
+          onClick={onExport}
+          disabled={busy}
+          title={isPro ? "Export selected recordings" : "Buy Pro to export"}
+        >
+          {isPro ? <ExportIcon size={16} /> : <LockIcon size={14} />} Export
+        </button>
+      </div>
+    </div>
   );
 }
 

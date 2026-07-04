@@ -219,27 +219,17 @@ const mock = (() => {
         }
         case "start_recording": {
           arming = true;
-          countdownSeconds = 5;
+          countdownSeconds = 0;
           emit("recording:state", { recording: false, arming: true });
-          emit("recording:countdown", { seconds: 5 });
-          let n = 5;
-          const tick = () => {
+          emit("recording:game-pulse", { phase: "start" });
+          setTimeout(() => {
             if (!arming) return;
-            emit("recording:countdown", { seconds: n });
-            countdownSeconds = n;
-            if (n <= 0) {
-              arming = false;
-              recording = true;
-              startedAt = Date.now();
-              elapsed = 0;
-              emit("recording:countdown", { seconds: 0 });
-              emit("recording:state", { recording: true, arming: false });
-              return;
-            }
-            n -= 1;
-            setTimeout(tick, 1000);
-          };
-          setTimeout(tick, 1000);
+            arming = false;
+            recording = true;
+            startedAt = Date.now();
+            elapsed = 0;
+            emit("recording:state", { recording: true, arming: false });
+          }, 1000);
           return state() as unknown as T;
         }
         case "cancel_recording_countdown": {

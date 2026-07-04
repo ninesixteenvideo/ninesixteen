@@ -3,6 +3,7 @@ import { friendlyAuthError } from "../lib/authErrors";
 import { useAuth } from "../lib/auth";
 import { isDesktop } from "../lib/bridge";
 import { WEB_URL } from "../lib/firebase";
+import { Reveal } from "./Reveal";
 
 async function openLegalPage(path: "/terms" | "/privacy") {
   const url = `${WEB_URL}${path}`;
@@ -54,18 +55,18 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       >
         <GoogleGlyph /> Continue with Google
       </button>
-      {isDesktop && firebaseEnabled && !verifierCode && (
+      <Reveal show={isDesktop && firebaseEnabled && !verifierCode}>
         <p className="auth-note">
           Opens your browser to sign in with Google, then links your account back here
           automatically.
         </p>
-      )}
-      {verifierCode && (
+      </Reveal>
+      <Reveal show={Boolean(verifierCode)}>
         <div className="verifier">
           <p className="muted">In your browser, enter this code to finish signing in:</p>
           <p className="verifier-code">{verifierCode}</p>
         </div>
-      )}
+      </Reveal>
 
       <div className="auth-divider">
         <span />
@@ -73,12 +74,12 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
         <span />
       </div>
 
-      {!firebaseEnabled && (
+      <Reveal show={!firebaseEnabled}>
         <p className="demo-note">
           Demo mode — Firebase isn’t configured, so this account lives only on this device. Add
           VITE_FIREBASE_* keys to go live.
         </p>
-      )}
+      </Reveal>
 
       <form
         onSubmit={(e) => {
@@ -87,7 +88,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
         }}
         className="auth-form"
       >
-        {isSignUp && (
+        <Reveal show={isSignUp}>
           <label className="field">
             <span className="label">Name</span>
             <input
@@ -98,7 +99,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
               autoComplete="name"
             />
           </label>
-        )}
+        </Reveal>
         <label className="field">
           <span className="label">Email</span>
           <input
@@ -125,7 +126,9 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           />
         </label>
 
-        {error && <p className="auth-err">{error}</p>}
+        <Reveal show={Boolean(error)}>
+          <p className="auth-err">{error}</p>
+        </Reveal>
 
         <button type="submit" className="btn primary block" disabled={busy} style={{ marginTop: 4 }}>
           {busy ? "…" : isSignUp ? "Create account" : "Sign in"}
@@ -143,7 +146,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
         </button>
       </p>
 
-      {isSignUp && (
+      <Reveal show={isSignUp}>
         <p className="auth-legal">
           By creating an account, you agree to our{" "}
           <button type="button" className="link" onClick={() => openLegalPage("/terms")}>
@@ -155,7 +158,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
           </button>
           .
         </p>
-      )}
+      </Reveal>
     </div>
   );
 }

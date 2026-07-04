@@ -4,6 +4,7 @@ import { WEB_URL } from "../lib/firebase";
 import { useAuth } from "../lib/auth";
 import { submitFeedback } from "../lib/feedback";
 import { canAutoUpdate, checkForUpdates, installAvailableUpdate } from "../lib/updater";
+import { Reveal } from "./Reveal";
 
 async function openLegalPage(path: "/terms" | "/privacy") {
   const url = `${WEB_URL}${path}`;
@@ -100,11 +101,11 @@ export function Info() {
   return (
     <div className="scroll pad">
       <div className="settings">
-        {!isDesktop && (
+        <Reveal show={!isDesktop}>
           <div className="card">
             <p className="muted">Web preview — capture runs only in the desktop build.</p>
           </div>
-        )}
+        </Reveal>
 
         <section className="card">
           <h3 className="card-title">About</h3>
@@ -175,8 +176,12 @@ export function Info() {
               Saved at <span className="kbd">Videos\ninesixteen\ninesixteen.log</span>.
             </span>
           </label>
-          {feedbackError && <p className="auth-err" style={{ marginTop: 12 }}>{feedbackError}</p>}
-          {feedbackStatus && <p className="note-ok" style={{ marginTop: 12 }}>{feedbackStatus}</p>}
+          <Reveal show={Boolean(feedbackError)}>
+            <p className="auth-err" style={{ marginTop: 12 }}>{feedbackError}</p>
+          </Reveal>
+          <Reveal show={Boolean(feedbackStatus)}>
+            <p className="note-ok" style={{ marginTop: 12 }}>{feedbackStatus}</p>
+          </Reveal>
           <button
             type="button"
             className="btn primary sm"
@@ -197,8 +202,12 @@ export function Info() {
             <span className="label">Current version</span>
             <span className="muted">{appVersion ?? (isDesktop ? "…" : "—")}</span>
           </div>
-          {updateError && <p className="auth-err" style={{ marginBottom: 12 }}>{updateError}</p>}
-          {updateStatus && <p className="note-ok" style={{ marginBottom: 12 }}>{updateStatus}</p>}
+          <Reveal show={Boolean(updateError)}>
+            <p className="auth-err" style={{ marginBottom: 12 }}>{updateError}</p>
+          </Reveal>
+          <Reveal show={Boolean(updateStatus)}>
+            <p className="note-ok" style={{ marginBottom: 12 }}>{updateStatus}</p>
+          </Reveal>
           <button
             type="button"
             className="btn ghost sm"

@@ -500,6 +500,81 @@ fn letterbox_dest(sw: f64, sh: f64, out_w: f64, out_h: f64) -> DestRect {
     }
 }
 
+/// Source crop (x, y, w, h) that matches `bounds` aspect — scale uniformly to fill (cover, no stretch).
+pub fn cover_src_crop(src_w: u32, src_h: u32, bounds: &DestRect) -> (f64, f64, f64, f64) {
+    let sw = src_w as f64;
+    let sh = src_h as f64;
+    let bounds_aspect = bounds.w / bounds.h.max(1.0);
+    let src_aspect = sw / sh.max(1.0);
+    if src_aspect > bounds_aspect {
+        let crop_h = sh;
+        let crop_w = crop_h * bounds_aspect;
+        let x = (sw - crop_w) * 0.5;
+        (x, 0.0, crop_w, crop_h)
+    } else {
+        let crop_w = sw;
+        let crop_h = crop_w / bounds_aspect;
+        let y = (sh - crop_h) * 0.5;
+        (0.0, y, crop_w, crop_h)
+    }
+}
+
+/// Uniform-scale placement of `content_aspect` inside `bounds` (letterbox, no stretch).
+pub fn letterbox_aspect_in_bounds(content_aspect: f64, bounds: &DestRect) -> DestRect {
+    let bounds_aspect = bounds.w / bounds.h.max(1.0);
+    if content_aspect > bounds_aspect {
+        let h = bounds.w / content_aspect;
+        DestRect {
+            x: bounds.x,
+            y: bounds.y + (bounds.h - h) * 0.5,
+            w: bounds.w,
+            h,
+        }
+    } else {
+        let w = bounds.h * content_aspect;
+        DestRect {
+            x: bounds.x + (bounds.w - w) * 0.5,
+            y: bounds.y,
+            w,
+            h: bounds.h,
+        }
+    }
+}
+
+/// Crop + dest for a sub-region of the output (game-mode split). Crop aspect matches
+/// `dest` so the GPU scales uniformly — largest crop that fits the monitor.
+pub fn frame_layout_in_dest(
+    vp: &Viewport,
+    src_w: u32,
+    src_h: u32,
+    dest: DestRect,
+) -> FrameLayout {
+    let sw = src_w as f64;
+    let sh = src_h as f64;
+    let dest_aspect = dest.w / dest.h.max(1.0);
+    let zoom = clamp_zoom(vp.zoom, vp.orientation);
+
+    let mut crop_h = sh;
+    let mut crop_w = crop_h * dest_aspect;
+    if crop_w > sw {
+        crop_w = sw;
+        crop_h = crop_w / dest_aspect;
+    }
+    if zoom > 1.0 {
+        crop_w /= zoom;
+        crop_h /= zoom;
+    }
+
+    let crop = centered_crop(vp.x, vp.y, crop_w, crop_h, sw, sh);
+    FrameLayout { crop, dest }
+}
+
+/// Fixed portrait top-strip height (formerly “Standard”).
+pub const GAME_WEBCAM_PORTRAIT_STRIP_FRAC: f64 = 0.28;
+
+/// Fixed landscape PiP width (formerly “Medium”).
+pub const GAME_WEBCAM_PIP_WIDTH_FRAC: f64 = 0.26;
+
 /// Frame-rate independent exponential smoothing toward a target.
 pub fn smooth_toward(current: f64, target: f64, rate_hz: f64, dt_secs: f64) -> f64 {
     if dt_secs <= 0.0 {
@@ -665,6 +740,68 @@ pub fn advance_pan_follow(
     }
 
     (nx, ny)
+}
+
+/// Frame crop + placement for game-mode split webcam.
+#[derive(Clone, Copy, Debug)]
+pub struct GameWebcamLayout {
+    pub game: FrameLayout,
+    pub webcam: DestRect,
+}
+
+pub fn game_webcam_layout(
+    vp: &Viewport,
+    src_w: u32,
+    src_h: u32,
+    out_w: u32,
+    out_h: u32,
+    _portrait_size: crate::state::GameWebcamPortraitSize,
+    pip_corner: crate::state::GameWebcamCorner,
+    _pip_size: crate::state::GameWebcamPipSize,
+) -> GameWebcamLayout {
+    use crate::state::{GameWebcamCorner, Orientation};
+    let ow = out_w as f64;
+    let oh = out_h as f64;
+
+    if vp.orientation == Orientation::Portrait {
+        let cam_h = oh * GAME_WEBCAM_PORTRAIT_STRIP_FRAC;
+        let game_dest = DestRect {
+            x: 0.0,
+            y: cam_h,
+            w: ow,
+            h: oh - cam_h,
+        };
+        let webcam = DestRect {
+            x: 0.0,
+            y: 0.0,
+            w: ow,
+            h: cam_h,
+        };
+        GameWebcamLayout {
+            game: frame_layout_in_dest(vp, src_w, src_h, game_dest),
+            webcam,
+        }
+    } else {
+        let base = frame_layout(vp, src_w, src_h, out_w, out_h);
+        let pip_w = ow * GAME_WEBCAM_PIP_WIDTH_FRAC;
+        let pip_h = pip_w * 9.0 / 16.0;
+        let margin = ow.min(oh) * 0.025;
+        let (x, y) = match pip_corner {
+            GameWebcamCorner::TopLeft => (margin, margin),
+            GameWebcamCorner::TopRight => (ow - pip_w - margin, margin),
+            GameWebcamCorner::BottomLeft => (margin, oh - pip_h - margin),
+            GameWebcamCorner::BottomRight => (ow - pip_w - margin, oh - pip_h - margin),
+        };
+        GameWebcamLayout {
+            game: base,
+            webcam: DestRect {
+                x,
+                y,
+                w: pip_w,
+                h: pip_h,
+            },
+        }
+    }
 }
 
 /// Crop + output placement for the current viewport zoom level.
@@ -977,5 +1114,57 @@ mod tests {
         assert_eq!(normalize_quality(2160, Orientation::Landscape), 2160);
         assert_eq!(normalize_quality(2160, Orientation::Portrait), 1080);
         assert_eq!(normalize_quality(2000, Orientation::Landscape), 2160);
+    }
+
+    #[test]
+    fn cover_src_crop_matches_bounds_aspect() {
+        let bounds = DestRect {
+            x: 0.0,
+            y: 0.0,
+            w: 720.0,
+            h: 358.0,
+        };
+        let (_, _, cw, ch) = cover_src_crop(640, 480, &bounds);
+        assert!((cw / ch - bounds.w / bounds.h).abs() < 0.01);
+    }
+
+    #[test]
+    fn letterbox_aspect_preserves_content_ratio() {
+        let bounds = DestRect {
+            x: 0.0,
+            y: 0.0,
+            w: 720.0,
+            h: 358.0,
+        };
+        let placed = letterbox_aspect_in_bounds(4.0 / 3.0, &bounds);
+        assert!((placed.w / placed.h - 4.0 / 3.0).abs() < 0.01);
+        assert!(placed.x >= bounds.x);
+        assert!(placed.y >= bounds.y);
+        assert!(placed.x + placed.w <= bounds.x + bounds.w + 0.01);
+        assert!(placed.y + placed.h <= bounds.y + bounds.h + 0.01);
+    }
+
+    #[test]
+    fn frame_layout_in_dest_matches_dest_aspect() {
+        use crate::state::Orientation;
+        let vp = Viewport {
+            x: 960.0,
+            y: 540.0,
+            zoom: 1.0,
+            rotation: 0.0,
+            orientation: Orientation::Portrait,
+        };
+        let dest = DestRect {
+            x: 0.0,
+            y: 358.0,
+            w: 720.0,
+            h: 922.0,
+        };
+        let layout = frame_layout_in_dest(&vp, 1920, 1080, dest);
+        let crop_aspect = layout.crop.w / layout.crop.h;
+        let dest_aspect = layout.dest.w / layout.dest.h;
+        assert!((crop_aspect - dest_aspect).abs() < 0.001);
+        assert!(layout.crop.w <= 1920.0 + 0.01);
+        assert!(layout.crop.h <= 1080.0 + 0.01);
     }
 }

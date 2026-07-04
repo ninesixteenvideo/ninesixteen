@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { invoke, listen } from "../lib/bridge";
-import { cropRect, formatLabel, qualityFromOutputDims, zoomLabel } from "../lib/geometry";
+import { cropRect, qualityFromOutputDims } from "../lib/geometry";
 import type { CaptureState, Orientation, OverlayFrame, Viewport } from "../lib/types";
 
 /**
@@ -18,7 +18,6 @@ export function Overlay() {
   const recording = useRef(false);
   const arming = useRef(false);
   const countdown = useRef(0);
-  const recordingStartedAt = useRef<number | null>(null);
   const captureCursor = useRef(true);
   const cinematicCursor = useRef(true);
   const cursorImg = useRef<HTMLImageElement | null>(null);
@@ -139,11 +138,8 @@ export function Overlay() {
           if (p.promoInnerActive !== undefined) {
             promoInnerActive.current = p.promoInnerActive;
           }
-          if (p.recording) {
-            if (!p.arming) countdown.current = 0;
-            recordingStartedAt.current = performance.now();
-          } else {
-            recordingStartedAt.current = null;
+          if (p.recording && !p.arming) {
+            countdown.current = 0;
           }
         }),
       );
@@ -190,163 +186,41 @@ export function Overlay() {
       const rw = f.w * scale;
       const rh = f.h * scale;
 
-      if (gameMode.current) {
-        drawGameModeOverlay(ctx, rx, ry, rw, rh, dpr, recording.current);
+      drawMinimalViewport(ctx, rx, ry, rw, rh, dpr, recording.current);
 
-        const pulse = gamePulse.current;
-        if (pulse) {
-          const elapsed = (performance.now() - pulse.startedAt) / 1000;
-          if (elapsed >= 1) {
-            gamePulse.current = null;
-          } else {
-            drawGamePulse(ctx, pulse.phase, rx + rw / 2, ry + rh / 2, dpr, elapsed);
-          }
+      const pulse = gamePulse.current;
+      if (pulse) {
+        const elapsed = (performance.now() - pulse.startedAt) / 1000;
+        if (elapsed >= 1) {
+          gamePulse.current = null;
+        } else {
+          drawGamePulse(ctx, pulse.phase, rx + rw / 2, ry + rh / 2, dpr, elapsed);
         }
-
-        drawCinematicCursor(
-          ctx,
-          f,
-          scale,
-          dpr,
-          monitor.current,
-          captureCursor.current,
-          cinematicCursor.current,
-          cursorImg.current,
-          cursorMeta.current,
-        );
-        return;
       }
 
-      ctx.fillStyle = "rgba(10,10,16,0.34)";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.clearRect(rx, ry, rw, rh);
+      drawCinematicCursor(
+        ctx,
+        f,
+        scale,
+        dpr,
+        monitor.current,
+        captureCursor.current,
+        cinematicCursor.current,
+        cursorImg.current,
+        cursorMeta.current,
+      );
 
-      const accent = "#8f5e55";
-
-      ctx.lineWidth = 3 * dpr;
-      ctx.strokeStyle = "#ffffff";
-      ctx.shadowColor = accent;
-      ctx.shadowBlur = 22 * dpr;
-      ctx.strokeRect(rx, ry, rw, rh);
-      ctx.shadowBlur = 0;
-      ctx.lineWidth = 1 * dpr;
-      ctx.strokeStyle = "rgba(10,10,16,0.9)";
-      ctx.strokeRect(rx - 2 * dpr, ry - 2 * dpr, rw + 4 * dpr, rh + 4 * dpr);
-
-      ctx.strokeStyle = "rgba(255,255,255,0.22)";
-      ctx.lineWidth = 1 * dpr;
-      for (let i = 1; i < 3; i++) {
-        ctx.beginPath();
-        ctx.moveTo(rx + (rw * i) / 3, ry);
-        ctx.lineTo(rx + (rw * i) / 3, ry + rh);
-        ctx.moveTo(rx, ry + (rh * i) / 3);
-        ctx.lineTo(rx + rw, ry + (rh * i) / 3);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 4 * dpr;
-      const L = 22 * dpr;
-      tick(ctx, rx, ry, L, 1, 1);
-      tick(ctx, rx + rw, ry, L, -1, 1);
-      tick(ctx, rx, ry + rh, L, 1, -1);
-      tick(ctx, rx + rw, ry + rh, L, -1, -1);
-
-      const label = `${formatLabel(orientation.current)} · ${zoomLabel(f.zoom, orientation.current)}`;
-      ctx.font = `${13 * dpr}px "IBM Plex Mono", monospace`;
-      const padX = 8 * dpr;
-      const tw = ctx.measureText(label).width;
-      let chipW = tw + padX * 2;
-      const chipH = 22 * dpr;
-      const chipX = rx + 6 * dpr;
-      const chipY = ry + 6 * dpr;
-      const recW = recording.current ? 64 * dpr : 0;
-      chipW += recW;
-
-      ctx.fillStyle = "rgba(10,10,16,0.78)";
-      roundRect(ctx, chipX, chipY, chipW, chipH, 6 * dpr);
-      ctx.fill();
-      ctx.fillStyle = "#ffffff";
-      ctx.textBaseline = "middle";
-      ctx.fillText(label, chipX + padX, chipY + chipH / 2);
-
-      if (recording.current) {
-        const dotX = chipX + padX + tw + 14 * dpr;
-        const cy = chipY + chipH / 2;
-        ctx.fillStyle = "#ff4d4d";
-        ctx.beginPath();
-        ctx.arc(dotX, cy, 4 * dpr, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffd0d0";
-        const secs =
-          recordingStartedAt.current !== null
-            ? (performance.now() - recordingStartedAt.current) / 1000
-            : 0;
-        ctx.fillText(fmt(secs), dotX + 9 * dpr, cy);
-      }
-
-      if (!captureCursor.current) {
-        const text = "cursor hidden";
-        ctx.font = `${12 * dpr}px "IBM Plex Mono", monospace`;
-        const cpadX = 7 * dpr;
-        const ctw = ctx.measureText(text).width;
-        const cChipW = ctw + cpadX * 2;
-        const cChipH = 20 * dpr;
-        const cChipX = rx + rw - cChipW - 6 * dpr;
-        const cChipY = ry + 6 * dpr;
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        roundRect(ctx, cChipX, cChipY, cChipW, cChipH, 6 * dpr);
-        ctx.fill();
-        ctx.fillStyle = "#000000";
-        ctx.textBaseline = "middle";
-        ctx.fillText(text, cChipX + cpadX, cChipY + cChipH / 2);
-      }
-
-      if (
-        captureCursor.current &&
-        cinematicCursor.current &&
-        cursorImg.current &&
-        typeof f.cursorX === "number" &&
-        typeof f.cursorY === "number"
-      ) {
-        drawCinematicCursor(
-          ctx,
-          f,
-          scale,
-          dpr,
-          monitor.current,
-          captureCursor.current,
-          cinematicCursor.current,
-          cursorImg.current,
-          cursorMeta.current,
-        );
-      }
-
-      if (frameFrozen.current && (recording.current || arming.current)) {
-        const text = "frame frozen";
-        ctx.font = `${12 * dpr}px "IBM Plex Mono", monospace`;
-        const fpadX = 7 * dpr;
-        const ftw = ctx.measureText(text).width;
-        const fChipW = ftw + fpadX * 2;
-        const fChipH = 20 * dpr;
-        const fChipX = rx + rw - fChipW - 6 * dpr;
-        const fChipY = ry + (captureCursor.current ? 6 : 30) * dpr;
-        ctx.fillStyle = "rgba(120, 255, 212, 0.92)";
-        roundRect(ctx, fChipX, fChipY, fChipW, fChipH, 6 * dpr);
-        ctx.fill();
-        ctx.fillStyle = "#1b1a18";
-        ctx.textBaseline = "middle";
-        ctx.fillText(text, fChipX + fpadX, fChipY + fChipH / 2);
-      }
-
+      const promoCountdown = promoMode.current && arming.current;
       const cd = countdown.current;
-      if (cd !== prevCountdown.current) {
-        prevCountdown.current = cd;
-        countdownChangedAt.current = performance.now();
-      }
-      if (cd > 0 && arming.current) {
+      if (promoCountdown && cd > 0) {
+        if (cd !== prevCountdown.current) {
+          prevCountdown.current = cd;
+          countdownChangedAt.current = performance.now();
+        }
         const since = (performance.now() - countdownChangedAt.current) / 1000;
         drawCountdown(ctx, cd, rx + rw / 2, ry + rh / 2, Math.min(rw, rh), dpr, since);
+      } else if (cd === 0) {
+        prevCountdown.current = 0;
       }
     };
 
@@ -417,30 +291,38 @@ function drawGamePulse(
     t < 0.5 ? easeOutCubic(t / 0.5) : easeOutCubic((1 - t) / 0.5);
   if (alpha <= 0.01) return;
 
-  const label = phase === "start" ? "start" : "end";
-  const fontSize = Math.max(16 * dpr, 18 * dpr);
-  const dotR = 5 * dpr;
-  const gap = 9 * dpr;
+  const action = phase === "start" ? "start" : "end";
+  const fontSize = Math.max(20 * dpr, 24 * dpr);
+  const dotR = 6 * dpr;
+  const gap = 10 * dpr;
+  const mint = "#78ffd4";
+  const coral = "#ff6b58";
 
   ctx.save();
-  ctx.globalAlpha = alpha * 0.88;
+  ctx.globalAlpha = alpha * 0.92;
   ctx.font = `500 ${fontSize}px "IBM Plex Mono", monospace`;
   ctx.textBaseline = "middle";
-  const textW = ctx.measureText(label).width;
+  const recW = ctx.measureText("rec").width;
+  const spaceW = ctx.measureText(" ").width;
+  const actionW = ctx.measureText(action).width;
+  const textW = recW + spaceW + actionW;
   const totalW = dotR * 2 + gap + textW;
   const x0 = cx - totalW / 2;
 
-  ctx.fillStyle = "#ff6b58";
+  ctx.fillStyle = coral;
   ctx.beginPath();
   ctx.arc(x0 + dotR, cy, dotR, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(label, x0 + dotR * 2 + gap, cy);
+  const textX = x0 + dotR * 2 + gap;
+  ctx.fillStyle = mint;
+  ctx.fillText("rec", textX, cy);
+  ctx.fillStyle = coral;
+  ctx.fillText(action, textX + recW + spaceW, cy);
   ctx.restore();
 }
 
-function drawGameModeOverlay(
+function drawMinimalViewport(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -452,6 +334,9 @@ function drawGameModeOverlay(
   drawCornerBrackets(ctx, x, y, w, h, dpr);
 
   if (!recording) return;
+
+  const blinkOn = Math.floor(performance.now() / 530) % 2 === 0;
+  if (!blinkOn) return;
 
   const dotX = x + 14 * dpr;
   const dotY = y + 14 * dpr;
@@ -469,16 +354,31 @@ function drawCornerBrackets(
   h: number,
   dpr: number,
 ) {
-  ctx.save();
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = 2 * dpr;
-  ctx.lineCap = "square";
-  ctx.shadowBlur = 0;
   const L = 26 * dpr;
-  tick(ctx, x, y, L, 1, 1);
-  tick(ctx, x + w, y, L, -1, 1);
-  tick(ctx, x, y + h, L, 1, -1);
-  tick(ctx, x + w, y + h, L, -1, -1);
+  const lw = 2.75 * dpr;
+  const pairGap = 1 * dpr;
+
+  ctx.save();
+  ctx.lineCap = "square";
+  ctx.lineWidth = lw;
+  ctx.shadowBlur = 0;
+
+  const corners: Array<[number, number, number, number]> = [
+    [x, y, 1, 1],
+    [x + w, y, -1, 1],
+    [x, y + h, 1, -1],
+    [x + w, y + h, -1, -1],
+  ];
+
+  for (const [cx, cy, sx, sy] of corners) {
+    const px = -sy * pairGap;
+    const py = sx * pairGap;
+    ctx.strokeStyle = "#1b1a18";
+    tick(ctx, cx + px, cy + py, L, sx, sy);
+    ctx.strokeStyle = "#ffffff";
+    tick(ctx, cx - px, cy - py, L, sx, sy);
+  }
+
   ctx.restore();
 }
 
@@ -592,8 +492,3 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-function fmt(s: number) {
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-}

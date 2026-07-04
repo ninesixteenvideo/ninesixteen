@@ -8,6 +8,16 @@ export type Release = {
 
 export const RELEASES: readonly Release[] = [
   {
+    version: "1.2.4",
+    date: "July 2026",
+    items: [
+      "Game mode webcam rebuilt — split-screen capture composites reliably in exports; resolution capped at your recording tier and camera hardware max",
+      "Library multi-select — drag to select takes with auto-scroll; Ctrl+click and Shift+click; bulk export to folder or Drive and bulk delete",
+      "Game mode Studio — Frame follows and cursor Show/Hide in the main setup (cursor hidden by default)",
+      "Studio cleanup — removed redundant quality summary line; Shortcuts tab no longer lists removed promo hotkeys",
+    ],
+  },
+  {
     version: "1.2.3",
     date: "June 2026",
     items: [
@@ -107,4 +117,4 @@ export const RELEASES: readonly Release[] = [
   },
 ] as const;
 
-export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.3";
+export const LATEST_VERSION = RELEASES.find((r) => !r.upcoming)?.version ?? "1.2.4";

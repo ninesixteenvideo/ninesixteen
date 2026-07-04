@@ -1,6 +1,6 @@
 //! GPU screen capture pipeline (Windows Graphics Capture).
 //!
-//! WGC â†’ GPU crop+scale â†’ hardware HEVC MP4 (record) + FFmpeg H.264 RTMP (stream).
+//! WGC Ã¢â€ â€™ GPU crop+scale Ã¢â€ â€™ hardware HEVC MP4 (record) + FFmpeg H.264 RTMP (stream).
 
 use crate::state::{SharedState, SharedViewport};
 use std::path::PathBuf;
@@ -37,7 +37,7 @@ impl std::error::Error for CaptureError {}
 #[cfg(windows)]
 mod imp {
     use super::*;
-    use crate::geometry::{frame_layout, output_dims};
+    use crate::geometry::{frame_layout, game_webcam_layout, output_dims};
     use crate::gpu_scale::GpuScaler;
     use crate::state::Orientation;
     use crate::camera::{self, camera_connected, camera_sink};
@@ -97,21 +97,22 @@ mod imp {
     static PROF_ENCODE_US: AtomicU64 = AtomicU64::new(0);
     static ENC_QUEUE_DEPTH: AtomicU64 = AtomicU64::new(0);
     static LAST_WGC_HANDLER_END_MS: AtomicU64 = AtomicU64::new(0);
-    /// Skip glide re-crop when WGC just finished — avoids gpu_bridge lock ping-pong.
+    /// Skip glide re-crop when WGC just finished â€” avoids gpu_bridge lock ping-pong.
     const GLIDE_AFTER_WGC_GUARD_MS: u64 = 10;
     /// Viewport-glide pulse competes with WGC for `gpu_bridge` + D3D11. At 60fps recording
     /// it can double GPU work during pan and starve WGC delivery (hold-frame stutter).
     const ENABLE_RECORDING_GLIDE: bool = false;
     static RECORDING_DEGRADED: AtomicBool = AtomicBool::new(false);
     static CAPTURE_BAD_WINDOWS: AtomicU64 = AtomicU64::new(0);
+    static WEBCAM_OVERLAY_MISSES: AtomicU64 = AtomicU64::new(0);
     static LAST_WGC_RESTART_MS: AtomicU64 = AtomicU64::new(0);
     static DEGRADED_LOGGED: AtomicBool = AtomicBool::new(false);
     static COMPLETED_SEGMENTS: AtomicU64 = AtomicU64::new(0);
     /// Auto-start a fresh file every 30 minutes during long sessions.
     const MAX_SEGMENT_SECS: f64 = 30.0 * 60.0;
-    const CAPTURE_HEALTH_MIN_WGC_PER_5S: u64 = 270; // ~54/s — WGC should be ~300/5s at 60fps
+    const CAPTURE_HEALTH_MIN_WGC_PER_5S: u64 = 270; // ~54/s â€” WGC should be ~300/5s at 60fps
     const CAPTURE_HEALTH_MAX_HOLD_PCT: f64 = 5.0;
-    const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 3; // 3 × 5s = 15s sustained before restart
+    const CAPTURE_HEALTH_BAD_WINDOWS: u64 = 3; // 3 Ã— 5s = 15s sustained before restart
     const CAPTURE_HEALTH_GRACE_SECS: f64 = 20.0;
     const CAPTURE_RECOVERY_GRACE_MS: u64 = 25_000;
     const WGC_RESTART_COOLDOWN_MS: u64 = 90_000;
@@ -289,7 +290,7 @@ mod imp {
     fn shared_viewport() -> &'static SharedViewport {
         SHARED_VIEWPORT
             .get()
-            .expect("viewport not bound — call capture::bind_viewport at startup")
+            .expect("viewport not bound â€” call capture::bind_viewport at startup")
     }
 
     fn viewport_orientation() -> Orientation {
@@ -313,7 +314,7 @@ mod imp {
         };
         if needs_new {
             bridge.scaler = Some(GpuScaler::new(device, out_w, out_h)?);
-            capture_log(&format!("GPU scaler → {out_w}×{out_h}"));
+            capture_log(&format!("GPU scaler â†’ {out_w}Ã—{out_h}"));
         }
         Ok(())
     }
@@ -368,7 +369,7 @@ mod imp {
         render_from_cache(bridge, state, vp, live_tex, sync_readback)
     }
 
-    /// Promo session: usage viewport → main recorder; inner viewport → nested track.
+    /// Promo session: usage viewport â†’ main recorder; inner viewport â†’ nested track.
     fn capture_promo_outputs(
         bridge: &mut GpuBridge,
         state: &SharedState,
@@ -440,6 +441,65 @@ mod imp {
         st.recording_settings.use_cinematic_cursor() && st.promo_mode.is_none()
     }
 
+    fn composite_game_webcam(
+        bgra: &mut [u8],
+        state: &SharedState,
+        vp: &crate::state::Viewport,
+        src_w: u32,
+        src_h: u32,
+        out_w: u32,
+        out_h: u32,
+    ) {
+        let settings = state.lock().recording_settings.clone();
+        if !settings.game_webcam_active() {
+            return;
+        }
+        let split = game_webcam_layout(
+            vp,
+            src_w,
+            src_h,
+            out_w,
+            out_h,
+            settings.game_webcam_portrait_size,
+            settings.game_webcam_pip_corner,
+            settings.game_webcam_pip_size,
+        );
+        let Some(frame) = crate::webcam::latest_frame() else {
+            let n = WEBCAM_OVERLAY_MISSES.fetch_add(1, Ordering::Relaxed);
+            if n == 0 || n % 300 == 0 {
+                capture_log("WARN: game webcam waiting for frame during composite");
+            }
+            return;
+        };
+        crate::webcam::stamp_into_bgra(bgra, out_w, out_h, &split.webcam, &frame);
+    }
+
+    fn recording_layout(
+        state: &SharedState,
+        vp: &crate::state::Viewport,
+        src_w: u32,
+        src_h: u32,
+        out_w: u32,
+        out_h: u32,
+    ) -> (crate::geometry::FrameLayout, bool) {
+        let settings = state.lock().recording_settings.clone();
+        if settings.game_webcam_active() {
+            let split = game_webcam_layout(
+                vp,
+                src_w,
+                src_h,
+                out_w,
+                out_h,
+                settings.game_webcam_portrait_size,
+                settings.game_webcam_pip_corner,
+                settings.game_webcam_pip_size,
+            );
+            (split.game, true)
+        } else {
+            (frame_layout(vp, src_w, src_h, out_w, out_h), false)
+        }
+    }
+
     /// Publish one recording frame — MF GPU surface (zero-copy) or FFmpeg BGRA pipe.
     fn capture_recording_output(
         bridge: &mut GpuBridge,
@@ -450,14 +510,33 @@ mod imp {
         if state.lock().promo_mode.is_some() {
             return capture_promo_outputs(bridge, state, live_tex, pipelined);
         }
-        if recording_uses_hw_encode() {
+        let webcam_on = state.lock().recording_settings.game_webcam_active();
+        // Webcam split is CPU-composited after GPU readback — never MF surface ingest.
+        if recording_uses_hw_encode() && !webcam_on {
             return publish_recording_surface(bridge, state, live_tex, pipelined);
         }
-        if let Some(bgra) = render_recording_frame(bridge, state, live_tex, pipelined) {
-            publish_recording_pixels(bgra, state);
-            return true;
+        let Some(mut bgra) = render_recording_frame(bridge, state, live_tex, pipelined) else {
+            return false;
+        };
+        if webcam_on {
+            let vp = shared_viewport().lock().viewport;
+            let (out_w, out_h) = bridge
+                .scaler
+                .as_ref()
+                .map(GpuScaler::dimensions)
+                .unwrap_or((720, 1280));
+            composite_game_webcam(
+                &mut bgra,
+                state,
+                &vp,
+                bridge.src_w,
+                bridge.src_h,
+                out_w,
+                out_h,
+            );
         }
-        false
+        publish_recording_pixels(bgra, state);
+        true
     }
 
     fn publish_recording_surface(
@@ -490,18 +569,19 @@ mod imp {
             Some(s) => s,
             None => return false,
         };
-        let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
+        let (out_w, out_h) = scaler.dimensions();
+        let layout = recording_layout(state, &vp, src_w, src_h, out_w, out_h);
 
         let t_render = Instant::now();
         let draw = if let Some(tex) = live_tex {
-            scaler.render(&ctx, &device, tex, src_w, src_h, &layout)
+            scaler.render(&ctx, &device, tex, src_w, src_h, &layout.0)
         } else {
-            scaler.render_cached(&ctx, src_w, src_h, &layout)
+            scaler.render_cached(&ctx, src_w, src_h, &layout.0)
         };
         if draw.is_err() {
             return false;
         }
-        let surface = match scaler.snap_encode_surface(&ctx) {
+        let surface = match scaler.snap_encode_surface(&ctx, false) {
             Ok(s) => s,
             Err(_) => return false,
         };
@@ -554,7 +634,7 @@ mod imp {
 
     /// Crop the monitor into output pixels. When `live_tex` is set (WGC hot path), copy
     /// from the fresh frame once; otherwise re-crop the cached `src_copy` (viewport glide).
-    /// Pipelined readback is used only for glide re-crops — WGC always reads synchronously
+    /// Pipelined readback is used only for glide re-crops â€” WGC always reads synchronously
     /// so the cursor is not delayed by one frame (which causes visible skip/stutter).
     fn render_from_cache(
         bridge: &mut GpuBridge,
@@ -572,20 +652,24 @@ mod imp {
         let src_h = bridge.src_h;
         ensure_gpu_scaler(&device, state, bridge).ok()?;
         let scaler = bridge.scaler.as_mut()?;
-        let layout = frame_layout(&vp, src_w, src_h, scaler.dimensions().0, scaler.dimensions().1);
+        let (out_w, out_h) = scaler.dimensions();
+        let layout = recording_layout(state, &vp, src_w, src_h, out_w, out_h);
+        let webcam_split = layout.1;
 
         // Cinematic cursor is stamped on the CPU at CFR encode time — never pipelined
         // readback (one frame behind) and never `cursor_pre_stamped` without pixels.
-        let use_pipeline_cached = pipelined && live_tex.is_none();
+        // Webcam split also needs synchronous readback so CPU composite sees fresh pixels.
+        let use_pipeline_cached = pipelined && live_tex.is_none() && !webcam_split;
         let use_pipeline_live = pipelined
             && live_tex.is_some()
             && !wgc_needs_sync_cursor(state)
-            && !recording_gpu_cursor(state);
+            && !recording_gpu_cursor(state)
+            && !webcam_split;
 
         if use_pipeline_live {
             let prev = scaler.take_pipelined_readback(&ctx);
             let tex = live_tex.unwrap();
-            let draw = scaler.render(&ctx, &device, tex, src_w, src_h, &layout);
+            let draw = scaler.render(&ctx, &device, tex, src_w, src_h, &layout.0);
             draw.ok()?;
             scaler.queue_readback(&ctx);
 
@@ -599,7 +683,7 @@ mod imp {
         if use_pipeline_cached {
             let prev = scaler.take_pipelined_readback(&ctx);
 
-            let draw = scaler.render_cached(&ctx, src_w, src_h, &layout);
+            let draw = scaler.render_cached(&ctx, src_w, src_h, &layout.0);
             draw.ok()?;
             scaler.queue_readback(&ctx);
 
@@ -612,9 +696,9 @@ mod imp {
 
         let t_render = Instant::now();
         let draw = if let Some(tex) = live_tex {
-            scaler.render(&ctx, &device, tex, src_w, src_h, &layout)
+            scaler.render(&ctx, &device, tex, src_w, src_h, &layout.0)
         } else {
-            scaler.render_cached(&ctx, src_w, src_h, &layout)
+            scaler.render_cached(&ctx, src_w, src_h, &layout.0)
         };
         draw.ok()?;
         let render_us = t_render.elapsed().as_micros() as u64;
@@ -639,7 +723,7 @@ mod imp {
                 let st = state.lock();
                 // NOTE: compute feed_cam from the guard we already hold. Calling
                 // should_feed_virtual_camera(&state) here would re-lock `state` on
-                // the same thread — parking_lot is non-reentrant, so that self-
+                // the same thread â€” parking_lot is non-reentrant, so that self-
                 // deadlocks while holding `state`, freezing the whole app (the
                 // AppHangB1 766f hang at recording start).
                 let feed_cam = st.camera_enabled
@@ -650,7 +734,7 @@ mod imp {
                     st.recording,
                     st.streaming,
                     feed_cam,
-                    st.recording_settings.fps.max(1),
+                    st.recording_settings.clone().fps.max(1),
                 )
             };
             if !recording && !streaming && !feed_cam {
@@ -1000,7 +1084,7 @@ mod imp {
                     st.recording,
                     st.streaming,
                     feed_cam,
-                    st.recording_settings.fps.max(1),
+                    st.recording_settings.clone().fps.max(1),
                 )
             };
 
@@ -1136,6 +1220,33 @@ mod imp {
         Ok(())
     }
 
+    fn start_game_webcam_for_recording(state: &SharedState) {
+        let orientation = shared_viewport().lock().viewport.orientation;
+        let (enabled, device_id, fps, quality) = {
+            let st = state.lock();
+            (
+                st.recording_settings.game_webcam_active(),
+                st.recording_settings.game_webcam_device_id.clone(),
+                st.recording_settings.fps,
+                st.recording_settings.quality,
+            )
+        };
+        crate::webcam::start_for_recording(
+            device_id.as_deref(),
+            fps,
+            quality,
+            orientation,
+            enabled,
+        );
+        if enabled && !crate::webcam::await_ready(Duration::from_secs(4)) {
+            capture_log("WARN: game webcam not ready — split may start black until first frame");
+        }
+    }
+
+    pub fn prewarm_game_webcam_for_recording(state: &SharedState) {
+        start_game_webcam_for_recording(state);
+    }
+
     pub fn attach_recording(state: SharedState) -> Result<(), CaptureError> {
         if !capture_already_running() {
             return start_recording(state);
@@ -1152,6 +1263,7 @@ mod imp {
         let viewport = shared_viewport().lock().viewport;
         let path = new_recording_path(viewport.orientation);
         sync_output_dimensions(state.clone())?;
+        start_game_webcam_for_recording(&state);
         let (out_w, out_h, fps, bitrate_kbps) = recording_dims(&state);
         open_recorder(&path, out_w, out_h, fps, bitrate_kbps, state.clone())?;
         {
@@ -1174,7 +1286,7 @@ mod imp {
         *stream_sink().lock() = stream;
         let settings_snapshot = {
             let st = state.lock();
-            st.recording_settings
+            st.recording_settings.clone()
         };
 
         let viewport = shared_viewport().lock().viewport;
@@ -1185,7 +1297,7 @@ mod imp {
         let wgc_fps = if record_path.is_some() || has_stream || recording_active {
             record_fps
         } else {
-            // Camera-only idle: lower WGC rate until recording — saves GPU + WebView breathing room.
+            // Camera-only idle: lower WGC rate until recording â€” saves GPU + WebView breathing room.
             requested_fps.min(20).max(10)
         };
         let record_bitrate = broadcast_bitrate(out_w, out_h, record_fps);
@@ -1275,7 +1387,7 @@ mod imp {
 
         let settings = {
             let st = state.lock();
-            st.recording_settings
+            st.recording_settings.clone()
         };
         let viewport = shared_viewport().lock().viewport;
 
@@ -1294,7 +1406,7 @@ mod imp {
 
     static CAM_CONNECTED_STREAK: AtomicU8 = AtomicU8::new(0);
 
-    /// Start/stop WGC based on demand — recording, streaming, or a connected virtual camera client.
+    /// Start/stop WGC based on demand â€” recording, streaming, or a connected virtual camera client.
     pub fn ensure_capture_session(state: SharedState) {
         let (recording, streaming, camera_on, connected) = {
             let mut st = state.lock();
@@ -1375,7 +1487,7 @@ mod imp {
             let mode = st
                 .promo_mode
                 .ok_or_else(|| CaptureError::Other("promo mode not set".into()))?;
-            (mode, st.recording_settings)
+            (mode, st.recording_settings.clone())
         };
         let orientation = match mode {
             crate::state::PromoMode::Portrait => Orientation::Portrait,
@@ -1423,7 +1535,7 @@ mod imp {
 
         let settings_snapshot = {
             let st = state.lock();
-            st.recording_settings
+            st.recording_settings.clone()
         };
         let viewport = shared_viewport().lock().viewport;
 
@@ -1443,7 +1555,11 @@ mod imp {
             sync_output_dimensions(state.clone())?;
         }
 
+        reset_recording_health_state();
+        start_game_webcam_for_recording(&state);
+
         if let Err(e) = begin_capture(state.clone(), Some(path), None) {
+            crate::webcam::stop();
             let mut st = state.lock();
             st.recording = false;
             st.current_path = None;
@@ -1452,7 +1568,16 @@ mod imp {
             return Err(e);
         }
 
-        reset_recording_health_state();
+        {
+            let st = state.lock();
+            if st.recording_settings.game_webcam_active() {
+                capture_log(&format!(
+                    "Game webcam split armed ({}x{} output)",
+                    out_w, out_h
+                ));
+            }
+        }
+
         Ok(())
     }
 
@@ -1463,7 +1588,7 @@ mod imp {
 
         let (settings, stream_settings) = {
             let st = state.lock();
-            (st.recording_settings, st.stream_settings.clone())
+            (st.recording_settings.clone(), st.stream_settings.clone())
         };
         let viewport = shared_viewport().lock().viewport;
 
@@ -1521,7 +1646,7 @@ mod imp {
 
         let (settings, stream_settings) = {
             let st = state.lock();
-            (st.recording_settings, st.stream_settings.clone())
+            (st.recording_settings.clone(), st.stream_settings.clone())
         };
         let viewport = shared_viewport().lock().viewport;
 
@@ -1561,6 +1686,7 @@ mod imp {
             st.current_start = None;
             return Err(e);
         }
+        start_game_webcam_for_recording(&state);
         Ok(())
     }
 
@@ -1626,7 +1752,7 @@ mod imp {
             vs.promo_inner_viewport = None;
         }
 
-        capture_log("Promo session cancelled — usage track discarded");
+        capture_log("Promo session cancelled â€” usage track discarded");
         Ok(())
     }
 
@@ -1733,7 +1859,7 @@ mod imp {
         LAST_CAPTURE_RECOVERY_MS.store(now, Ordering::Relaxed);
         CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
         DEGRADED_LOGGED.store(false, Ordering::Relaxed);
-        capture_log("WGC session restarted (capture health recovery — 25s grace before next check)");
+        capture_log("WGC session restarted (capture health recovery â€” 25s grace before next check)");
         Ok(())
     }
 
@@ -1757,12 +1883,12 @@ mod imp {
 
         let (frames, size_bytes, duration) = close_recorder()?;
         if frames == 0 {
-            capture_log("WARN: segment rotate skipped — no frames in segment");
+            capture_log("WARN: segment rotate skipped â€” no frames in segment");
         } else if let Ok(info) =
             finalize_recording_file(path.clone(), dims, orientation, frames, size_bytes, duration)
         {
             capture_log(&format!(
-                "Recording segment saved ({:.0}s, {} bytes) → {}",
+                "Recording segment saved ({:.0}s, {} bytes) â†’ {}",
                 info.duration,
                 info.size_bytes,
                 info.filename
@@ -1822,7 +1948,7 @@ mod imp {
 
         if degraded && !was_degraded && !DEGRADED_LOGGED.swap(true, Ordering::Relaxed) {
             capture_log(&format!(
-                "Capture health degraded — WGC {wgc_5s}/5s, {hold_pct:.0}% holds (target {target_fps}fps); will restart WGC if sustained"
+                "Capture health degraded â€” WGC {wgc_5s}/5s, {hold_pct:.0}% holds (target {target_fps}fps); will restart WGC if sustained"
             ));
         } else if !degraded {
             DEGRADED_LOGGED.store(false, Ordering::Relaxed);
@@ -1832,7 +1958,7 @@ mod imp {
             let bad = CAPTURE_BAD_WINDOWS.fetch_add(1, Ordering::Relaxed) + 1;
             if bad >= CAPTURE_HEALTH_BAD_WINDOWS {
                 CAPTURE_BAD_WINDOWS.store(0, Ordering::Relaxed);
-                capture_log("Capture health: restarting WGC session…");
+                capture_log("Capture health: restarting WGC sessionâ€¦");
                 if let Err(e) = restart_wgc_session(state.clone()) {
                     capture_log(&format!("WARN: WGC health restart failed: {e}"));
                 }
@@ -1900,6 +2026,8 @@ mod imp {
             let mut st = state.lock();
             st.recording = false;
         }
+
+        crate::webcam::stop();
 
         crate::save_progress::report(8, "starting");
         let (frames, mut size_bytes, mut duration) = close_recorder()?;
@@ -2126,7 +2254,8 @@ pub fn recording_viewport_context() -> (crate::state::Viewport, u32, u32) {
 pub use imp::{
     attach_camera, attach_recording, attach_stream, cancel_promo_recording, debug_lock_report,
     dispatch_recording_outputs,
-    ensure_capture_session, is_capture_running, poll_camera_connected, recording_encoder_queue_depth,
+    ensure_capture_session, is_capture_running, poll_camera_connected, prewarm_game_webcam_for_recording,
+    recording_encoder_queue_depth,
     recording_encoder_queue_note_consumed, recording_encoder_queue_note_sent,
     recording_encoder_queue_reset, recording_pipeline_health_check,
     recording_pipeline_window_stats, register_virtual_camera,
@@ -2135,6 +2264,9 @@ pub use imp::{
     start_streaming, stop_camera, stop_recording, stop_streaming, sync_output_dimensions,
     viewport_changed_since_last_render,
 };
+
+#[cfg(not(windows))]
+pub fn prewarm_game_webcam_for_recording(_state: &SharedState) {}
 
 #[cfg(not(windows))]
 pub fn debug_lock_report() -> String {

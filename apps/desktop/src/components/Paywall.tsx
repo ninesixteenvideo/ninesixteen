@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { AuthPanel } from "./AuthPanel";
 import { CheckIcon, CloseIcon } from "./icons";
+import { Reveal } from "./Reveal";
 
 const PRO_FEATURES = [
   "Export & save unlimited videos",
@@ -41,9 +42,10 @@ export function Paywall({ onClose }: { onClose: () => void }) {
           watermark — no subscription.
         </p>
 
-        {!signedIn ? (
+        <Reveal show={!signedIn}>
           <AuthPanel />
-        ) : (
+        </Reveal>
+        <Reveal show={signedIn}>
           <>
             <div className="price">
               <b>$49</b>
@@ -72,7 +74,7 @@ export function Paywall({ onClose }: { onClose: () => void }) {
               automatically — no need to restart.
             </p>
           </>
-        )}
+        </Reveal>
       </div>
     </div>
   );
