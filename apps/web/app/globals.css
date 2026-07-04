@@ -350,6 +350,79 @@ h6 {
   font-size: 0.42rem;
 }
 
+.home-auth-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: var(--home-ticker-h);
+  padding: 0 0.9rem;
+  pointer-events: auto;
+}
+
+.home-auth-bar__link {
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0;
+  font-family: var(--ns-font-mono);
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(244, 243, 240, 0.62);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.home-auth-bar__link:hover,
+.home-auth-bar__link:focus-visible {
+  color: rgba(244, 243, 240, 0.92);
+}
+
+.home-auth-bar__link--mint {
+  color: rgba(120, 255, 212, 0.82);
+}
+
+.home-auth-bar__link--mint:hover,
+.home-auth-bar__link--mint:focus-visible {
+  color: rgba(120, 255, 212, 1);
+}
+
+.home-auth-bar__link--muted {
+  color: rgba(244, 243, 240, 0.38);
+}
+
+.home-auth-bar__link--muted:hover,
+.home-auth-bar__link--muted:focus-visible {
+  color: rgba(244, 243, 240, 0.72);
+}
+
+.home-auth-bar__sep {
+  color: rgba(244, 243, 240, 0.18);
+  font-size: 0.58rem;
+  user-select: none;
+}
+
+.home-auth-bar__ghost {
+  opacity: 0;
+  font-size: 0.58rem;
+}
+
+@media (max-width: 767px) {
+  .home-auth-bar {
+    padding: 0 0.65rem;
+    gap: 0.35rem;
+  }
+
+  .home-auth-bar__link {
+    font-size: 0.54rem;
+    letter-spacing: 0.1em;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-ticker__marquee {
     animation: none;
@@ -1347,6 +1420,14 @@ body.site-tv-burst .home-hero__title--hero {
 
 .home-panel__btn--muted {
   opacity: 0.75;
+}
+
+.home-panel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .home-panel__card--price {

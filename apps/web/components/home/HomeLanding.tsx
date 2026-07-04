@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HomeInfoTicker } from "./HomeInfoTicker";
+import { HomeAuthBar } from "./HomeAuthBar";
 import { HomeViewportOverlay } from "./HomeViewportOverlay";
 import { HomeViewportFeed } from "./HomeViewportFeed";
 import { HomeBackground } from "./HomeBackground";
@@ -89,6 +90,7 @@ function HomeLandingInner({ initialView = "hero" }: HomeLandingProps) {
   return (
     <div className={`home${isMobile ? " home--mobile" : ""}`}>
       <HomeInfoTicker />
+      <HomeAuthBar onNavigate={navigate} onSignedOut={() => navigate("hero")} />
       <HomeBackground />
       <HomeViewportFeed active={demoActive} />
       <HomeViewportOverlay active={demoActive} />

@@ -6,7 +6,7 @@ import { WordmarkTv } from "@/components/WordmarkTv";
 import { useAuth } from "@/lib/auth";
 
 export function SiteHeader() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const pathname = usePathname();
   const isHome = pathname === "/";
 
@@ -23,13 +23,27 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           {!loading && user ? (
-            <Link href="/dashboard" className="ns-cta ns-cta--sm ns-cta--primary">
-              Dashboard
-            </Link>
+            <>
+              <Link href="/dashboard" className="ns-cta ns-cta--sm ns-cta--primary">
+                Dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="ns-cta ns-cta--sm ns-cta--ghost"
+              >
+                Sign out
+              </button>
+            </>
           ) : (
-            <Link href="/?view=sign-in" className="ns-cta ns-cta--sm ns-cta--ghost">
-              Sign in
-            </Link>
+            <>
+              <Link href="/?view=sign-in" className="ns-cta ns-cta--sm ns-cta--ghost">
+                Sign in
+              </Link>
+              <Link href="/?view=sign-up" className="ns-cta ns-cta--sm ns-cta--primary">
+                Sign up
+              </Link>
+            </>
           )}
         </div>
       </div>

@@ -22,7 +22,7 @@ function HomePanelAuthInner({
   onAuthenticated,
   pendingCheckout,
 }: HomePanelAuthProps) {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
 
   if (!loading && user) {
     return (
@@ -33,9 +33,20 @@ function HomePanelAuthInner({
         <p className="home-panel__lede">
           {user.plan === "pro" ? "Pro license active on this account." : "Free tier — export unlocks with Pro."}
         </p>
-        <Link href="/dashboard" className="home-panel__btn home-panel__btn--mint">
-          Open dashboard
-        </Link>
+        <div className="home-panel__actions">
+          <Link href="/dashboard" className="home-panel__btn home-panel__btn--mint">
+            Open dashboard
+          </Link>
+          <button
+            type="button"
+            className="home-panel__btn home-panel__btn--muted"
+            onClick={() => {
+              void signOut().then(() => onBack());
+            }}
+          >
+            Sign out
+          </button>
+        </div>
       </section>
     );
   }

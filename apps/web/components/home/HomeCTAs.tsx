@@ -11,8 +11,8 @@ type HomeCTAsProps = {
 /** Broadcast control deck — triggers in-page glitch transitions. */
 export function HomeCTAs({ onNavigate, disabled }: HomeCTAsProps) {
   const { user, loading } = useAuth();
-  const sessionView: HomeView = !loading && user ? "sign-in" : "sign-in";
   const sessionLabel = !loading && user ? "Account" : "Sign in";
+  const sessionMeta = !loading && user ? "Dashboard & license" : "Or create account";
 
   return (
     <nav className="home-deck" aria-label="Get started">
@@ -43,13 +43,11 @@ export function HomeCTAs({ onNavigate, disabled }: HomeCTAsProps) {
         type="button"
         disabled={disabled}
         className="home-deck__cell home-deck__cell--session"
-        onClick={() => onNavigate(sessionView)}
+        onClick={() => onNavigate("sign-in")}
       >
         <span className="home-deck__eyebrow">Your license</span>
         <span className="home-deck__title home-deck__title--mono">{sessionLabel}</span>
-        <span className="home-deck__arrow" aria-hidden>
-          →
-        </span>
+        <span className="home-deck__meta">{sessionMeta}</span>
       </button>
     </nav>
   );
